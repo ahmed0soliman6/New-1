@@ -1,5 +1,5 @@
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, deleteUser, type User as FirebaseUser } from 'firebase/auth';
-import { doc, getDoc, runTransaction, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { requireFirebase } from './firebase';
 import type { UserRole } from '../types/database';
 
@@ -31,27 +31,23 @@ export async function getInitialAdminStatus(): Promise<{ ready: boolean; claimed
 export async function createInitialAdmin(params: { username: string; displayName: string; password: string }): Promise<{ username: string }> {
   const { auth, db } = requireFirebase();
   const usernameLower = normalizeUsername(params.username);
-  if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(usernameLower) || !params.displayName.trim() || params.password.length < 8) {
-    throw new Error('بيانات المدير غير صحيحة.');
-  }
+  if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(usernameLower) || !params.displayName.trim() || params.password.length < 8) throw new Error('بيانات المدير غير صحيحة.');
   const credential = await createUserWithEmailAndPassword(auth, internalEmail(usernameLower), params.password);
+  const userRef = doc(db, 'users', credential.user.uid);
+  const usernameRef = doc(db, 'usernames', usernameLower);
+  const bootstrapRef = doc(db, '_system', 'bootstrap');
   try {
-    await runTransaction(db, async (tx) => {
-      const bootstrapRef = doc(db, '_system', 'bootstrap');
-      const usernameRef = doc(db, 'usernames', usernameLower);
-      const userRef = doc(db, 'users', credential.user.uid);
-      const bootstrap = await tx.get(bootstrapRef);
-      const mapping = await tx.get(usernameRef);
-      if (bootstrap.exists() || mapping.exists()) throw new Error('تم إعداد المدير الأول بالفعل.');
-      tx.set(bootstrapRef, { status: 'COMPLETED', adminUid: credential.user.uid, completedAt: serverTimestamp() });
-      tx.set(userRef, { uid: credential.user.uid, username: usernameLower, usernameLower, email: internalEmail(usernameLower), displayName: params.displayName.trim(), role: 'ADMIN', active: true, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), createdBy: null });
-      tx.set(usernameRef, { uid: credential.user.uid, email: internalEmail(usernameLower), usernameLower, createdAt: serverTimestamp() });
-    });
+    const bootstrap = await getDoc(bootstrapRef);
+    const mapping = await getDoc(usernameRef);
+    if (bootstrap.exists() || mapping.exists()) throw new Error('تم إعداد المدير الأول بالفعل.');
+    await setDoc(userRef, { uid: credential.user.uid, username: usernameLower, usernameLower, email: internalEmail(usernameLower), displayName: params.displayName.trim(), role: 'ADMIN', active: true, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), createdBy: null });
+    await setDoc(usernameRef, { uid: credential.user.uid, email: internalEmail(usernameLower), usernameLower, createdAt: serverTimestamp() });
+    await setDoc(bootstrapRef, { status: 'COMPLETED', adminUid: credential.user.uid, completedAt: serverTimestamp() });
   } catch (error) {
     await deleteUser(credential.user).catch(() => signOut(auth));
-    throw error instanceof Error ? error : new Error('تعذر إنشاء المدير الأول.');
+    const detail = error instanceof Error ? error.message : 'تعذر إنشاء المدير الأول.';
+    throw new Error(`تعذر إنشاء المدير الأول: ${detail}`);
   }
   return { username: usernameLower };
 }
-
 export async function logoutAccount(): Promise<void> { await signOut(requireFirebase().auth); }
