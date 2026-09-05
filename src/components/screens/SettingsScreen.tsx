@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CLINIC_INFO } from '../../data/mockClinicData';
+import { CLINIC_INFO } from '../../data/previewClinicData';
 import {
   RadiologyCatalogItem,
   LabCatalogItem,

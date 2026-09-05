@@ -39,7 +39,7 @@ export const INITIAL_USERS: User[] = [
     userId: 'user-rec-1',
     name: 'سارة عبد المنعم (الاستقبال)',
     email: 'reception@solimedical.com',
-    role: 'RECEPTIONIST',
+    role: 'SECRETARY',
     active: true,
     preferredLanguage: 'ar',
     createdAt: '2024-01-15T08:00:00Z',
@@ -176,7 +176,7 @@ export const INITIAL_SERVICES: ServiceItem[] = [
 
 // 5. Patients (patients/{patientId})
 // Rule: fullName is REQUIRED, all other fields are OPTIONAL
-export const INITIAL_PATIENTS_V1: Patient[] = [
+export const INITIAL_PATIENTS: Patient[] = [
   {
     patientId: 'pat-1',
     fullName: 'أحمد محمد إبراهيم الشناوي',
@@ -271,7 +271,7 @@ export const INITIAL_PATIENTS_V1: Patient[] = [
 
 // 6. Appointments (appointments/{appointmentId})
 // Crucial rule: Does NOT contain paymentId, invoiceId, or visitId at creation!
-export const INITIAL_APPOINTMENTS_V1: Appointment[] = [
+export const INITIAL_APPOINTMENTS: Appointment[] = [
   {
     appointmentId: 'appt-1',
     patientId: 'pat-1',
@@ -342,7 +342,7 @@ export const INITIAL_APPOINTMENTS_V1: Appointment[] = [
 // 7. Visits (visits/{visitId})
 // Crucial rule: Single source of truth for current status and waiting queue!
 // Waiting queue is a VIEW derived from visits where status == "WAITING".
-export const INITIAL_VISITS_V1: Visit[] = [
+export const INITIAL_VISITS: Visit[] = [
   {
     visitId: 'vis-101',
     patientId: 'pat-1',
@@ -457,7 +457,7 @@ export const INITIAL_VISITS_V1: Visit[] = [
 ];
 
 // 8. Invoices (invoices/{invoiceId})
-export const INITIAL_INVOICES_V1: Invoice[] = [
+export const INITIAL_INVOICES: Invoice[] = [
   {
     invoiceId: 'inv-2026-001',
     patientId: 'pat-1',
@@ -542,7 +542,7 @@ export const INITIAL_INVOICES_V1: Invoice[] = [
 
 // 9. Payments (payments/{paymentId})
 // Treasury and cash records are calculated directly from actual payments
-export const INITIAL_PAYMENTS_V1: Payment[] = [
+export const INITIAL_PAYMENTS: Payment[] = [
   {
     paymentId: 'pay-2026-001',
     patientId: 'pat-1',
@@ -573,7 +573,7 @@ export const INITIAL_PAYMENTS_V1: Payment[] = [
 
 // 10. Follow-ups (followUps/{followUpId})
 // Snapshot rule: fee and isFree are preserved at creation time
-export const INITIAL_FOLLOWUPS_V1: FollowUp[] = [
+export const INITIAL_FOLLOWUPS: FollowUp[] = [
   {
     followUpId: 'fol-1',
     patientId: 'pat-1',
@@ -606,7 +606,7 @@ export const INITIAL_FOLLOWUPS_V1: FollowUp[] = [
 
 // 11. Prescriptions (prescriptions/{prescriptionId})
 // Snapshot rule: Stores medication names and strengths as snapshots
-export const INITIAL_PRESCRIPTIONS_V1: Prescription[] = [
+export const INITIAL_PRESCRIPTIONS: Prescription[] = [
   {
     prescriptionId: 'rx-2026-001',
     patientId: 'pat-1',
@@ -653,7 +653,7 @@ export const INITIAL_PRESCRIPTIONS_V1: Prescription[] = [
 
 // 12. Master Medications Catalog (medications/{medicationId})
 // Supports LOCAL, EGYPTIAN_ARCHIVE, and CUSTOM sources. Soft-delete: active = false
-export const INITIAL_MEDICATIONS_V1: Medication[] = [
+export const INITIAL_MEDICATIONS: Medication[] = [
   {
     medicationId: 'med-1',
     nameAr: 'كونكور 5 بلس (Concor 5 Plus)',
@@ -735,7 +735,7 @@ export const INITIAL_MEDICATIONS_V1: Medication[] = [
 ];
 
 // 13. Master Lab Tests Catalog (labTests/{labTestId})
-export const INITIAL_LAB_TESTS_V1: LabTest[] = [
+export const INITIAL_LAB_TESTS: LabTest[] = [
   {
     labTestId: 'lab-1',
     nameAr: 'صورة دم كاملة (Complete Blood Count - CBC)',
@@ -800,7 +800,7 @@ export const INITIAL_LAB_TESTS_V1: LabTest[] = [
 
 // 14. Lab Orders (labOrders/{labOrderId})
 // Applied status: ORDERED [طلب] | RESULT [نتيجة] | REPORT [تقرير]
-export const INITIAL_LAB_ORDERS_V1: LabOrder[] = [
+export const INITIAL_LAB_ORDERS: LabOrder[] = [
   {
     labOrderId: 'lo-1',
     patientId: 'pat-1',
@@ -840,7 +840,7 @@ export const INITIAL_LAB_ORDERS_V1: LabOrder[] = [
 ];
 
 // 15. Master Radiology Types Catalog (radiologyTypes/{radiologyId})
-export const INITIAL_RADIOLOGY_TYPES_V1: RadiologyType[] = [
+export const INITIAL_RADIOLOGY_TYPES: RadiologyType[] = [
   {
     radiologyId: 'rad-1',
     nameAr: 'أشعة الصدر العادية (Chest X-Ray PA/Lat)',
@@ -890,7 +890,7 @@ export const INITIAL_RADIOLOGY_TYPES_V1: RadiologyType[] = [
 
 // 16. Radiology Orders (radiologyOrders/{radiologyOrderId})
 // Applied status: ORDERED [طلب] | RESULT [نتيجة] | REPORT [تقرير]
-export const INITIAL_RADIOLOGY_ORDERS_V1: RadiologyOrder[] = [
+export const INITIAL_RADIOLOGY_ORDERS: RadiologyOrder[] = [
   {
     radiologyOrderId: 'ro-1',
     patientId: 'pat-1',
@@ -921,7 +921,7 @@ export const INITIAL_RADIOLOGY_ORDERS_V1: RadiologyOrder[] = [
 ];
 
 // 17. Diagnoses Catalog (diagnoses/{diagnosisId})
-export const INITIAL_DIAGNOSES_V1: Diagnosis[] = [
+export const INITIAL_DIAGNOSES: Diagnosis[] = [
   {
     diagnosisId: 'diag-1',
     nameAr: 'داء السكري من النوع الثاني غير المعتمد على الأنسولين',
@@ -979,7 +979,7 @@ export const INITIAL_DIAGNOSES_V1: Diagnosis[] = [
 ];
 
 // 18. Symptoms Catalog (symptoms/{symptomId})
-export const INITIAL_SYMPTOMS_V1: Symptom[] = [
+export const INITIAL_SYMPTOMS: Symptom[] = [
   { symptomId: 'sym-1', nameAr: 'صداع نابض مستمر بالجبهة أو مؤخرة الرأس', nameEn: 'Throbbing Headache', category: 'أعصاب ورأس', active: true },
   { symptomId: 'sym-2', nameAr: 'دوخة أو هبوط مفاجئ وزغللة بالعينين', nameEn: 'Dizziness & Lightheadedness', category: 'عام ودورة دموية', active: true },
   { symptomId: 'sym-3', nameAr: 'خفقان وتسارع بضربات القلب Palpitations', nameEn: 'Palpitations', category: 'القلب والأوعية', active: true },
@@ -991,7 +991,7 @@ export const INITIAL_SYMPTOMS_V1: Symptom[] = [
 ];
 
 // 19. Chronic Diseases Catalog (chronicDiseases/{diseaseId})
-export const INITIAL_CHRONIC_DISEASES_V1: ChronicDisease[] = [
+export const INITIAL_CHRONIC_DISEASES: ChronicDisease[] = [
   { diseaseId: 'cd-1', nameAr: 'داء السكري (Type 2 DM)', nameEn: 'Type 2 Diabetes', category: 'غدد وسكري', active: true, color: 'blue' },
   { diseaseId: 'cd-2', nameAr: 'ارتفاع ضغط الدم (Hypertension)', nameEn: 'Hypertension', category: 'قلب وأوعية', active: true, color: 'red' },
   { diseaseId: 'cd-3', nameAr: 'قصور الشرايين التاجية (CAD)', nameEn: 'Coronary Artery Disease', category: 'قلب', active: true, color: 'amber' },
@@ -1003,7 +1003,7 @@ export const INITIAL_CHRONIC_DISEASES_V1: ChronicDisease[] = [
 
 // 20. Doctor Settings (doctorSettings/main)
 // Doctor favorite IDs are stored here, referencing the main catalogs
-export const INITIAL_DOCTOR_SETTINGS_V1: DoctorSettings = {
+export const INITIAL_DOCTOR_SETTINGS: DoctorSettings = {
   favoriteMedicationIds: ['med-1', 'med-2', 'med-3', 'med-4', 'med-5'],
   favoriteLabTestIds: ['lab-1', 'lab-2', 'lab-3', 'lab-4', 'lab-5'],
   favoriteRadiologyIds: ['rad-1', 'rad-2', 'rad-3', 'rad-4'],
@@ -1013,7 +1013,7 @@ export const INITIAL_DOCTOR_SETTINGS_V1: DoctorSettings = {
 };
 
 // 21. System Settings (systemSettings/...)
-export const INITIAL_SYSTEM_SETTINGS_V1: SystemSettings = {
+export const INITIAL_SYSTEM_SETTINGS: SystemSettings = {
   general: {
     defaultLanguage: 'ar',
     supportedLanguages: ['ar', 'en'],
@@ -1059,7 +1059,7 @@ export const INITIAL_SYSTEM_SETTINGS_V1: SystemSettings = {
 
 /**
  * =========================================================================
- * ATOMIC WORKFLOWS & ARCHITECTURAL LOGIC (V1)
+ * ATOMIC WORKFLOWS & ARCHITECTURAL LOGIC ()
  * =========================================================================
  */
 
@@ -1078,6 +1078,7 @@ export function executeAtomicArrival(params: {
   paymentMethod: 'CASH' | 'CARD' | 'TRANSFER' | 'OTHER';
   receivedBy: string;
   nextQueueNumber: number;
+  paymentSucceeded?: boolean;
   receptionistData?: { symptoms: string; chronicDiseases: string[]; notes: string };
   vitalSigns?: {
     bloodPressure: string;
@@ -1094,6 +1095,8 @@ export function executeAtomicArrival(params: {
   newPayment: Payment;
   newVisit: Visit;
 } {
+  if (params.paymentSucceeded === false) throw new Error('Payment failed; no visit was created');
+
   const now = new Date().toISOString();
   const visitId = `vis-${Date.now()}`;
   const invoiceId = `inv-${Date.now()}`;
@@ -1205,6 +1208,7 @@ export function executeAtomicWalkIn(params: {
   paymentMethod: 'CASH' | 'CARD' | 'TRANSFER' | 'OTHER';
   receivedBy: string;
   nextQueueNumber: number;
+  paymentSucceeded?: boolean;
   receptionistData: { symptoms: string; chronicDiseases: string[]; notes: string };
   vitalSigns?: {
     bloodPressure: string;
@@ -1220,6 +1224,8 @@ export function executeAtomicWalkIn(params: {
   newPayment: Payment;
   newVisit: Visit;
 } {
+  if (params.paymentSucceeded === false) throw new Error('Payment failed; no visit was created');
+
   const now = new Date().toISOString();
   const visitId = `vis-${Date.now()}`;
   const invoiceId = `inv-${Date.now()}`;

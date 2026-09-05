@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { ScheduledAppointment, ScreenType } from '../../types';
+import { AppointmentListItem, ScreenType } from '../../types';
 
 interface AppointmentsScreenProps {
-  appointments: ScheduledAppointment[];
-  onCheckInPatient: (appointment: ScheduledAppointment) => void;
+  appointments: AppointmentListItem[];
+  onCheckInPatient: (appointment: AppointmentListItem) => void;
   onOpenNewAppointment: () => void;
   onNavigate: (screen: ScreenType) => void;
 }

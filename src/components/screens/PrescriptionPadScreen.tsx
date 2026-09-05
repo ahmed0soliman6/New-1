@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { PrescriptionItem, PatientRecord } from '../../types';
-import { INITIAL_PRESCRIPTIONS, CLINIC_INFO } from '../../data/mockClinicData';
+import { PrescriptionItem, PatientListItem } from '../../types';
+import { INITIAL_PRESCRIPTIONS, CLINIC_INFO } from '../../data/previewClinicData';
 
 interface PrescriptionPadScreenProps {
-  patient?: PatientRecord;
+  patient?: PatientListItem;
   items?: PrescriptionItem[];
   onChangeItems?: (items: PrescriptionItem[]) => void;
 }

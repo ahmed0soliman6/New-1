@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CLINICAL_PROTOCOLS, ClinicProtocol } from '../../data/mockClinicData';
+import { CLINICAL_PROTOCOLS, ClinicProtocol } from '../../data/previewClinicData';
 import { ScreenType } from '../../types';
 
 interface PrescriptionCatalogScreenProps {

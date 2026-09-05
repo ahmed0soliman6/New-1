@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { ScheduledAppointment } from '../../types';
+import { AppointmentListItem } from '../../types';
 
 interface NewAppointmentModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddAppointment: (app: ScheduledAppointment) => void;
+  onAddAppointment: (app: AppointmentListItem) => void;
 }
 
 export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
@@ -28,7 +28,7 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
       return;
     }
 
-    const newApp: ScheduledAppointment = {
+    const newApp: AppointmentListItem = {
       id: `app-${Date.now()}`,
       patientName: name,
       medicalCode: `EG-${Math.floor(Math.random() * 90000) + 10000}`,

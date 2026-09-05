@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CLINIC_INFO } from '../data/mockClinicData';
+import { CLINIC_INFO } from '../data/previewClinicData';
 
 interface HeaderProps {
   onOpenNewVisit: () => void;
@@ -71,11 +71,11 @@ export const Header: React.FC<HeaderProps> = ({
           {onOpenDatabaseInspector && (
             <button
               onClick={onOpenDatabaseInspector}
-              title="استعراض هيكل قاعدة البيانات V1 والمجموعات والمخطط الإكلينيكي"
+              title="استعراض هيكل قاعدة البيانات والمجموعات والمخطط الإكلينيكي"
               className="hidden lg:flex items-center gap-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 font-bold text-xs px-3 py-2 rounded-xl border border-emerald-500/30 transition-all cursor-pointer active:scale-95"
             >
               <span className="material-symbols-outlined text-base">database</span>
-              <span>معمارية قاعدة البيانات V1</span>
+              <span>معمارية قاعدة البيانات </span>
             </button>
           )}
           <button

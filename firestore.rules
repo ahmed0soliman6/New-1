@@ -1,0 +1,44 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function userRole() {
+      return signedIn() ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role : null;
+    }
+    function isAdmin() { return userRole() == 'ADMIN'; }
+    function isDoctor() { return userRole() == 'DOCTOR' || isAdmin(); }
+    function isSecretary() { return userRole() == 'SECRETARY' || isAdmin(); }
+
+    match /users/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if false;
+      allow update: if isAdmin() || (
+        request.auth.uid == userId &&
+        request.resource.data.role == resource.data.role &&
+        request.resource.data.active == resource.data.active
+      );
+      allow delete: if isAdmin();
+    }
+    match /usernames/{usernameLower} { allow read, write: if false; }
+    match /_system/{document} { allow read, write: if false; }
+
+    match /patients/{patientId} {
+      allow read, create, update: if signedIn();
+      allow delete: if isAdmin() || isDoctor();
+    }
+    match /appointments/{appointmentId} {
+      allow read, create, update: if signedIn();
+      allow delete: if isAdmin() || isSecretary();
+    }
+    match /visits/{visitId} {
+      allow read: if signedIn();
+      allow create: if isSecretary() || isAdmin();
+      allow update: if isDoctor() || isSecretary();
+      allow delete: if isAdmin();
+    }
+    match /invoices/{invoiceId} { allow read, create, update: if signedIn(); allow delete: if isAdmin(); }
+    match /payments/{paymentId} { allow read, create: if isSecretary() || isAdmin(); allow update, delete: if isAdmin(); }
+    match /prescriptions/{prescriptionId} { allow read: if signedIn(); allow create, update: if isDoctor(); allow delete: if isAdmin(); }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

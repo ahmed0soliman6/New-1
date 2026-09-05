@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { QueueItem, PatientRecord, ScreenType } from '../../types';
+import { QueueItem, PatientListItem, ScreenType } from '../../types';
 
 interface PatientIntakeScreenProps {
   onAddPatientToQueue: (item: QueueItem) => void;
-  patients: PatientRecord[];
+  patients: PatientListItem[];
   presetChronicConditions: { id: string; name: string; category: string; color: string }[];
   onAddChronicCondition: (condition: { id: string; name: string; category: string; color: string }) => void;
   onNavigate?: (screen: ScreenType) => void;
@@ -65,7 +65,7 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const handleSelectExisting = (p: PatientRecord) => {
+  const handleSelectExisting = (p: PatientListItem) => {
     setName(p.name);
     setPhone(p.phone);
     setAge(p.age);

@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
-import { PatientRecord, ScreenType } from '../../types';
+import { PatientListItem, ScreenType } from '../../types';
 
-interface PatientRecordsScreenProps {
-  patients: PatientRecord[];
+interface PatientListItemsScreenProps {
+  patients: PatientListItem[];
   onNavigate: (screen: ScreenType) => void;
-  onSelectPatientForExam: (patient: PatientRecord) => void;
+  onSelectPatientForExam: (patient: PatientListItem) => void;
 }
 
-export const PatientRecordsScreen: React.FC<PatientRecordsScreenProps> = ({
+export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
   patients,
   onNavigate,
   onSelectPatientForExam,

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CLINIC_INFO } from '../../data/mockClinicData';
+import { CLINIC_INFO } from '../../data/previewClinicData';
 
 interface ClinicalReportsScreenProps {
   onExportReport?: (type: 'pdf' | 'excel') => void;

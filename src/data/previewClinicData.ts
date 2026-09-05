@@ -1,4 +1,4 @@
-import { PatientRecord, QueueItem, ScheduledAppointment, TransactionRecord, PrescriptionItem } from '../types';
+import { PatientListItem, QueueItem, AppointmentListItem, TransactionRecord, PrescriptionItem } from '../types';
 
 export const CLINIC_INFO = {
   name: 'سولي ميديكال كلينيك',
@@ -32,7 +32,7 @@ export const CLINIC_INFO = {
   ]
 };
 
-export const INITIAL_PATIENTS: PatientRecord[] = [
+export const INITIAL_PATIENTS: PatientListItem[] = [
   {
     id: 'pat-1',
     fileNumber: 1,
@@ -204,7 +204,7 @@ export const INITIAL_QUEUE: QueueItem[] = [
   },
 ];
 
-export const INITIAL_APPOINTMENTS: ScheduledAppointment[] = [
+export const INITIAL_APPOINTMENTS: AppointmentListItem[] = [
   {
     id: 'app-1',
     patientName: 'أحمد محمد السعيد',

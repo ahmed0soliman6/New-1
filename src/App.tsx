@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import {
   ScreenType,
-  ScheduledAppointment,
+  AppointmentListItem,
   QueueItem,
   TransactionRecord,
-  PatientRecord,
+  PatientListItem,
   RadiologyCatalogItem,
   LabCatalogItem,
   DrugCatalogItem,
@@ -13,70 +14,70 @@ import {
   PrescriptionItem,
 } from './types';
 import {
-  INITIAL_APPOINTMENTS,
+  INITIAL_APPOINTMENTS as INITIAL_APPOINTMENTS_PREVIEW,
   INITIAL_QUEUE,
   INITIAL_TRANSACTIONS,
-  INITIAL_PATIENTS,
+  INITIAL_PATIENTS as INITIAL_PATIENTS_PREVIEW,
   DEFAULT_CHRONIC_CONDITIONS,
   ClinicProtocol,
-} from './data/mockClinicData';
+} from './data/previewClinicData';
 import {
   DEFAULT_RADIOLOGY_CATALOG,
   DEFAULT_LAB_CATALOG,
   DEFAULT_DRUG_CATALOG,
   DEFAULT_DIAGNOSES_CATALOG,
   DEFAULT_SYMPTOMS_CATALOG,
-} from './data/mockMedicalCatalogs';
+} from './data/previewMedicalCatalogs';
 import {
   INITIAL_USERS,
   INITIAL_DOCTOR_PROFILE,
   INITIAL_CLINIC_LOCATIONS,
   INITIAL_SERVICES,
-  INITIAL_PATIENTS_V1,
-  INITIAL_APPOINTMENTS_V1,
-  INITIAL_VISITS_V1,
-  INITIAL_INVOICES_V1,
-  INITIAL_PAYMENTS_V1,
-  INITIAL_FOLLOWUPS_V1,
-  INITIAL_PRESCRIPTIONS_V1,
-  INITIAL_MEDICATIONS_V1,
-  INITIAL_LAB_TESTS_V1,
-  INITIAL_LAB_ORDERS_V1,
-  INITIAL_RADIOLOGY_TYPES_V1,
-  INITIAL_RADIOLOGY_ORDERS_V1,
-  INITIAL_DIAGNOSES_V1,
-  INITIAL_SYMPTOMS_V1,
-  INITIAL_CHRONIC_DISEASES_V1,
-  INITIAL_DOCTOR_SETTINGS_V1,
-  INITIAL_SYSTEM_SETTINGS_V1,
+  INITIAL_PATIENTS as INITIAL_PATIENTS_CANONICAL,
+  INITIAL_APPOINTMENTS as INITIAL_APPOINTMENTS_CANONICAL,
+  INITIAL_VISITS as INITIAL_VISITS_CANONICAL,
+  INITIAL_INVOICES as INITIAL_INVOICES_CANONICAL,
+  INITIAL_PAYMENTS as INITIAL_PAYMENTS_CANONICAL,
+  INITIAL_FOLLOWUPS as INITIAL_FOLLOWUPS_CANONICAL,
+  INITIAL_PRESCRIPTIONS as INITIAL_PRESCRIPTIONS_CANONICAL,
+  INITIAL_MEDICATIONS as INITIAL_MEDICATIONS_CANONICAL,
+  INITIAL_LAB_TESTS as INITIAL_LAB_TESTS_CANONICAL,
+  INITIAL_LAB_ORDERS as INITIAL_LAB_ORDERS_CANONICAL,
+  INITIAL_RADIOLOGY_TYPES as INITIAL_RADIOLOGY_TYPES_CANONICAL,
+  INITIAL_RADIOLOGY_ORDERS as INITIAL_RADIOLOGY_ORDERS_CANONICAL,
+  INITIAL_DIAGNOSES as INITIAL_DIAGNOSES_CANONICAL,
+  INITIAL_SYMPTOMS as INITIAL_SYMPTOMS_CANONICAL,
+  INITIAL_CHRONIC_DISEASES as INITIAL_CHRONIC_DISEASES_CANONICAL,
+  INITIAL_DOCTOR_SETTINGS as INITIAL_DOCTOR_SETTINGS_CANONICAL,
+  INITIAL_SYSTEM_SETTINGS as INITIAL_SYSTEM_SETTINGS_CANONICAL,
   executeAtomicArrival,
   executeAtomicWalkIn,
   executeCompleteVisit,
-} from './data/databaseV1';
+} from './data/database';
 import {
   User,
   DoctorProfile,
   ClinicLocation,
-  Patient as PatientV1,
-  Appointment as AppointmentV1,
-  Visit as VisitV1,
-  Invoice as InvoiceV1,
-  Payment as PaymentV1,
-  ServiceItem as ServiceItemV1,
-  FollowUp as FollowUpV1,
-  Prescription as PrescriptionV1,
-  Medication as MedicationV1,
-  LabTest as LabTestV1,
-  LabOrder as LabOrderV1,
-  RadiologyType as RadiologyTypeV1,
-  RadiologyOrder as RadiologyOrderV1,
-  Diagnosis as DiagnosisV1,
-  Symptom as SymptomV1,
-  ChronicDisease as ChronicDiseaseV1,
-  DoctorSettings as DoctorSettingsV1,
-  SystemSettings as SystemSettingsV1,
+  Patient as Patient,
+  Appointment as Appointment,
+  Visit as Visit,
+  Invoice as Invoice,
+  Payment as Payment,
+  ServiceItem as ServiceItem,
+  FollowUp as FollowUp,
+  Prescription as Prescription,
+  Medication as Medication,
+  LabTest as LabTest,
+  LabOrder as LabOrder,
+  RadiologyType as RadiologyType,
+  RadiologyOrder as RadiologyOrder,
+  Diagnosis as Diagnosis,
+  Symptom as Symptom,
+  ChronicDisease as ChronicDisease,
+  DoctorSettings as DoctorSettings,
+  SystemSettings as SystemSettings,
 } from './types/database';
-import { DatabaseV1InspectorModal } from './components/database/DatabaseV1InspectorModal';
+import { DatabaseInspectorModal } from './components/database/DatabaseV1InspectorModal';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { DashboardScreen } from './components/screens/DashboardScreen';
@@ -85,22 +86,28 @@ import { QueueScreen } from './components/screens/QueueScreen';
 import { AppointmentsScreen } from './components/screens/AppointmentsScreen';
 import { ExaminationScreen } from './components/screens/ExaminationScreen';
 import { PrescriptionPadScreen } from './components/screens/PrescriptionPadScreen';
-import { PatientRecordsScreen } from './components/screens/PatientRecordsScreen';
+import { PatientListItemsScreen } from './components/screens/PatientFilesScreen';
 import { FinanceScreen } from './components/screens/FinanceScreen';
 import { SettingsScreen } from './components/screens/SettingsScreen';
 import { ClinicalReportsScreen } from './components/screens/ClinicalReportsScreen';
 import { PrescriptionCatalogScreen } from './components/screens/PrescriptionCatalogScreen';
 import { NewAppointmentModal } from './components/modals/NewAppointmentModal';
+import { startVisit } from './services/workflows';
+import { getCurrentUserProfile } from './services/auth';
+import { auth, db } from './services/firebase';
+import { AuthScreen } from './components/AuthScreen';
+import { createAppointmentTransaction, checkInAppointmentTransaction, registerWalkInTransaction, startVisitTransaction, completeVisitTransaction } from './services/firestoreWorkflows';
+import { subscribeToPatients, subscribeToAppointments, subscribeToVisits, subscribeToInvoices, subscribeToPayments } from './services/repositories';
 
-export default function App() {
+function ClinicApp() {
   const [activeScreen, setActiveScreen] = useState<ScreenType>('dashboard');
   const [selectedBranch, setSelectedBranch] = useState<string>('mohandessin');
   const [theme, setTheme] = useState<'light' | 'dark'>('light'); // Day/Light mode enabled by default
-  const [appointments, setAppointments] = useState<ScheduledAppointment[]>(INITIAL_APPOINTMENTS);
+  const [appointments, setAppointments] = useState<AppointmentListItem[]>(INITIAL_APPOINTMENTS_PREVIEW);
   const [queue, setQueue] = useState<QueueItem[]>(INITIAL_QUEUE);
   const [transactions, setTransactions] = useState<TransactionRecord[]>(INITIAL_TRANSACTIONS);
-  const [patients, setPatients] = useState<PatientRecord[]>(INITIAL_PATIENTS);
-  const [activeExamPatient, setActiveExamPatient] = useState<PatientRecord>(INITIAL_PATIENTS[0]);
+  const [patients, setPatients] = useState<PatientListItem[]>(INITIAL_PATIENTS_PREVIEW);
+  const [activeExamPatient, setActiveExamPatient] = useState<PatientListItem>(INITIAL_PATIENTS_PREVIEW[0]);
 
   // Preset chronic conditions managed across the entire clinic
   const [presetChronicConditions, setPresetChronicConditions] = useState(DEFAULT_CHRONIC_CONDITIONS);
@@ -141,44 +148,58 @@ export default function App() {
   ]);
 
   // =========================================================================
-  // SOLI MEDICAL DATABASE ARCHITECTURE V1 STATE
+  // SOLI MEDICAL DATABASE ARCHITECTURE STATE
   // =========================================================================
-  const [usersV1] = useState<User[]>(INITIAL_USERS);
-  const [doctorProfileV1, setDoctorProfileV1] = useState<DoctorProfile>(INITIAL_DOCTOR_PROFILE);
-  const [clinicLocationsV1, setClinicLocationsV1] = useState<ClinicLocation[]>(INITIAL_CLINIC_LOCATIONS);
-  const [servicesV1, setServicesV1] = useState<ServiceItemV1[]>(INITIAL_SERVICES);
-  const [patientsV1, setPatientsV1] = useState<PatientV1[]>(INITIAL_PATIENTS_V1);
-  const [appointmentsV1, setAppointmentsV1] = useState<AppointmentV1[]>(INITIAL_APPOINTMENTS_V1);
-  const [visitsV1, setVisitsV1] = useState<VisitV1[]>(INITIAL_VISITS_V1);
-  const [invoicesV1, setInvoicesV1] = useState<InvoiceV1[]>(INITIAL_INVOICES_V1);
-  const [paymentsV1, setPaymentsV1] = useState<PaymentV1[]>(INITIAL_PAYMENTS_V1);
-  const [followUpsV1, setFollowUpsV1] = useState<FollowUpV1[]>(INITIAL_FOLLOWUPS_V1);
-  const [prescriptionsV1, setPrescriptionsV1] = useState<PrescriptionV1[]>(INITIAL_PRESCRIPTIONS_V1);
-  const [medicationsV1, setMedicationsV1] = useState<MedicationV1[]>(INITIAL_MEDICATIONS_V1);
-  const [labTestsV1, setLabTestsV1] = useState<LabTestV1[]>(INITIAL_LAB_TESTS_V1);
-  const [labOrdersV1, setLabOrdersV1] = useState<LabOrderV1[]>(INITIAL_LAB_ORDERS_V1);
-  const [radiologyTypesV1, setRadiologyTypesV1] = useState<RadiologyTypeV1[]>(INITIAL_RADIOLOGY_TYPES_V1);
-  const [radiologyOrdersV1, setRadiologyOrdersV1] = useState<RadiologyOrderV1[]>(INITIAL_RADIOLOGY_ORDERS_V1);
-  const [diagnosesV1, setDiagnosesV1] = useState<DiagnosisV1[]>(INITIAL_DIAGNOSES_V1);
-  const [symptomsV1, setSymptomsV1] = useState<SymptomV1[]>(INITIAL_SYMPTOMS_V1);
-  const [chronicDiseasesV1, setChronicDiseasesV1] = useState<ChronicDiseaseV1[]>(INITIAL_CHRONIC_DISEASES_V1);
-  const [doctorSettingsV1, setDoctorSettingsV1] = useState<DoctorSettingsV1>(INITIAL_DOCTOR_SETTINGS_V1);
-  const [systemSettingsV1, setSystemSettingsV1] = useState<SystemSettingsV1>(INITIAL_SYSTEM_SETTINGS_V1);
+  const [users] = useState<User[]>(INITIAL_USERS);
+  const [doctorProfile, setDoctorProfile] = useState<DoctorProfile>(INITIAL_DOCTOR_PROFILE);
+  const [clinicLocations, setClinicLocations] = useState<ClinicLocation[]>(INITIAL_CLINIC_LOCATIONS);
+  const [services, setServices] = useState<ServiceItem[]>(INITIAL_SERVICES);
+  const [patientsCanonical, setPatientsCanonical] = useState<Patient[]>(INITIAL_PATIENTS_CANONICAL);
+  const [appointmentsCanonical, setAppointmentsCanonical] = useState<Appointment[]>(INITIAL_APPOINTMENTS_CANONICAL);
+  const [visitsCanonical, setVisitsCanonical] = useState<Visit[]>(INITIAL_VISITS_CANONICAL);
+  const [invoicesCanonical, setInvoicesCanonical] = useState<Invoice[]>(INITIAL_INVOICES_CANONICAL);
+  const [paymentsCanonical, setPaymentsCanonical] = useState<Payment[]>(INITIAL_PAYMENTS_CANONICAL);
+  const [followUpsCanonical, setFollowUpsCanonical] = useState<FollowUp[]>(INITIAL_FOLLOWUPS_CANONICAL);
+  const [prescriptionsCanonical, setPrescriptionsCanonical] = useState<Prescription[]>(INITIAL_PRESCRIPTIONS_CANONICAL);
+  const [medicationsCanonical, setMedicationsCanonical] = useState<Medication[]>(INITIAL_MEDICATIONS_CANONICAL);
+  const [labTestsCanonical, setLabTestsCanonical] = useState<LabTest[]>(INITIAL_LAB_TESTS_CANONICAL);
+  const [labOrdersCanonical, setLabOrdersCanonical] = useState<LabOrder[]>(INITIAL_LAB_ORDERS_CANONICAL);
+  const [radiologyTypesCanonical, setRadiologyTypesCanonical] = useState<RadiologyType[]>(INITIAL_RADIOLOGY_TYPES_CANONICAL);
+  const [radiologyOrdersCanonical, setRadiologyOrdersCanonical] = useState<RadiologyOrder[]>(INITIAL_RADIOLOGY_ORDERS_CANONICAL);
+  const [diagnosesCanonical, setDiagnosesCanonical] = useState<Diagnosis[]>(INITIAL_DIAGNOSES_CANONICAL);
+  const [symptomsCanonical, setSymptomsCanonical] = useState<Symptom[]>(INITIAL_SYMPTOMS_CANONICAL);
+  const [chronicDiseasesCanonical, setChronicDiseasesCanonical] = useState<ChronicDisease[]>(INITIAL_CHRONIC_DISEASES_CANONICAL);
+  const [doctorSettingsCanonical, setDoctorSettingsCanonical] = useState<DoctorSettings>(INITIAL_DOCTOR_SETTINGS_CANONICAL);
+  const [systemSettingsCanonical, setSystemSettingsCanonical] = useState<SystemSettings>(INITIAL_SYSTEM_SETTINGS_CANONICAL);
 
-  // Database V1 Architecture Inspector Modal
+  // Firestore is the shared source of truth when configured. Each listener is cleaned up on unmount.
+  useEffect(() => {
+    if (!db) return;
+    const onError = (error: Error) => console.error('[Firestore realtime]', error);
+    const unsubscribers = [
+      subscribeToPatients(db, setPatientsCanonical, onError),
+      subscribeToAppointments(db, setAppointmentsCanonical, onError),
+      subscribeToVisits(db, setVisitsCanonical, onError),
+      subscribeToInvoices(db, setInvoicesCanonical, onError),
+      subscribeToPayments(db, setPaymentsCanonical, onError),
+    ];
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+  }, []);
+
+  // Database Architecture Inspector Modal
   const [isDatabaseInspectorOpen, setIsDatabaseInspectorOpen] = useState(false);
 
-  // Synchronize V1 Collections with UI representations
+  // Synchronize Collections with UI representations
   useEffect(() => {
-    // 1. Queue is a VIEW derived from visitsV1 where status == "WAITING"
-    const waitingVisits = visitsV1
+    // 1. Queue is a VIEW derived from visitsCanonical where status == "WAITING"
+    const waitingVisits = visitsCanonical
       .filter((v) => v.status === 'WAITING')
       .sort((a, b) => (a.queueNumber || 0) - (b.queueNumber || 0));
 
     const mappedQueue: QueueItem[] = waitingVisits.map((v) => {
-      const pat = patientsV1.find((p) => p.patientId === v.patientId);
-      const invoice = invoicesV1.find((i) => i.visitId === v.visitId);
-      const payment = paymentsV1.find((p) => p.visitId === v.visitId);
+      const pat = patientsCanonical.find((p) => p.patientId === v.patientId);
+      const invoice = invoicesCanonical.find((i) => i.visitId === v.visitId);
+      const payment = paymentsCanonical.find((p) => p.visitId === v.visitId);
       return {
         id: v.visitId,
         ticketNumber: `#0${v.queueNumber || 1}`,
@@ -197,12 +218,12 @@ export default function App() {
       };
     });
     setQueue(mappedQueue);
-  }, [visitsV1, patientsV1, invoicesV1, paymentsV1]);
+  }, [visitsCanonical, patientsCanonical, invoicesCanonical, paymentsCanonical]);
 
   // Synchronize Payments with Finance Ledger
   useEffect(() => {
-    const mappedTransactions: TransactionRecord[] = paymentsV1.map((p) => {
-      const pat = patientsV1.find((pt) => pt.patientId === p.patientId);
+    const mappedTransactions: TransactionRecord[] = paymentsCanonical.map((p) => {
+      const pat = patientsCanonical.find((pt) => pt.patientId === p.patientId);
       return {
         id: p.paymentId,
         receiptNo: p.receiptNumber,
@@ -216,12 +237,12 @@ export default function App() {
       };
     });
     setTransactions(mappedTransactions);
-  }, [paymentsV1, patientsV1]);
+  }, [paymentsCanonical, patientsCanonical]);
 
   // Synchronize Appointments with Schedule
   useEffect(() => {
-    const mappedApps: ScheduledAppointment[] = appointmentsV1.map((a) => {
-      const pat = patientsV1.find((p) => p.patientId === a.patientId);
+    const mappedApps: AppointmentListItem[] = appointmentsCanonical.map((a) => {
+      const pat = patientsCanonical.find((p) => p.patientId === a.patientId);
       return {
         id: a.appointmentId,
         patientName: pat?.fullName || 'مريض محجوز مسبقاً',
@@ -235,8 +256,8 @@ export default function App() {
         expectedFee: 350,
       };
     });
-    setAppointments(mappedApps);
-  }, [appointmentsV1, patientsV1]);
+    setAppointmentsCanonical(mappedApps);
+  }, [appointmentsCanonical, patientsCanonical]);
 
   // Modals
   const [isNewAppointmentOpen, setIsNewAppointmentOpen] = useState(false);
@@ -269,7 +290,7 @@ export default function App() {
   // Catalog Handlers with Soft Delete (active: false)
   const handleAddRadiologyToCatalog = (item: RadiologyCatalogItem) => {
     setRadiologyCatalog((prev) => [{ ...item, active: true }, ...prev]);
-    const newRadType: RadiologyTypeV1 = {
+    const newRadType: RadiologyType = {
       radiologyId: item.id,
       nameAr: item.name,
       nameEn: item.name,
@@ -278,14 +299,14 @@ export default function App() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    setRadiologyTypesV1((prev) => [newRadType, ...prev]);
+    setRadiologyTypesCanonical((prev) => [newRadType, ...prev]);
   };
   const handleRemoveRadiology = (id: string) => {
     // Soft delete: active = false
     setRadiologyCatalog((prev) =>
       prev.map((r) => (r.id === id ? { ...r, active: false } : r)).filter((r) => r.active !== false)
     );
-    setRadiologyTypesV1((prev) =>
+    setRadiologyTypesCanonical((prev) =>
       prev.map((r) => (r.radiologyId === id ? { ...r, active: false, updatedAt: new Date().toISOString() } : r))
     );
   };
@@ -297,7 +318,7 @@ export default function App() {
 
   const handleAddLabToCatalog = (item: LabCatalogItem) => {
     setLabCatalog((prev) => [{ ...item, active: true }, ...prev]);
-    const newLab: LabTestV1 = {
+    const newLab: LabTest = {
       labTestId: item.id,
       nameAr: item.name,
       nameEn: item.name,
@@ -308,14 +329,14 @@ export default function App() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    setLabTestsV1((prev) => [newLab, ...prev]);
+    setLabTestsCanonical((prev) => [newLab, ...prev]);
   };
   const handleRemoveLab = (id: string) => {
     // Soft delete: active = false
     setLabCatalog((prev) =>
       prev.map((l) => (l.id === id ? { ...l, active: false } : l)).filter((l) => l.active !== false)
     );
-    setLabTestsV1((prev) =>
+    setLabTestsCanonical((prev) =>
       prev.map((l) => (l.labTestId === id ? { ...l, active: false, updatedAt: new Date().toISOString() } : l))
     );
   };
@@ -327,7 +348,7 @@ export default function App() {
 
   const handleAddDrugToCatalog = (item: DrugCatalogItem) => {
     setDrugCatalog((prev) => [{ ...item, active: true }, ...prev]);
-    const newMed: MedicationV1 = {
+    const newMed: Medication = {
       medicationId: item.id,
       nameAr: item.brandName,
       nameEn: item.genericName,
@@ -340,14 +361,14 @@ export default function App() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    setMedicationsV1((prev) => [newMed, ...prev]);
+    setMedicationsCanonical((prev) => [newMed, ...prev]);
   };
   const handleRemoveDrug = (id: string) => {
     // Soft delete
     setDrugCatalog((prev) =>
       prev.map((d) => (d.id === id ? { ...d, active: false } : d)).filter((d) => d.active !== false)
     );
-    setMedicationsV1((prev) =>
+    setMedicationsCanonical((prev) =>
       prev.map((d) => (d.medicationId === id ? { ...d, active: false, updatedAt: new Date().toISOString() } : d))
     );
   };
@@ -359,7 +380,7 @@ export default function App() {
 
   const handleAddDiagnosisToCatalog = (item: DiagnosisCatalogItem) => {
     setDiagnosesCatalog((prev) => [{ ...item, active: true }, ...prev]);
-    const newDiag: DiagnosisV1 = {
+    const newDiag: Diagnosis = {
       diagnosisId: item.id,
       nameAr: item.nameAr,
       nameEn: item.nameEn,
@@ -368,14 +389,14 @@ export default function App() {
       active: true,
       createdAt: new Date().toISOString(),
     };
-    setDiagnosesV1((prev) => [newDiag, ...prev]);
+    setDiagnosesCanonical((prev) => [newDiag, ...prev]);
   };
   const handleRemoveDiagnosis = (id: string) => {
     // Soft delete
     setDiagnosesCatalog((prev) =>
       prev.map((d) => (d.id === id ? { ...d, active: false } : d)).filter((d) => d.active !== false)
     );
-    setDiagnosesV1((prev) =>
+    setDiagnosesCanonical((prev) =>
       prev.map((d) => (d.diagnosisId === id ? { ...d, active: false } : d))
     );
   };
@@ -387,21 +408,21 @@ export default function App() {
 
   const handleAddSymptomToCatalog = (item: SymptomCatalogItem) => {
     setSymptomsCatalog((prev) => [{ ...item, active: true }, ...prev]);
-    const newSym: SymptomV1 = {
+    const newSym: Symptom = {
       symptomId: item.id,
       nameAr: item.name,
       nameEn: item.name,
       category: item.category,
       active: true,
     };
-    setSymptomsV1((prev) => [newSym, ...prev]);
+    setSymptomsCanonical((prev) => [newSym, ...prev]);
   };
   const handleRemoveSymptom = (id: string) => {
     // Soft delete
     setSymptomsCatalog((prev) =>
       prev.map((s) => (s.id === id ? { ...s, active: false } : s)).filter((s) => s.active !== false)
     );
-    setSymptomsV1((prev) =>
+    setSymptomsCanonical((prev) =>
       prev.map((s) => (s.symptomId === id ? { ...s, active: false } : s))
     );
   };
@@ -409,180 +430,143 @@ export default function App() {
   // Next sequential file number
   const nextFileNumber =
     Math.max(
-      ...patientsV1.map((p) => (typeof p.fileNumber === 'number' ? p.fileNumber : 0)),
+      ...patientsCanonical.map((p) => (typeof p.fileNumber === 'number' ? p.fileNumber : 0)),
       ...patients.map((p) => (typeof p.fileNumber === 'number' ? p.fileNumber : 0)),
       0
     ) + 1;
 
   // Audio / Visual Call Patient Handler
-  const handleCallPatient = (ticket: string, name: string) => {
+  const handleCallPatient = async (ticket: string, name: string) => {
     setCallingBanner({ ticket, name });
     setTimeout(() => setCallingBanner(null), 5000);
 
-    // Update matching visit in visitsV1 to IN_PROGRESS
+    // Update matching visit in visitsCanonical to IN_PROGRESS
     const targetQueueNum = parseInt(ticket.replace(/\D/g, ''), 10);
-    setVisitsV1((prev) =>
-      prev.map((v) =>
-        v.queueNumber === targetQueueNum
-          ? { ...v, status: 'IN_PROGRESS', startedAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
-          : v
-      )
-    );
+    const targetVisit = visitsCanonical.find((v) => v.queueNumber === targetQueueNum);
+    if (!targetVisit) return;
+    if (db) {
+      try {
+        await startVisitTransaction(db, targetVisit.visitId, auth?.currentUser?.uid || 'doctor');
+      } catch (error) {
+        alert(error instanceof Error ? error.message : 'تعذر بدء الكشف');
+        return;
+      }
+    }
+    setVisitsCanonical((prev) => prev.map((v) => v.visitId === targetVisit.visitId ? startVisit(v, 'DOCTOR') : v));
   };
 
-  // Check in appointment: ATOMIC ARRIVAL WORKFLOW V1
-  const handleConfirmCheckIn = (
-    app: ScheduledAppointment,
-    fee: number,
-    method: string = 'نقدي'
-  ) => {
-    // 1. Locate appointment in V1
-    const appt = appointmentsV1.find((a) => a.appointmentId === app.id) || {
-      appointmentId: app.id,
-      patientId: `pat-${Date.now()}`,
-      clinicLocationId: 'loc-mohandessin',
-      scheduledDate: new Date().toISOString().split('T')[0],
-      scheduledTime: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
-      visitType: app.visitType,
-      status: 'SCHEDULED' as const,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+  // Check in appointment: Firestore transaction commits ARRIVED + Invoice + Payment + Visit
+  const handleConfirmCheckIn = async (app: AppointmentListItem, fee: number, method: string = 'نقدي') => {
+    const appt = appointmentsCanonical.find((a) => a.appointmentId === app.id);
+    if (!appt || appt.status !== 'SCHEDULED') {
+      alert('الموعد غير موجود أو تم تسجيل حضوره بالفعل');
+      return;
+    }
+    const patient = patientsCanonical.find((p) => p.patientId === appt.patientId);
+    if (!patient) {
+      alert('لا يمكن تسجيل الحضور دون Patient مرتبط بالموعد');
+      return;
+    }
+    const paymentMethodEnum = method.includes('فيزا') || method.includes('كارت') ? 'CARD' : method.includes('إنستا') ? 'TRANSFER' : 'CASH';
+    const nextQueueNum = Math.max(...visitsCanonical.map((v) => v.queueNumber || 0), 0) + 1;
+    if (db) {
+      try {
+        await checkInAppointmentTransaction({
+          db, appointmentId: appt.appointmentId, paymentAmount: fee, paymentMethod: paymentMethodEnum,
+          receivedBy: auth?.currentUser?.uid || 'receptionist', queueNumber: nextQueueNum,
+          receptionistData: { symptoms: app.visitType, chronicDiseases: patient.chronicDiseases || [], notes: '' },
+        });
+        setAppointmentsCanonical((prev) => prev.map((item) => item.appointmentId === appt.appointmentId ? { ...item, status: 'ARRIVED' } : item));
+        return;
+      } catch (error) {
+        alert(error instanceof Error ? error.message : 'فشل التحصيل الذري؛ لم يتم إنشاء زيارة انتظار');
+        return;
+      }
+    }
+    const matchedService = services.find((service) => service.price === fee) || services[0];
+    const result = executeAtomicArrival({ appointment: appt, patient, service: matchedService, paymentMethod: paymentMethodEnum, receivedBy: 'reception', nextQueueNumber: nextQueueNum, receptionistData: { symptoms: app.visitType, chronicDiseases: patient.chronicDiseases || [], notes: '' } });
+    setAppointmentsCanonical((prev) => prev.map((item) => item.appointmentId === appt.appointmentId ? result.updatedAppointment : item));
+    setInvoicesCanonical((prev) => [result.newInvoice, ...prev]);
+    setPaymentsCanonical((prev) => [result.newPayment, ...prev]);
+    setVisitsCanonical((prev) => [result.newVisit, ...prev]);
+  };
+
+  // Walk-in: Patient + Invoice + Payment + Visit are committed in one transaction
+  const handleAddPatientToQueue = async (item: QueueItem) => {
+    const timestamp = new Date().toISOString();
+    const patient = patientsCanonical.find((p) => p.phone === item.phone || p.fullName === item.patientName) || {
+      patientId: `pat-${crypto.randomUUID()}`, fullName: item.patientName, phone: item.phone, gender: 'male' as const,
+      fileNumber: item.fileNumber || nextFileNumber, medicalCode: item.medicalCode, chronicDiseases: item.chronicConditions || [],
+      allergies: [], createdAt: timestamp, updatedAt: timestamp, createdBy: auth?.currentUser?.uid,
     };
-
-    let pat = patientsV1.find((p) => p.patientId === appt.patientId || p.fullName === app.patientName);
-    if (!pat) {
-      pat = {
-        patientId: appt.patientId,
-        fullName: app.patientName, // REQUIRED
-        phone: app.phone,
-        medicalCode: app.medicalCode,
-        fileNumber: app.fileNumber,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        createdBy: 'user-rec-1',
-      };
-      setPatientsV1((prev) => [pat!, ...prev]);
+    const paymentMethodEnum = item.paymentMethod.includes('فيزا') || item.paymentMethod.includes('كارت') ? 'CARD' : 'CASH';
+    const nextQueueNum = Math.max(...visitsCanonical.map((v) => v.queueNumber || 0), 0) + 1;
+    if (db) {
+      try {
+        const visit = await registerWalkInTransaction({ db, patient, paymentAmount: item.paidAmount, paymentMethod: paymentMethodEnum, receivedBy: auth?.currentUser?.uid || 'receptionist', clinicLocationId: 'loc-mohandessin', queueNumber: nextQueueNum, receptionistData: { symptoms: item.complaint || '', chronicDiseases: patient.chronicDiseases || [], notes: '' } });
+        if (!patientsCanonical.some((p) => p.patientId === patient.patientId)) setPatientsCanonical((prev) => [patient, ...prev]);
+        setVisitsCanonical((prev) => [visit, ...prev]);
+        return;
+      } catch (error) {
+        alert(error instanceof Error ? error.message : 'فشل التحصيل؛ لم يتم إنشاء زيارة انتظار');
+        return;
+      }
     }
+    const matchedService = services.find((service) => service.price === item.paidAmount) || services[0];
+    const result = executeAtomicWalkIn({ patient, service: matchedService, clinicLocationId: 'loc-mohandessin', paymentMethod: paymentMethodEnum, receivedBy: 'reception', nextQueueNumber: nextQueueNum, receptionistData: { symptoms: item.complaint || '', chronicDiseases: patient.chronicDiseases || [], notes: '' } });
+    if (!patientsCanonical.some((p) => p.patientId === patient.patientId)) setPatientsCanonical((prev) => [patient, ...prev]);
+    setInvoicesCanonical((prev) => [result.newInvoice, ...prev]);
+    setPaymentsCanonical((prev) => [result.newPayment, ...prev]);
+    setVisitsCanonical((prev) => [result.newVisit, ...prev]);
+  };
 
-    const nextQueueNum = Math.max(...visitsV1.map((v) => v.queueNumber || 0), 0) + 1;
-    const matchedService = servicesV1.find((s) => s.price === fee) || servicesV1[0];
-
-    const paymentMethodEnum: 'CASH' | 'CARD' | 'TRANSFER' | 'OTHER' =
-      method.includes('فيزا') || method.includes('كارت') ? 'CARD' : method.includes('إنستا') ? 'TRANSFER' : 'CASH';
-
-    // Execute Atomic Arrival: Appointment (ARRIVED) + Invoice + Payment + Visit (WAITING)
-    const { updatedAppointment, newInvoice, newPayment, newVisit } = executeAtomicArrival({
-      appointment: appt,
-      patient: pat,
-      service: matchedService,
-      paymentMethod: paymentMethodEnum,
-      receivedBy: 'سارة عبد المنعم (الاستقبال)',
-      nextQueueNumber: nextQueueNum,
-      receptionistData: {
-        symptoms: 'حضور موعد كشف باطنة وقائي مسجل',
-        chronicDiseases: pat.chronicDiseases || [],
-        notes: '',
-      },
-    });
-
-    setAppointmentsV1((prev) =>
-      prev.map((a) => (a.appointmentId === updatedAppointment.appointmentId ? updatedAppointment : a))
+  // Add scheduled appointment: Patient first, then Appointment in one Firestore transaction
+  const handleAddAppointment = async (app: AppointmentListItem) => {
+    const timestamp = new Date().toISOString();
+    const existingPatient = patientsCanonical.find(
+      (p) => p.fullName.trim() === app.patientName.trim() || (!!app.phone && p.phone === app.phone),
     );
-    setInvoicesV1((prev) => [newInvoice, ...prev]);
-    setPaymentsV1((prev) => [newPayment, ...prev]);
-    setVisitsV1((prev) => [newVisit, ...prev]);
-  };
-
-  // Add walk-in patient from Intake screen: ATOMIC WALK-IN WORKFLOW V1
-  const handleAddPatientToQueue = (item: QueueItem) => {
-    let pat = patientsV1.find((p) => p.phone === item.phone || p.fullName === item.patientName);
-    if (!pat) {
-      pat = {
-        patientId: `pat-${Date.now()}`,
-        fullName: item.patientName, // REQUIRED
-        phone: item.phone,
-        gender: 'male',
-        fileNumber: item.fileNumber || nextFileNumber,
-        medicalCode: item.medicalCode,
-        chronicDiseases: item.chronicConditions || [],
-        allergies: [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        createdBy: 'user-rec-1',
-      };
-      setPatientsV1((prev) => [pat!, ...prev]);
-
-      // Legacy patient sync
-      const newP: PatientRecord = {
-        id: pat.patientId,
-        fileNumber: pat.fileNumber || nextFileNumber,
-        medicalCode: pat.medicalCode,
-        name: pat.fullName,
-        phone: pat.phone,
-        age: item.age,
-        gender: 'male',
-        bloodType: 'O+',
-        governorate: item.address || 'القاهرة / الجيزة',
-        chronicConditions: item.chronicConditions || [],
-        allergies: [],
-        lastVisitDate: new Date().toLocaleDateString('ar-EG'),
-        accountBalance: 0,
-        visitsCount: 1,
-      };
-      setPatients((prev) => [newP, ...prev]);
-    }
-
-    const nextQueueNum = Math.max(...visitsV1.map((v) => v.queueNumber || 0), 0) + 1;
-    const matchedService = servicesV1.find((s) => s.price === item.paidAmount) || servicesV1[0];
-
-    const paymentMethodEnum: 'CASH' | 'CARD' | 'TRANSFER' | 'OTHER' =
-      item.paymentMethod.includes('فيزا') || item.paymentMethod.includes('كارت') ? 'CARD' : 'CASH';
-
-    // Execute Atomic Walk-In: Patient + Invoice + Payment + Visit (WAITING)
-    const { newInvoice, newPayment, newVisit } = executeAtomicWalkIn({
-      patient: pat,
-      service: matchedService,
-      clinicLocationId: 'loc-mohandessin',
-      paymentMethod: paymentMethodEnum,
-      receivedBy: 'سارة عبد المنعم (الاستقبال)',
-      nextQueueNumber: nextQueueNum,
-      receptionistData: {
-        symptoms: item.complaint || 'كشف فوري بعيادة الباطنة (Walk-in)',
-        chronicDiseases: item.chronicConditions || [],
-        notes: '',
-      },
-    });
-
-    setInvoicesV1((prev) => [newInvoice, ...prev]);
-    setPaymentsV1((prev) => [newPayment, ...prev]);
-    setVisitsV1((prev) => [newVisit, ...prev]);
-  };
-
-  // Add scheduled appointment from Modal
-  const handleAddAppointment = (app: ScheduledAppointment) => {
-    setAppointments((prev) => [app, ...prev]);
-
-    const newAppV1: AppointmentV1 = {
+    const patient: Patient = existingPatient || {
+      patientId: `pat-${crypto.randomUUID()}`,
+      fullName: app.patientName.trim(),
+      ...(app.phone ? { phone: app.phone } : {}),
+      ...(app.medicalCode ? { medicalCode: app.medicalCode } : {}),
+      ...(app.fileNumber ? { fileNumber: app.fileNumber } : {}),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      createdBy: auth?.currentUser?.uid,
+    };
+    const newApp: Appointment = {
       appointmentId: `app-${Date.now()}`,
-      patientId: `pat-${Date.now()}`,
+      patientId: patient.patientId,
       clinicLocationId: 'loc-mohandessin',
       scheduledDate: new Date().toISOString().split('T')[0],
       scheduledTime: app.timeSlot || '07:30 م',
       visitType: app.visitType,
       status: 'SCHEDULED',
       notes: app.notes || 'حجز موعد كشف مسبق',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      createdBy: auth?.currentUser?.uid,
     };
-    setAppointmentsV1((prev) => [newAppV1, ...prev]);
+    if (db) {
+      try {
+        await createAppointmentTransaction({ db, patient, appointment: newApp });
+      } catch (error) {
+        alert(error instanceof Error ? error.message : 'تعذر حفظ الموعد في قاعدة البيانات');
+        return;
+      }
+    }
+    if (!existingPatient) setPatientsCanonical((prev) => [patient, ...prev]);
+    setAppointmentsCanonical((prev) => [newApp, ...prev]);
+    setAppointments((prev) => [app, ...prev]);
   };
 
-  // Finish examination: ATOMIC COMPLETE VISIT WORKFLOW V1
-  const handleFinishExam = () => {
+  // Finish examination: ATOMIC COMPLETE VISIT WORKFLOW 
+  const handleFinishExam = async () => {
     // Find the currently active or first waiting visit
     const activeWaiting =
-      visitsV1.find((v) => v.status === 'IN_PROGRESS') ||
-      visitsV1.find((v) => v.status === 'WAITING');
+      visitsCanonical.find((v) => v.status === 'IN_PROGRESS');
 
     if (activeWaiting) {
       const rxSnapshots = activePrescription.map((item) => ({
@@ -596,6 +580,22 @@ export default function App() {
         instructions: 'تناول العلاج وفق الإرشادات الموضحة بالروشتة',
       }));
 
+      const clinicalData = {
+        chiefComplaint: activeWaiting.receptionistData?.symptoms || '',
+        history: '',
+        examination: '',
+        diagnosis: [],
+        treatment: '',
+      };
+      const vitalSigns = activeWaiting.vitalSigns;
+      if (db) {
+        try {
+          await completeVisitTransaction({ db, visitId: activeWaiting.visitId, doctorId: auth?.currentUser?.uid || 'doctor', clinicalData, vitalSigns });
+        } catch (error) {
+          alert(error instanceof Error ? error.message : 'تعذر حفظ وإنهاء الزيارة');
+          return;
+        }
+      }
       const { completedVisit, newPrescription, createdLabOrders, createdRadiologyOrders, createdFollowUp } =
         executeCompleteVisit({
           visit: activeWaiting,
@@ -603,8 +603,8 @@ export default function App() {
             chiefComplaint: activeWaiting.receptionistData?.symptoms || 'فحص باطنة شامل',
             history: 'متابعة سريرية متكاملة',
             examination: 'العلامات الحيوية وفحص القلب والصدر مستقر',
-            diagnosis: ['داء السكري (النوع الثاني)', 'ارتفاع ضغط دم معتدل'],
-            treatment: 'علاج دوائي ونظام حمية غذائية',
+            diagnosis: [],
+            treatment: '',
           },
           vitalSigns: activeWaiting.vitalSigns || {
             bloodPressure: '120/80',
@@ -616,9 +616,7 @@ export default function App() {
           },
           prescriptionItems: rxSnapshots,
           prescriptionNotes: 'مع أطيب تمنياتنا بالشفاء العاجل',
-          labOrders: [
-            { testId: 'lab-2', testName: 'السكر التراكمي HbA1c', status: 'ORDERED' },
-          ],
+          labOrders: [],
           radiologyOrders: [],
           followUp: {
             scheduledDate: new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
@@ -628,14 +626,14 @@ export default function App() {
           },
         });
 
-      setVisitsV1((prev) =>
+      setVisitsCanonical((prev) =>
         prev.map((v) => (v.visitId === completedVisit.visitId ? completedVisit : v))
       );
-      setPrescriptionsV1((prev) => [newPrescription, ...prev]);
-      setLabOrdersV1((prev) => [...createdLabOrders, ...prev]);
-      setRadiologyOrdersV1((prev) => [...createdRadiologyOrders, ...prev]);
+      setPrescriptionsCanonical((prev) => [newPrescription, ...prev]);
+      setLabOrdersCanonical((prev) => [...createdLabOrders, ...prev]);
+      setRadiologyOrdersCanonical((prev) => [...createdRadiologyOrders, ...prev]);
       if (createdFollowUp) {
-        setFollowUpsV1((prev) => [createdFollowUp, ...prev]);
+        setFollowUpsCanonical((prev) => [createdFollowUp, ...prev]);
       }
     }
 
@@ -763,7 +761,7 @@ export default function App() {
           )}
 
           {activeScreen === 'patient-records' && (
-            <PatientRecordsScreen
+            <PatientListItemsScreen
               patients={patients}
               onNavigate={setActiveScreen}
               onSelectPatientForExam={(p) => setActiveExamPatient(p)}
@@ -826,32 +824,51 @@ export default function App() {
         onAddAppointment={handleAddAppointment}
       />
 
-      {/* Database V1 Architecture Inspector Modal */}
-      <DatabaseV1InspectorModal
+      {/* Database Architecture Inspector Modal */}
+      <DatabaseInspectorModal
         isOpen={isDatabaseInspectorOpen}
         onClose={() => setIsDatabaseInspectorOpen(false)}
-        users={usersV1}
-        doctorProfile={doctorProfileV1}
-        clinicLocations={clinicLocationsV1}
-        patients={patientsV1}
-        appointments={appointmentsV1}
-        visits={visitsV1}
-        invoices={invoicesV1}
-        payments={paymentsV1}
-        services={servicesV1}
-        followUps={followUpsV1}
-        prescriptions={prescriptionsV1}
-        medications={medicationsV1}
-        labTests={labTestsV1}
-        labOrders={labOrdersV1}
-        radiologyTypes={radiologyTypesV1}
-        radiologyOrders={radiologyOrdersV1}
-        diagnoses={diagnosesV1}
-        symptoms={symptomsV1}
-        chronicDiseases={chronicDiseasesV1}
-        doctorSettings={doctorSettingsV1}
-        systemSettings={systemSettingsV1}
+        users={users}
+        doctorProfile={doctorProfile}
+        clinicLocations={clinicLocations}
+        patients={patientsCanonical}
+        appointments={appointmentsCanonical}
+        visits={visitsCanonical}
+        invoices={invoicesCanonical}
+        payments={paymentsCanonical}
+        services={services}
+        followUps={followUpsCanonical}
+        prescriptions={prescriptionsCanonical}
+        medications={medicationsCanonical}
+        labTests={labTestsCanonical}
+        labOrders={labOrdersCanonical}
+        radiologyTypes={radiologyTypesCanonical}
+        radiologyOrders={radiologyOrdersCanonical}
+        diagnoses={diagnosesCanonical}
+        symptoms={symptomsCanonical}
+        chronicDiseases={chronicDiseasesCanonical}
+        doctorSettings={doctorSettingsCanonical}
+        systemSettings={systemSettingsCanonical}
       />
     </div>
   );
+}
+
+
+export default function App() {
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+  const [profileReady, setProfileReady] = useState(false);
+  useEffect(() => {
+    if (!auth) return;
+    return onAuthStateChanged(auth, (user) => { setFirebaseUser(user); setProfileReady(!user); });
+  }, []);
+  useEffect(() => {
+    if (!firebaseUser) return;
+    getCurrentUserProfile(firebaseUser.uid).then((profile) => {
+      if (!profile || !profile.active) { auth?.signOut(); return; }
+      setProfileReady(true);
+    }).catch(() => { auth?.signOut(); });
+  }, [firebaseUser]);
+  if (!auth || !firebaseUser || !profileReady) return <AuthScreen />;
+  return <ClinicApp />;
 }

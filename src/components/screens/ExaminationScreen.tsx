@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   ScreenType,
-  PatientRecord,
+  PatientListItem,
   RadiologyCatalogItem,
   RadiologyOrderItem,
   LabCatalogItem,
@@ -20,7 +20,7 @@ import { MedicationsCard } from '../examination/MedicationsCard';
 import { FollowupCard } from '../examination/FollowupCard';
 
 interface ExaminationScreenProps {
-  patient: PatientRecord;
+  patient: PatientListItem;
   onNavigate: (screen: ScreenType) => void;
   onFinishExam: () => void;
 

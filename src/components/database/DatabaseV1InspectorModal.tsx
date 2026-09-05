@@ -23,7 +23,7 @@ import {
   SystemSettings,
 } from '../../types/database';
 
-interface DatabaseV1InspectorModalProps {
+interface DatabaseInspectorModalProps {
   isOpen: boolean;
   onClose: () => void;
   // Database Collections
@@ -50,7 +50,7 @@ interface DatabaseV1InspectorModalProps {
   systemSettings: SystemSettings;
 }
 
-export const DatabaseV1InspectorModal: React.FC<DatabaseV1InspectorModalProps> = ({
+export const DatabaseInspectorModal: React.FC<DatabaseInspectorModalProps> = ({
   isOpen,
   onClose,
   users,
@@ -163,7 +163,7 @@ export const DatabaseV1InspectorModal: React.FC<DatabaseV1InspectorModalProps> =
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-bold text-white tracking-wide">
-                  SOLI MEDICAL — DATABASE ARCHITECTURE V1
+                  SOLI MEDICAL — DATABASE ARCHITECTURE 
                 </h3>
                 <span className="bg-[#00c2cb]/20 text-[#45dee7] text-[11px] px-2.5 py-0.5 rounded-full font-bold border border-[#00c2cb]/30">
                   Firestore Compliant
@@ -326,7 +326,7 @@ export const DatabaseV1InspectorModal: React.FC<DatabaseV1InspectorModalProps> =
               {/* Left Column: List of Collections */}
               <div className="md:col-span-1 bg-[#111a2e] border border-white/10 rounded-2xl p-3 space-y-1 max-h-[600px] overflow-y-auto">
                 <span className="text-xs font-bold text-[#859394] px-2 py-1 block">
-                  مجموعات Firestore V1 ({collectionsList.length})
+                  مجموعات Firestore ({collectionsList.length})
                 </span>
                 {collectionsList.map((col) => {
                   const isSelected = selectedCollection === col.id;
@@ -455,7 +455,7 @@ export const DatabaseV1InspectorModal: React.FC<DatabaseV1InspectorModalProps> =
                   الدورة الذرية لتسجيل الحضور والكشف (Atomic Clinical Workflow)
                 </h4>
                 <p className="text-xs text-slate-400">
-                  تضمن المعمارية V1 عدم وجود أي حالات غير متسقة (Inconsistent States) عبر عمليات ذرية متزامنة:
+                  تضمن المعمارية عدم وجود أي حالات غير متسقة (Inconsistent States) عبر عمليات ذرية متزامنة:
                 </p>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-5 pt-2">
@@ -521,7 +521,7 @@ export const DatabaseV1InspectorModal: React.FC<DatabaseV1InspectorModalProps> =
         <div className="p-4 border-t border-white/10 bg-[#111a2e] flex items-center justify-between text-xs text-[#859394]">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-            <span className="text-white font-semibold">قاعدة البيانات V1 مفعلة ومتوافقة بالكامل مع مواصفات سولي ميديكال</span>
+            <span className="text-white font-semibold">قاعدة البيانات مفعلة ومتوافقة بالكامل مع مواصفات سولي ميديكال</span>
           </div>
           <button
             onClick={onClose}

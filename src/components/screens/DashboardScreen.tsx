@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { ScreenType, ScheduledAppointment, QueueItem } from '../../types';
+import { ScreenType, AppointmentListItem, QueueItem } from '../../types';
 
 interface DashboardScreenProps {
   onNavigate: (screen: ScreenType) => void;
-  appointments: ScheduledAppointment[];
+  appointments: AppointmentListItem[];
   queue: QueueItem[];
-  onConfirmCheckIn: (appointment: ScheduledAppointment, fee: number, method: string) => void;
+  onConfirmCheckIn: (appointment: AppointmentListItem, fee: number, method: string) => void;
   onCallPatient: (ticket: string, name: string) => void;
 }
 
@@ -24,7 +24,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   // Active check-in card patient
   const targetCheckIn = appointments.find((a) => a.id === 'app-1') || appointments[0];
 
-  const handleAppCheckIn = (app: ScheduledAppointment) => {
+  const handleAppCheckIn = (app: AppointmentListItem) => {
     onConfirmCheckIn(app, app.expectedFee, selectedPayMethod === 'cash' ? 'نقدي' : selectedPayMethod === 'pos' ? 'فيزا / كارت' : 'إنستاباي');
     setCheckInNotice(`تم تأكيد حضور المريض (${app.patientName}) ونقله لطابور الانتظار وتوريد ${app.expectedFee} ج.م للدرج.`);
     setTimeout(() => setCheckInNotice(null), 4500);

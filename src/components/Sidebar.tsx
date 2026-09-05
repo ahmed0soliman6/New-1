@@ -1,6 +1,6 @@
 import React from 'react';
 import { ScreenType } from '../types';
-import { CLINIC_INFO } from '../data/mockClinicData';
+import { CLINIC_INFO } from '../data/previewClinicData';
 
 interface SidebarProps {
   activeScreen: ScreenType;

@@ -16,7 +16,7 @@ export type ScreenType =
   | 'system-settings'
   | 'settings';
 
-export interface PatientRecord {
+export interface PatientListItem {
   id: string;
   medicalCode: string;
   fileNumber?: number | string;
@@ -63,7 +63,7 @@ export interface QueueItem {
   chronicConditions?: string[];
 }
 
-export interface ScheduledAppointment {
+export interface AppointmentListItem {
   id: string;
   patientName: string;
   fileNumber?: number | string;

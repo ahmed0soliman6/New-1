@@ -1,5 +1,5 @@
 /**
- * SOLI MEDICAL — DATABASE ARCHITECTURE V1
+ * SOLI MEDICAL — DATABASE ARCHITECTURE 
  * TypeScript Type Definitions & Database Schemas
  *
  * Core Relationship:
@@ -24,7 +24,7 @@
  *    └──────────────► PATIENT FILE (Aggregate View)
  */
 
-export type UserRole = 'DOCTOR' | 'RECEPTIONIST' | 'ADMIN';
+export type UserRole = 'DOCTOR' | 'SECRETARY' | 'ADMIN';
 
 export interface User {
   userId: string;
