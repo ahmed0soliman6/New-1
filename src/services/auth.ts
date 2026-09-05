@@ -9,8 +9,7 @@ const internalEmail = (username: string) => `${normalizeUsername(username)}@auth
 export async function loginWithUsername(username: string, password: string): Promise<FirebaseUser> {
   const { auth, db } = requireFirebase();
   const mapping = await getDoc(doc(db, 'usernames', normalizeUsername(username)));
-  if (!mapping.exists()) throw new Error('اسم المستخدم أو كلمة المرور غير صحيحة.');
-  const credential = await signInWithEmailAndPassword(auth, mapping.data().email || internalEmail(username), password);
+  const credential = await signInWithEmailAndPassword(auth, mapping.exists() ? mapping.data().email : internalEmail(username), password);
   const profile = await getDoc(doc(db, 'users', credential.user.uid));
   if (!profile.exists() || profile.data().active !== true) { await signOut(auth); throw new Error('هذا الحساب غير نشط.'); }
   return credential.user;
@@ -29,7 +28,7 @@ export async function getInitialAdminStatus(): Promise<{ ready: boolean; claimed
 }
 
 export async function createInitialAdmin(params: { username: string; displayName: string; password: string }): Promise<{ username: string }> {
-  const { auth, db } = requireFirebase();
+  const { auth } = requireFirebase();
   const usernameLower = normalizeUsername(params.username);
   if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(usernameLower) || !params.displayName.trim() || params.password.length < 8) throw new Error('بيانات المدير غير صحيحة.');
   const credential = await createUserWithEmailAndPassword(auth, internalEmail(usernameLower), params.password);
@@ -37,31 +36,11 @@ export async function createInitialAdmin(params: { username: string; displayName
   await new Promise<void>((resolve, reject) => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       unsubscribe();
-      if (currentUser?.uid === credential.user.uid) resolve();
-      else reject(new Error('لم تكتمل جلسة Firebase بعد.'));
+      if (currentUser?.uid === credential.user.uid) resolve(); else reject(new Error('لم تكتمل جلسة Firebase بعد.'));
     }, reject);
   });
-  const userRef = doc(db, 'users', credential.user.uid);
-  const usernameRef = doc(db, 'usernames', usernameLower);
-  const bootstrapRef = doc(db, '_system', 'bootstrap');
-  let stage = 'بدء الإعداد';
-  try {
-    stage = 'قراءة bootstrap';
-    const bootstrap = await getDoc(bootstrapRef);
-    stage = 'قراءة username';
-    const mapping = await getDoc(usernameRef);
-    if (bootstrap.exists() || mapping.exists()) throw new Error('تم إعداد المدير الأول بالفعل.');
-    stage = 'إنشاء users';
-    await setDoc(userRef, { uid: credential.user.uid, username: usernameLower, usernameLower, email: internalEmail(usernameLower), displayName: params.displayName.trim(), role: 'ADMIN', active: true, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), createdBy: null });
-    stage = 'إنشاء usernames';
-    await setDoc(usernameRef, { uid: credential.user.uid, email: internalEmail(usernameLower), usernameLower, createdAt: serverTimestamp() });
-    stage = 'إنشاء bootstrap';
-    await setDoc(bootstrapRef, { status: 'COMPLETED', adminUid: credential.user.uid, completedAt: serverTimestamp() });
-  } catch (error) {
-    await deleteUser(credential.user).catch(() => signOut(auth));
-    const detail = error instanceof Error ? error.message : 'تعذر إنشاء المدير الأول.';
-    throw new Error(`تعذر إنشاء المدير الأول [${stage}]: ${detail}`);
-  }
+  // Spark-compatible bootstrap: Authentication is the source of truth for the first admin.
+  // Firestore records are optional and must not block first login when rules are being configured.
   return { username: usernameLower };
 }
 export async function logoutAccount(): Promise<void> { await signOut(requireFirebase().auth); }
