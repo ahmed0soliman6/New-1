@@ -22,7 +22,7 @@ export const firebaseApp: FirebaseApp | null = firebaseConfigured ? (getApps()[0
 export const auth: Auth | null = firebaseApp ? getAuth(firebaseApp) : null;
 export const db: Firestore | null = firebaseApp ? initializeFirestore(firebaseApp, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) }) : null;
 
-export function requireFirebase(): { auth: Auth; db: Firestore; functions: Functions } {
-  if (!auth || !db || !cloudFunctions) throw new Error(firebaseConfigError ?? 'Firebase is not configured');
-  return { auth, db, functions: cloudFunctions };
+export function requireFirebase(): { auth: Auth; db: Firestore } {
+  if (!auth || !db) throw new Error(firebaseConfigError ?? 'Firebase is not configured');
+  return { auth, db };
 }
