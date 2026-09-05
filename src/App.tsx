@@ -93,7 +93,6 @@ import { ClinicalReportsScreen } from './components/screens/ClinicalReportsScree
 import { PrescriptionCatalogScreen } from './components/screens/PrescriptionCatalogScreen';
 import { NewAppointmentModal } from './components/modals/NewAppointmentModal';
 import { startVisit } from './services/workflows';
-import { getCurrentUserProfile } from './services/auth';
 import { auth, db } from './services/firebase';
 import { AuthScreen } from './components/AuthScreen';
 import { createAppointmentTransaction, checkInAppointmentTransaction, registerWalkInTransaction, startVisitTransaction, completeVisitTransaction } from './services/firestoreWorkflows';
@@ -857,22 +856,10 @@ function ClinicApp() {
 
 export default function App() {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
-  const [profileReady, setProfileReady] = useState(false);
   useEffect(() => {
     if (!auth) return;
-    return onAuthStateChanged(auth, (user) => { setFirebaseUser(user); setProfileReady(!user); });
+    return onAuthStateChanged(auth, setFirebaseUser);
   }, []);
-  useEffect(() => {
-    if (!firebaseUser) return;
-    getCurrentUserProfile(firebaseUser.uid).then((profile) => {
-      if (!profile && firebaseUser.email?.endsWith('@auth.solimedical.local')) { setProfileReady(true); return; }
-      if (!profile || !profile.active) { auth?.signOut(); return; }
-      setProfileReady(true);
-    }).catch(() => {
-      if (firebaseUser.email?.endsWith('@auth.solimedical.local')) setProfileReady(true);
-      else auth?.signOut();
-    });
-  }, [firebaseUser]);
-  if (!auth || !firebaseUser || !profileReady) return <AuthScreen />;
+  if (!auth || !firebaseUser) return <AuthScreen />;
   return <ClinicApp />;
 }
