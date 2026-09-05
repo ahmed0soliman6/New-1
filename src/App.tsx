@@ -94,6 +94,7 @@ import { PrescriptionCatalogScreen } from './components/screens/PrescriptionCata
 import { NewAppointmentModal } from './components/modals/NewAppointmentModal';
 import { startVisit } from './services/workflows';
 import { auth, db } from './services/firebase';
+import { logoutAccount } from './services/auth';
 import { AuthScreen } from './components/AuthScreen';
 import { createAppointmentTransaction, checkInAppointmentTransaction, registerWalkInTransaction, startVisitTransaction, completeVisitTransaction } from './services/firestoreWorkflows';
 import { subscribeToPatients, subscribeToAppointments, subscribeToVisits, subscribeToInvoices, subscribeToPayments } from './services/repositories';
@@ -651,6 +652,7 @@ function ClinicApp() {
         activeScreen={activeScreen}
         onNavigate={setActiveScreen}
         queueCount={queue.length}
+        onLogout={() => { void logoutAccount(); }}
       />
 
       {/* Main Content Area */}

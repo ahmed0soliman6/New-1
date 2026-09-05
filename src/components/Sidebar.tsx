@@ -6,9 +6,10 @@ interface SidebarProps {
   activeScreen: ScreenType;
   onNavigate: (screen: ScreenType) => void;
   queueCount: number;
+  onLogout: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ activeScreen, onNavigate, queueCount }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ activeScreen, onNavigate, queueCount, onLogout }) => {
   const [doctorStatus, setDoctorStatus] = React.useState<'available' | 'break'>('available');
 
   const navItems: { id: ScreenType; label: string; icon: string; badge?: number | string }[] = [
@@ -116,6 +117,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeScreen, onNavigate, queu
           </button>
         </div>
 
+        <button type="button" onClick={onLogout} className="w-full flex items-center justify-center gap-2 rounded-xl border border-red-400/30 bg-red-400/10 px-3 py-2 text-xs font-bold text-red-300 hover:bg-red-400/20">
+          <span className="material-symbols-outlined text-base">logout</span> تسجيل الخروج
+        </button>
         <div className="flex items-center justify-between text-[#859394] text-[11px] px-2">
           <span>إصدار النظام</span>
           <span className="font-mono text-[#00c2cb] font-semibold">v2.4-solo-eg</span>

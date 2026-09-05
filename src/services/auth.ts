@@ -59,9 +59,15 @@ export async function createManagedUser(params: { username: string; displayName:
   const secondary = initializeApp(firebaseConfig, `user-creator-${Date.now()}`);
   const secondaryAuth = getAuth(secondary);
   try {
-    const credential = await createUserWithEmailAndPassword(secondaryAuth, internalEmail(username), params.password);
+    let credential;
+    try {
+      credential = await createUserWithEmailAndPassword(secondaryAuth, internalEmail(username), params.password);
+    } catch (cause) {
+      if (!(cause instanceof Error) || !cause.message.includes('auth/email-already-in-use')) throw cause;
+      credential = await signInWithEmailAndPassword(secondaryAuth, internalEmail(username), params.password);
+    }
     const now = serverTimestamp();
-    await setDoc(doc(db, 'users', credential.user.uid), { uid: credential.user.uid, username, displayName: params.displayName.trim(), email: internalEmail(username), role: params.role, active: true, preferredLanguage: 'ar', createdAt: now, updatedAt: now, createdBy: auth.currentUser?.uid || null });
+    await setDoc(doc(db, 'users', credential.user.uid), { uid: credential.user.uid, username, displayName: params.displayName.trim(), email: internalEmail(username), role: params.role, active: true, updatedAt: now, createdBy: auth.currentUser?.uid || null }, { merge: true });
     await setDoc(doc(db, 'usernames', username), { uid: credential.user.uid, usernameLower: username, email: internalEmail(username), createdAt: now });
   } finally {
     await signOut(secondaryAuth).catch(() => undefined);
