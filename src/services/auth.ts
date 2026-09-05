@@ -1,6 +1,7 @@
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, deleteUser, onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, deleteUser, onAuthStateChanged, getAuth, type User as FirebaseUser } from 'firebase/auth';
+import { initializeApp, deleteApp } from 'firebase/app';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { requireFirebase } from './firebase';
+import { requireFirebase, firebaseConfig } from './firebase';
 import type { UserRole } from '../types/database';
 
 const normalizeUsername = (username: string) => username.trim().toLowerCase();
@@ -49,3 +50,21 @@ export async function createInitialAdmin(params: { username: string; displayName
   return { username: usernameLower };
 }
 export async function logoutAccount(): Promise<void> { await signOut(requireFirebase().auth); }
+
+export async function createManagedUser(params: { username: string; displayName: string; password: string; role: UserRole }): Promise<void> {
+  const { auth, db } = requireFirebase();
+  const username = normalizeUsername(params.username);
+  if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(username)) throw new Error('اسم المستخدم غير صحيح.');
+  if (params.password.length < 8) throw new Error('كلمة المرور يجب أن تكون 8 أحرف على الأقل.');
+  const secondary = initializeApp(firebaseConfig, `user-creator-${Date.now()}`);
+  const secondaryAuth = getAuth(secondary);
+  try {
+    const credential = await createUserWithEmailAndPassword(secondaryAuth, internalEmail(username), params.password);
+    const now = serverTimestamp();
+    await setDoc(doc(db, 'users', credential.user.uid), { uid: credential.user.uid, username, displayName: params.displayName.trim(), email: internalEmail(username), role: params.role, active: true, preferredLanguage: 'ar', createdAt: now, updatedAt: now, createdBy: auth.currentUser?.uid || null });
+    await setDoc(doc(db, 'usernames', username), { uid: credential.user.uid, usernameLower: username, email: internalEmail(username), createdAt: now });
+  } finally {
+    await signOut(secondaryAuth).catch(() => undefined);
+    await deleteApp(secondary);
+  }
+}

@@ -8,6 +8,7 @@ import {
   SymptomCatalogItem,
 } from '../../types';
 import { MedicalCatalogsManager } from '../settings/MedicalCatalogsManager';
+import { UserManagementPanel } from '../settings/UserManagementPanel';
 
 interface ChronicItem {
   id: string;
@@ -70,7 +71,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onAddSymptom = () => {},
   onRemoveSymptom = () => {},
 }) => {
-  const [activeSettingsSection, setActiveSettingsSection] = useState<'catalogs' | 'chronic' | 'general'>('catalogs');
+  const [activeSettingsSection, setActiveSettingsSection] = useState<'catalogs' | 'chronic' | 'general' | 'users'>('catalogs');
   const [clinicName, setClinicName] = useState(CLINIC_INFO.name);
   const [phone, setPhone] = useState(CLINIC_INFO.branches[0]?.mobile || '01092847162');
   const [newVisitFee, setNewVisitFee] = useState(300);
@@ -168,6 +169,19 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
             <button
               type="button"
+              onClick={() => setActiveSettingsSection('users')}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeSettingsSection === 'users'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
+              }`}
+            >
+              <span className="material-symbols-outlined text-base">manage_accounts</span>
+              <span>المستخدمون والصلاحيات</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setActiveSettingsSection('general')}
               className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 activeSettingsSection === 'general'
@@ -181,6 +195,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </div>
         </div>
       </div>
+
+      {/* USER MANAGEMENT */}
+      {activeSettingsSection === 'users' && <UserManagementPanel />}
 
       {/* SECTION 1: Medical Catalogs Management */}
       {activeSettingsSection === 'catalogs' && (
