@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+@layer base {
+  html, body {
+    margin: 0;
+    padding: 0;
+    font-family: 'IBM Plex Sans Arabic', 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  }
+
+  html:not(.dark), body:not(.dark) {
+    background-color: #f4f7fb;
+    color: #0f172a;
+  }
+
+  html.dark, html.dark body {
+    background-color: #080e1b;
+    color: #dde2f5;
+  }
+}
+
+/* Custom subtle scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #242a38;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #00c2cb;
+}
