@@ -1,6 +1,5 @@
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
 import { getAuth, type Auth } from 'firebase/auth';
-import { getFunctions, type Functions } from 'firebase/functions';
 import {
   initializeFirestore,
   persistentLocalCache,
@@ -21,7 +20,6 @@ export const firebaseConfigured = Object.values(firebaseConfig).every(Boolean);
 export const firebaseConfigError = firebaseConfigured ? null : 'أضف إعدادات Firebase في متغيرات VITE_FIREBASE_* قبل تسجيل الدخول.';
 export const firebaseApp: FirebaseApp | null = firebaseConfigured ? (getApps()[0] ?? initializeApp(firebaseConfig)) : null;
 export const auth: Auth | null = firebaseApp ? getAuth(firebaseApp) : null;
-export const cloudFunctions: Functions | null = firebaseApp ? getFunctions(firebaseApp) : null;
 export const db: Firestore | null = firebaseApp ? initializeFirestore(firebaseApp, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) }) : null;
 
 export function requireFirebase(): { auth: Auth; db: Firestore; functions: Functions } {
