@@ -10,8 +10,8 @@ export async function loginWithUsername(username: string, password: string): Pro
   const { auth, db } = requireFirebase();
   const mapping = await getDoc(doc(db, 'usernames', normalizeUsername(username)));
   const credential = await signInWithEmailAndPassword(auth, mapping.exists() ? mapping.data().email : internalEmail(username), password);
-  const profile = await getDoc(doc(db, 'users', credential.user.uid));
-  if (!profile.exists() || profile.data().active !== true) { await signOut(auth); throw new Error('هذا الحساب غير نشط.'); }
+  // Authentication is the source of truth on the Spark-only setup.
+  // A Firestore profile may be created later and must not force a logout.
   return credential.user;
 }
 
