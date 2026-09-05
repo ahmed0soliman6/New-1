@@ -33,6 +33,7 @@ export async function createInitialAdmin(params: { username: string; displayName
   const usernameLower = normalizeUsername(params.username);
   if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(usernameLower) || !params.displayName.trim() || params.password.length < 8) throw new Error('بيانات المدير غير صحيحة.');
   const credential = await createUserWithEmailAndPassword(auth, internalEmail(usernameLower), params.password);
+  await credential.user.getIdToken(true);
   const userRef = doc(db, 'users', credential.user.uid);
   const usernameRef = doc(db, 'usernames', usernameLower);
   const bootstrapRef = doc(db, '_system', 'bootstrap');
