@@ -36,17 +36,23 @@ export async function createInitialAdmin(params: { username: string; displayName
   const userRef = doc(db, 'users', credential.user.uid);
   const usernameRef = doc(db, 'usernames', usernameLower);
   const bootstrapRef = doc(db, '_system', 'bootstrap');
+  let stage = 'بدء الإعداد';
   try {
+    stage = 'قراءة bootstrap';
     const bootstrap = await getDoc(bootstrapRef);
+    stage = 'قراءة username';
     const mapping = await getDoc(usernameRef);
     if (bootstrap.exists() || mapping.exists()) throw new Error('تم إعداد المدير الأول بالفعل.');
+    stage = 'إنشاء users';
     await setDoc(userRef, { uid: credential.user.uid, username: usernameLower, usernameLower, email: internalEmail(usernameLower), displayName: params.displayName.trim(), role: 'ADMIN', active: true, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), createdBy: null });
+    stage = 'إنشاء usernames';
     await setDoc(usernameRef, { uid: credential.user.uid, email: internalEmail(usernameLower), usernameLower, createdAt: serverTimestamp() });
+    stage = 'إنشاء bootstrap';
     await setDoc(bootstrapRef, { status: 'COMPLETED', adminUid: credential.user.uid, completedAt: serverTimestamp() });
   } catch (error) {
     await deleteUser(credential.user).catch(() => signOut(auth));
     const detail = error instanceof Error ? error.message : 'تعذر إنشاء المدير الأول.';
-    throw new Error(`تعذر إنشاء المدير الأول: ${detail}`);
+    throw new Error(`تعذر إنشاء المدير الأول [${stage}]: ${detail}`);
   }
   return { username: usernameLower };
 }
