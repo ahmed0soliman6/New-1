@@ -297,16 +297,34 @@ function ClinicApp() {
 
   // Modals
   const [isNewAppointmentOpen, setIsNewAppointmentOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Sound/Announcement banner
   const [callingBanner, setCallingBanner] = useState<{ ticket: string; name: string } | null>(null);
 
-  // Synchronize Theme class on HTML document root
+  // Synchronize Theme class on HTML document root and localStorage
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('soli_clinic_theme') as 'light' | 'dark' | null;
+    if (savedTheme) {
+      setTheme(savedTheme);
+      if (savedTheme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    } else {
+      // Default to light mode
+      document.documentElement.classList.remove('dark');
+    }
+  }, []);
+
   useEffect(() => {
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
+      localStorage.setItem('soli_clinic_theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
+      localStorage.setItem('soli_clinic_theme', 'light');
     }
   }, [theme]);
 
@@ -683,54 +701,53 @@ function ClinicApp() {
       className="min-h-screen bg-slate-100 dark:bg-[#080e1b] text-slate-800 dark:text-[#dde2f5] font-sans antialiased flex transition-colors"
       dir="rtl"
     >
-      {/* Permanent Right Sidebar Navigation */}
+      {/* Permanent Right Sidebar Navigation & Mobile Drawer */}
       <Sidebar
         activeScreen={activeScreen}
         onNavigate={handleNavigate}
         queueCount={queue.length}
         onLogout={() => { void logoutAccount(); }}
+        isOpenMobile={isMobileMenuOpen}
+        onCloseMobile={() => setIsMobileMenuOpen(false)}
+        isDark={theme === 'dark'}
+        onToggleTheme={toggleTheme}
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 mr-72 flex flex-col min-h-screen">
+      <div className="flex-1 mr-0 lg:mr-72 flex flex-col min-h-screen">
         {/* Top Header */}
         <Header
-          onOpenNewVisit={() => handleNavigate('new-visit')}
-          onOpenNewAppointment={() => setIsNewAppointmentOpen(true)}
           onOpenDatabaseInspector={() => setIsDatabaseInspectorOpen(true)}
-          selectedBranch={selectedBranch}
-          onSelectBranch={setSelectedBranch}
-          isDark={theme === 'dark'}
-          onToggleTheme={toggleTheme}
+          onToggleMobileMenu={() => setIsMobileMenuOpen((prev) => !prev)}
         />
 
         {/* Global Live Call Patient Alert (Simulating Speaker Broadcast) */}
         {callingBanner && (
-          <div className="fixed top-18 right-80 left-8 z-50 bg-white dark:bg-[#18233C] border-2 border-[#00c2cb] rounded-2xl p-4 shadow-2xl flex items-center justify-between animate-in slide-in-from-top-4">
+          <div className="fixed top-18 right-4 lg:right-80 left-4 lg:left-8 z-50 bg-white dark:bg-[#18233C] border-2 border-[#00c2cb] rounded-2xl p-4 shadow-2xl flex items-center justify-between animate-in slide-in-from-top-4">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-[#00c2cb] text-[#08101C] flex items-center justify-center font-black">
-                <span className="material-symbols-outlined text-2xl animate-pulse">campaign</span>
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-[#00c2cb] text-[#08101C] flex items-center justify-center font-black shrink-0">
+                <span className="material-symbols-outlined text-xl sm:text-2xl animate-pulse">campaign</span>
               </div>
               <div>
                 <span className="text-xs font-mono font-bold text-[#008f97] dark:text-[#45dee7]">
                   نداء صوتي صادر عبر مكبر صالة الانتظار:
                 </span>
-                <h4 className="text-base font-bold text-slate-900 dark:text-[#dde2f5]">
+                <h4 className="text-sm sm:text-base font-bold text-slate-900 dark:text-[#dde2f5]">
                   تذكرة رقم ({callingBanner.ticket}) — المريض ({callingBanner.name}) يتفضل لغرفة الكشف
                 </h4>
               </div>
             </div>
             <button
               onClick={() => setCallingBanner(null)}
-              className="text-xs text-slate-500 dark:text-[#859394] hover:text-slate-900 dark:hover:text-white px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-[#080e1b] cursor-pointer"
+              className="text-xs text-slate-500 dark:text-[#859394] hover:text-slate-900 dark:hover:text-white px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-[#080e1b] cursor-pointer shrink-0"
             >
-              إغلاق الإشعار
+              إغلاق
             </button>
           </div>
         )}
 
         {/* Main View Container */}
-        <main className="flex-1 mt-16 p-6 lg:p-8 max-w-7xl w-full mx-auto">
+        <main className="flex-1 mt-16 p-3 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto overflow-x-hidden">
           {!canAccess(activeScreen) ? (
             <div className="p-8 rounded-2xl bg-white dark:bg-[#111A2E] border border-rose-500/30 text-center space-y-4 shadow-xl">
               <div className="w-14 h-14 rounded-2xl bg-rose-500/15 text-rose-500 mx-auto flex items-center justify-center">

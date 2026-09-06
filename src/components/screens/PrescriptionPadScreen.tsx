@@ -29,7 +29,10 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
     'تجنب تماماً الأطعمة الدسمة، الحارة، المقليات، والمشروبات الغازية. الامتناع عن التدخين وعدم الاستلقاء مباشرة بعد الوجبات لمدة ساعتين على الأقل.'
   );
   const [nextFollowup, setNextFollowup] = useState('29 أكتوبر 2024 (استشارة مجانية ضمن الـ 14 يوماً)');
+  const [selectedBranchId, setSelectedBranchId] = useState(CLINIC_INFO.branches[0]?.id || 'main');
   const [showToast, setShowToast] = useState(false);
+
+  const currentBranch = CLINIC_INFO.branches.find((b) => b.id === selectedBranchId) || CLINIC_INFO.branches[0];
 
   const handleAddItem = (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,10 +105,10 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Prescription A5 Paper Canvas Preview (8 Cols) */}
-        <div className="lg:col-span-8 bg-white text-[#0f172a] rounded-2xl shadow-2xl p-8 border border-slate-200 min-h-[720px] flex flex-col justify-between print:m-0 print:p-6 print:border-none print:shadow-none">
+        <div className="lg:col-span-8 bg-white text-[#0f172a] rounded-2xl shadow-2xl p-6 sm:p-8 border border-slate-200 min-h-[720px] flex flex-col justify-between print:m-0 print:p-6 print:border-none print:shadow-none">
           {/* Clinic Header Banner */}
           <div className="border-b-2 border-[#00c2cb] pb-4">
-            <div className="flex items-start justify-between">
+            <div className="flex items-start justify-between gap-2">
               {/* Arabic Info */}
               <div className="text-right">
                 <h2 className="text-xl font-bold text-[#0f172a] leading-tight">عيادات سولي التخصصية</h2>
@@ -119,9 +122,9 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
               </div>
 
               {/* Logo Badge */}
-              <div className="flex flex-col items-center">
-                <div className="w-14 h-14 rounded-2xl bg-[#080e1b] flex items-center justify-center text-[#00c2cb] shadow-md">
-                  <span className="material-symbols-outlined text-3xl font-bold">medical_services</span>
+              <div className="flex flex-col items-center shrink-0">
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-[#080e1b] flex items-center justify-center text-[#00c2cb] shadow-md">
+                  <span className="material-symbols-outlined text-2xl sm:text-3xl font-bold">medical_services</span>
                 </div>
                 <span className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">
                   SOLI CLINIC
@@ -129,7 +132,7 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
               </div>
 
               {/* English Info */}
-              <div className="text-left" dir="ltr">
+              <div className="text-left hidden sm:block" dir="ltr">
                 <h2 className="text-lg font-bold text-[#0f172a] leading-tight">Soli Medical Clinics</h2>
                 <div className="text-sm font-bold text-[#008f97] mt-0.5">Dr. Hazem El-Kady</div>
                 <div className="text-xs text-slate-600 mt-0.5">Consultant of Internal Medicine & Cardiology</div>
@@ -212,12 +215,15 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
 
           {/* Prescription Footer: Stamp, Signature & Verification QR */}
           <div className="border-t-2 border-slate-200 pt-4 mt-6">
-            <div className="flex items-end justify-between">
-              {/* Branch address */}
-              <div className="text-[11px] text-slate-500 space-y-0.5">
-                <div>الفرع الرئيسي: 14 شارع جامعة الدول العربية - المهندسين - الجيزة</div>
-                <div dir="ltr" className="text-left font-mono">
-                  Tel: +20 2 3762 9481 | WhatsApp: +20 10 9283 7465
+            <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4">
+              {/* Branch address & Contact */}
+              <div className="text-[11px] text-slate-600 space-y-0.5">
+                <div className="font-bold text-slate-800 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-xs text-[#008f97]">location_on</span>
+                  <span>{currentBranch?.name || 'الفرع الرئيسي'}: {currentBranch?.address || '14 شارع جامعة الدول العربية - المهندسين - الجيزة'}</span>
+                </div>
+                <div dir="ltr" className="text-right sm:text-left font-mono text-slate-500">
+                  Tel: {currentBranch?.phone || '+20 2 3762 9481'} | WhatsApp: +20 10 9283 7465
                 </div>
                 <div className="text-[#008f97] font-semibold mt-1">
                   موعد الاستشارة: {nextFollowup}
@@ -225,13 +231,13 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
               </div>
 
               {/* Official Stamp & QR Code */}
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 self-end sm:self-auto">
                 <div className="w-16 h-16 border-2 border-slate-300 rounded-lg flex flex-col items-center justify-center p-1 text-center bg-slate-50">
                   <span className="material-symbols-outlined text-3xl text-slate-700">qr_code_2</span>
                   <span className="text-[8px] text-slate-400 font-mono">تحقق بالصيدلية</span>
                 </div>
 
-                <div className="w-24 h-24 rounded-full border-2 border-dashed border-[#008f97]/60 flex flex-col items-center justify-center text-center p-1 text-[#008f97] rotate-6">
+                <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 border-dashed border-[#008f97]/60 flex flex-col items-center justify-center text-center p-1 text-[#008f97] rotate-6">
                   <span className="text-[10px] font-bold">ختم العيادة المعتمد</span>
                   <span className="text-[9px] font-bold">د. حازم القاضي</span>
                   <span className="text-[8px] font-mono">ترخيص: 48201</span>
@@ -243,6 +249,38 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
 
         {/* Prescription Editor Tools (4 Cols) */}
         <div className="lg:col-span-4 flex flex-col gap-5 print:hidden">
+          {/* Clinic Branch & Location Card (Moved from Header to Prescription) */}
+          <div className="bg-white dark:bg-[#111A2E] p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm space-y-3">
+            <h3 className="text-xs font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb] text-base">apartment</span>
+              <span>بيانات وعنوان فرع العيادة</span>
+            </h3>
+            <div>
+              <label className="text-[11px] text-slate-500 dark:text-[#859394] block mb-1">اختر فرع العيادة المطبوع على الروشتة:</label>
+              <select
+                value={selectedBranchId}
+                onChange={(e) => setSelectedBranchId(e.target.value)}
+                className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/5 font-semibold focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
+              >
+                {CLINIC_INFO.branches.map((b) => (
+                  <option key={b.id} value={b.id} className="bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5]">
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="p-3 bg-slate-50 dark:bg-[#080e1b] rounded-xl border border-slate-200 dark:border-white/5 text-xs space-y-1">
+              <div className="flex items-start gap-1.5 text-slate-700 dark:text-[#dde2f5]">
+                <span className="material-symbols-outlined text-sm text-[#008f97] dark:text-[#00c2cb] shrink-0 mt-0.5">location_on</span>
+                <span>{currentBranch?.address}</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-slate-500 dark:text-[#859394]">
+                <span className="material-symbols-outlined text-sm shrink-0">call</span>
+                <span dir="ltr">{currentBranch?.phone}</span>
+              </div>
+            </div>
+          </div>
+
           {/* Quick Drug Add Form */}
           <form onSubmit={handleAddItem} className="bg-white dark:bg-[#111A2E] p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm space-y-4">
             <h3 className="text-xs font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-1.5">
