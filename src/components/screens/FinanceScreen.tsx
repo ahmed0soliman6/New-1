@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { TransactionRecord } from '../../types';
+import { usePermissions } from '../../context/AuthContext';
+import { PermissionGate } from '../auth/PermissionGate';
 
 interface FinanceScreenProps {
   transactions: TransactionRecord[];
@@ -7,6 +9,7 @@ interface FinanceScreenProps {
 }
 
 export const FinanceScreen: React.FC<FinanceScreenProps> = ({ transactions, onAddTransaction }) => {
+  const { assertPermission, userProfile } = usePermissions();
   const [filter, setFilter] = useState<string>('all');
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [expenseDesc, setExpenseDesc] = useState('');
@@ -28,27 +31,37 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({ transactions, onAd
   const handleAddExpense = (e: React.FormEvent) => {
     e.preventDefault();
     if (!expenseDesc.trim()) return;
-    const newTx: TransactionRecord = {
-      id: `tx-${Date.now()}`,
-      receiptNo: `EXP-${Math.floor(Math.random() * 900) + 100}`,
-      patientName: 'مصروفات نثرية',
-      description: expenseDesc,
-      amount: expenseAmount,
-      type: 'out',
-      method: 'نقدي',
-      time: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
-      category: 'نثريات',
-    };
-    onAddTransaction(newTx);
-    setShowExpenseModal(false);
-    setExpenseDesc('');
-    setToast(`تم خصم مصروف نثري قدره ${expenseAmount} ج.م من درج العيادة`);
-    setTimeout(() => setToast(null), 3500);
+    try {
+      assertPermission('billing.expenses', 'تسجيل مصروف نثري');
+      const newTx: TransactionRecord = {
+        id: `tx-${Date.now()}`,
+        receiptNo: `EXP-${Math.floor(Math.random() * 900) + 100}`,
+        patientName: 'مصروفات نثرية',
+        description: expenseDesc,
+        amount: expenseAmount,
+        type: 'out',
+        method: 'نقدي',
+        time: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+        category: 'نثريات',
+      };
+      onAddTransaction(newTx);
+      setShowExpenseModal(false);
+      setExpenseDesc('');
+      setToast(`تم خصم مصروف نثري قدره ${expenseAmount} ج.م من درج العيادة`);
+      setTimeout(() => setToast(null), 3500);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'ليس لديك صلاحية لتسجيل المصروفات.');
+    }
   };
 
   const handleCloseShift = () => {
-    setToast(`تم إغلاق وردية الاستقبال بنجاح! صافي النقدية الموردة للخزينة: ${netInDrawer} ج.م`);
-    setTimeout(() => setToast(null), 4500);
+    try {
+      assertPermission('billing.closeShift', 'تقفيل الوردية وتسليم النقدية');
+      setToast(`تم إغلاق وردية الاستقبال بنجاح! صافي النقدية الموردة للخزينة: ${netInDrawer} ج.م`);
+      setTimeout(() => setToast(null), 4500);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'ليس لديك صلاحية لتقفيل الوردية.');
+    }
   };
 
   const filteredTx = transactions.filter((t) => {
@@ -86,20 +99,25 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({ transactions, onAd
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowExpenseModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-50 dark:bg-[#ef4444]/20 hover:bg-rose-100 dark:hover:bg-[#ef4444]/30 text-rose-600 dark:text-[#ef4444] text-xs font-bold border border-rose-200 dark:border-[#ef4444]/30 transition-all cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-base">remove_circle</span>
-            <span>- تسجيل مصروف نثري</span>
-          </button>
-          <button
-            onClick={handleCloseShift}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] text-xs font-bold shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95"
-          >
-            <span className="material-symbols-outlined text-base">lock_clock</span>
-            <span>تقفيل الوردية وتسليم النقدية</span>
-          </button>
+          <PermissionGate permission="billing.expenses">
+            <button
+              onClick={() => setShowExpenseModal(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-50 dark:bg-[#ef4444]/20 hover:bg-rose-100 dark:hover:bg-[#ef4444]/30 text-rose-600 dark:text-[#ef4444] text-xs font-bold border border-rose-200 dark:border-[#ef4444]/30 transition-all cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-base">remove_circle</span>
+              <span>- تسجيل مصروف نثري</span>
+            </button>
+          </PermissionGate>
+
+          <PermissionGate permission="billing.closeShift">
+            <button
+              onClick={handleCloseShift}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] text-xs font-bold shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95"
+            >
+              <span className="material-symbols-outlined text-base">lock_clock</span>
+              <span>تقفيل الوردية وتسليم النقدية</span>
+            </button>
+          </PermissionGate>
         </div>
       </div>
 
@@ -115,7 +133,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({ transactions, onAd
           </p>
         </div>
         <span className="text-xs text-[#008f97] dark:text-[#45dee7] font-semibold bg-slate-100 dark:bg-[#18233C] px-3.5 py-1.5 rounded-xl border border-slate-200 dark:border-white/5 shrink-0">
-          مسؤول الوردية: أ/ منى سامي
+          المستخدم الحالي: {userProfile?.displayName || 'الاستقبال'}
         </span>
       </div>
 

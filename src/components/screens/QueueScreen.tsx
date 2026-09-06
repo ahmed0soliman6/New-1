@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { QueueItem, ScreenType } from '../../types';
+import { usePermissions } from '../../context/AuthContext';
 
 interface QueueScreenProps {
   queue: QueueItem[];
@@ -8,6 +9,7 @@ interface QueueScreenProps {
 }
 
 export const QueueScreen: React.FC<QueueScreenProps> = ({ queue, onCallPatient, onNavigate }) => {
+  const { canAccess } = usePermissions();
   const [filter, setFilter] = useState<'all' | 'new' | 'consult' | 'urgent'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [timerSeconds, setTimerSeconds] = useState(14 * 60 + 35);
@@ -35,15 +37,18 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({ queue, onCallPatient, 
   };
 
   const filteredQueue = queue.filter((item) => {
+    if (!item) return false;
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase();
-      if (!item.patientName.toLowerCase().includes(q) && !item.ticketNumber.toLowerCase().includes(q)) {
+      const pName = (item.patientName || '').toLowerCase();
+      const pTicket = (item.ticketNumber || '').toLowerCase();
+      if (!pName.includes(q) && !pTicket.includes(q)) {
         return false;
       }
     }
-    if (filter === 'new') return item.visitType === 'كشف جديد';
-    if (filter === 'consult') return item.visitType.includes('استشارة') || item.visitType.includes('متابعة');
-    if (filter === 'urgent') return item.isUrgent;
+    if (filter === 'new') return (item.visitType || '').includes('جديد');
+    if (filter === 'consult') return (item.visitType || '').includes('استشارة') || (item.visitType || '').includes('متابعة');
+    if (filter === 'urgent') return !!item.isUrgent;
     return true;
   });
 
@@ -84,13 +89,15 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({ queue, onCallPatient, 
                 الطبيب المعالج: <strong className="text-[#dde2f5]">د. حازم القاضي</strong> • تذكرة {currentTvTicket}
               </p>
             </div>
-            <button
-              onClick={() => onNavigate('clinical-exam')}
-              className="px-3 py-1.5 rounded-xl bg-[#111A2E] hover:bg-[#242a38] text-[#dde2f5] text-xs font-semibold flex items-center gap-1 border border-white/5 transition-all cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-sm">clinical_notes</span>
-              <span>ملف الكشف</span>
-            </button>
+            {canAccess('clinical-exam') && (
+              <button
+                onClick={() => onNavigate('clinical-exam')}
+                className="px-3 py-1.5 rounded-xl bg-[#111A2E] hover:bg-[#242a38] text-[#dde2f5] text-xs font-semibold flex items-center gap-1 border border-white/5 transition-all cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-sm">clinical_notes</span>
+                <span>ملف الكشف</span>
+              </button>
+            )}
           </div>
 
           <div className="z-10 flex items-center justify-between pt-2 bg-[#080e1b]/60 px-3 py-1.5 rounded-xl text-xs border border-white/5">
@@ -229,36 +236,36 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({ queue, onCallPatient, 
           </div>
 
           {/* Spotlight Next Patient Card */}
-          {nextPatient && (
+          {nextPatient ? (
             <div className="relative rounded-2xl bg-gradient-to-br from-[#18233C] via-[#111A2E] to-[#080e1b] p-5 shadow-2xl border border-[#00c2cb]/40 overflow-hidden">
               <div className="absolute right-0 top-0 bottom-0 w-2 bg-[#00c2cb]"></div>
               <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 z-10">
                 <div className="space-y-2 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="px-2.5 py-1 rounded-lg bg-[#00c2cb] text-[#08101C] font-mono font-bold text-xs shadow-md">
-                      {nextPatient.ticketNumber} التالي
+                      {nextPatient.ticketNumber || '#01'} التالي
                     </span>
                     <span className="px-2.5 py-1 rounded-full bg-amber-400/10 text-amber-300 text-xs font-semibold flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
                       في صالة الانتظار
                     </span>
                     <span className="px-2.5 py-1 rounded-full bg-[#00c2cb]/15 text-[#45dee7] text-xs">
-                      {nextPatient.visitType}
+                      {nextPatient.visitType || 'كشف'}
                     </span>
                     <span className="text-xs text-[#859394] font-mono">
-                      حضور: {nextPatient.arrivalTime} (منذ {nextPatient.elapsedMinutes} دقيقة)
+                      حضور: {nextPatient.arrivalTime || 'الآن'} (منذ {nextPatient.elapsedMinutes || 0} دقيقة)
                     </span>
                   </div>
 
                   <div className="pt-1">
-                    <h3 className="text-xl font-bold text-[#dde2f5]">{nextPatient.patientName}</h3>
+                    <h3 className="text-xl font-bold text-[#dde2f5]">{nextPatient.patientName || 'مريض بالانتظار'}</h3>
                     <div className="flex flex-wrap items-center gap-3 text-xs text-[#bbc9ca] mt-1">
-                      <span dir="ltr" className="font-mono">{nextPatient.phone}</span>
+                      <span dir="ltr" className="font-mono">{nextPatient.phone || 'بدون هاتف'}</span>
                       <span>•</span>
-                      <span>السن: {nextPatient.age} سنة</span>
+                      <span>السن: {nextPatient.age || 35} سنة</span>
                       <span>•</span>
                       <span className="text-[#10B981] font-semibold">
-                        مدفوع بالكامل: {nextPatient.paidAmount} ج.م ({nextPatient.paymentMethod})
+                        مدفوع بالكامل: {nextPatient.paidAmount || 0} ج.م ({nextPatient.paymentMethod || 'نقدي'})
                       </span>
                     </div>
                   </div>
@@ -269,7 +276,7 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({ queue, onCallPatient, 
                     </span>
                     <div>
                       <span className="font-bold text-[#dde2f5]">الشكوى المبدئية عند الاستقبال: </span>
-                      <span>{nextPatient.complaint}</span>
+                      <span>{nextPatient.complaint || 'كشف عيادة باطنة'}</span>
                     </div>
                   </div>
                 </div>
@@ -278,10 +285,12 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({ queue, onCallPatient, 
                 <div className="flex flex-col gap-2 min-w-[200px] justify-center shrink-0">
                   <button
                     onClick={() => {
-                      setCurrentTvTicket(nextPatient.ticketNumber);
-                      setCurrentTvPatient(nextPatient.patientName);
-                      onCallPatient(nextPatient.ticketNumber, nextPatient.patientName);
-                      triggerBroadcast(`استدعاء دور ${nextPatient.ticketNumber}`, `يرجى من المريض (${nextPatient.patientName}) التوجه للغرفة`);
+                      const tNum = nextPatient.ticketNumber || '#01';
+                      const pName = nextPatient.patientName || 'مريض';
+                      setCurrentTvTicket(tNum);
+                      setCurrentTvPatient(pName);
+                      onCallPatient(tNum, pName);
+                      triggerBroadcast(`استدعاء دور ${tNum}`, `يرجى من المريض (${pName}) التوجه للغرفة`);
                     }}
                     className="w-full py-3 px-4 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] font-bold text-xs shadow-lg shadow-[#00c2cb]/20 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
                   >
@@ -291,16 +300,18 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({ queue, onCallPatient, 
 
                   <div className="grid grid-cols-2 gap-2">
                     <button
-                      onClick={() =>
-                        triggerBroadcast(`نداء صوتي: ${nextPatient.ticketNumber}`, `نداء صوتي للمريض ${nextPatient.patientName}`)
-                      }
+                      onClick={() => {
+                        const tNum = nextPatient.ticketNumber || '#01';
+                        const pName = nextPatient.patientName || 'مريض';
+                        triggerBroadcast(`نداء صوتي: ${tNum}`, `نداء صوتي للمريض ${pName}`);
+                      }}
                       className="py-2 px-2 rounded-xl bg-[#571bc1]/60 hover:bg-[#571bc1] text-[#e9ddff] text-xs font-medium flex items-center justify-center gap-1 transition-all cursor-pointer"
                     >
                       <span className="material-symbols-outlined text-base">volume_up</span>
                       <span>نداء صوتي</span>
                     </button>
                     <button
-                      onClick={() => alert(`تم تأجيل دور ${nextPatient.ticketNumber}`)}
+                      onClick={() => alert(`تم تأجيل دور ${nextPatient.ticketNumber || '#01'}`)}
                       className="py-2 px-2 rounded-xl bg-[#18233C] hover:bg-[#242a38] text-[#bbc9ca] hover:text-white text-xs font-medium flex items-center justify-center gap-1 transition-all cursor-pointer border border-white/5"
                     >
                       <span className="material-symbols-outlined text-base">low_priority</span>
@@ -309,6 +320,10 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({ queue, onCallPatient, 
                   </div>
                 </div>
               </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl bg-[#111A2E]/60 p-8 border border-white/5 text-center text-sm text-[#bbc9ca]">
+              لا يوجد مرضى حالياً في طابور الانتظار
             </div>
           )}
 
@@ -322,28 +337,28 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({ queue, onCallPatient, 
                 <div className="flex items-start gap-4 flex-1">
                   <div className="w-12 h-12 rounded-xl bg-[#18233C] border border-white/5 flex flex-col items-center justify-center">
                     <span className="text-[10px] text-[#859394]">دور</span>
-                    <span className="text-base font-bold font-mono text-[#d0bcff]">{item.ticketNumber}</span>
+                    <span className="text-base font-bold font-mono text-[#d0bcff]">{item.ticketNumber || '#02'}</span>
                   </div>
                   <div className="space-y-1 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h4 className="text-sm font-bold text-[#dde2f5]">{item.patientName}</h4>
+                      <h4 className="text-sm font-bold text-[#dde2f5]">{item.patientName || 'مريض بالانتظار'}</h4>
                       <span className="px-2 py-0.5 rounded-full bg-[#571bc1]/30 text-[#d0bcff] text-[11px]">
-                        {item.visitType}
+                        {item.visitType || 'كشف'}
                       </span>
-                      <span className="text-xs text-[#859394] font-mono">وصول منذ {item.elapsedMinutes} دقيقة</span>
+                      <span className="text-xs text-[#859394] font-mono">وصول منذ {item.elapsedMinutes || 0} دقيقة</span>
                     </div>
                     <p className="text-xs text-[#bbc9ca]">
-                      <span dir="ltr" className="font-mono">{item.phone}</span>
+                      <span dir="ltr" className="font-mono">{item.phone || 'بدون هاتف'}</span>
                       <span className="mx-2">•</span>
-                      <span className="text-[#10B981] font-mono">سداد: {item.paidAmount} ج.م ({item.paymentMethod})</span>
+                      <span className="text-[#10B981] font-mono">سداد: {item.paidAmount || 0} ج.م ({item.paymentMethod || 'نقدي'})</span>
                     </p>
-                    <p className="text-[11px] text-[#859394]">{item.complaint}</p>
+                    <p className="text-[11px] text-[#859394]">{item.complaint || 'كشف'}</p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2 self-end md:self-center">
                   <button
-                    onClick={() => triggerBroadcast(`نداء: ${item.ticketNumber}`, `يرجى من ${item.patientName} التوجه للاستقبال`)}
+                    onClick={() => triggerBroadcast(`نداء: ${item.ticketNumber || ''}`, `يرجى من ${item.patientName || 'المريض'} التوجه للاستقبال`)}
                     className="p-2 rounded-xl bg-[#18233C] hover:bg-[#242a38] text-[#d0bcff] transition-all cursor-pointer"
                     title="نداء صوتي"
                   >
@@ -351,9 +366,11 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({ queue, onCallPatient, 
                   </button>
                   <button
                     onClick={() => {
-                      setCurrentTvTicket(item.ticketNumber);
-                      setCurrentTvPatient(item.patientName);
-                      triggerBroadcast(`دخول الغرفة: ${item.ticketNumber}`, `تم إدخال ${item.patientName}`);
+                      const tNum = item.ticketNumber || '#02';
+                      const pName = item.patientName || 'مريض';
+                      setCurrentTvTicket(tNum);
+                      setCurrentTvPatient(pName);
+                      triggerBroadcast(`دخول الغرفة: ${tNum}`, `تم إدخال ${pName}`);
                     }}
                     className="px-3.5 py-2 rounded-xl bg-[#00c2cb]/15 hover:bg-[#00c2cb]/30 text-[#45dee7] border border-[#00c2cb]/30 text-xs font-bold transition-all cursor-pointer"
                   >

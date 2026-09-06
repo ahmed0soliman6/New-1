@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ScreenType, AppointmentListItem, QueueItem } from '../../types';
+import { usePermissions } from '../../context/AuthContext';
 
 interface DashboardScreenProps {
   onNavigate: (screen: ScreenType) => void;
@@ -16,24 +17,29 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   onConfirmCheckIn,
   onCallPatient,
 }) => {
+  const { canAccess } = usePermissions();
   const [filterType, setFilterType] = useState<string>('all');
   const [selectedPayMethod, setSelectedPayMethod] = useState<string>('cash');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [checkInNotice, setCheckInNotice] = useState<string | null>(null);
 
   // Active check-in card patient
-  const targetCheckIn = appointments.find((a) => a.id === 'app-1') || appointments[0];
+  const targetCheckIn = appointments.find((a) => a && (a.id === 'app-1' || a.id === 'appt-1')) || appointments[0];
 
-  const handleAppCheckIn = (app: AppointmentListItem) => {
-    onConfirmCheckIn(app, app.expectedFee, selectedPayMethod === 'cash' ? 'نقدي' : selectedPayMethod === 'pos' ? 'فيزا / كارت' : 'إنستاباي');
-    setCheckInNotice(`تم تأكيد حضور المريض (${app.patientName}) ونقله لطابور الانتظار وتوريد ${app.expectedFee} ج.م للدرج.`);
+  const handleAppCheckIn = (app?: AppointmentListItem) => {
+    if (!app) return;
+    onConfirmCheckIn(app, app.expectedFee || 0, selectedPayMethod === 'cash' ? 'نقدي' : selectedPayMethod === 'pos' ? 'فيزا / كارت' : 'إنستاباي');
+    setCheckInNotice(`تم تأكيد حضور المريض (${app.patientName || 'المريض'}) ونقله لطابور الانتظار وتوريد ${app.expectedFee || 0} ج.م للدرج.`);
     setTimeout(() => setCheckInNotice(null), 4500);
   };
 
   const filteredAppointments = appointments.filter((app) => {
+    if (!app) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      if (!app.patientName.toLowerCase().includes(q) && !app.phone.includes(q)) {
+      const pName = (app.patientName || '').toLowerCase();
+      const pPhone = app.phone || '';
+      if (!pName.includes(q) && !pPhone.includes(q)) {
         return false;
       }
     }
@@ -239,126 +245,137 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
           </div>
 
           {/* Interactive Check-In Drawer Modal Card (Patient Just Arrived Demonstration) */}
-          <div className="relative overflow-hidden rounded-2xl bg-[#18233C] p-4 shadow-2xl border border-[#00c2cb]/40 space-y-4 shadow-[0_0_30px_rgba(0,194,203,0.15)]">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-[#00c2cb]/20 text-[#00c2cb] flex items-center justify-center font-bold text-xl border border-[#00c2cb]/30">
-                  <span className="material-symbols-outlined text-2xl">person_pin</span>
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base font-bold text-[#dde2f5]">{targetCheckIn.patientName}</h3>
-                    <span className="bg-[#00c2cb]/15 text-[#45dee7] text-xs px-2.5 py-0.5 rounded-full font-bold border border-[#00c2cb]/20">
-                      وصل الآن للاستقبال
-                    </span>
+          {targetCheckIn ? (
+            <div className="relative overflow-hidden rounded-2xl bg-[#18233C] p-4 shadow-2xl border border-[#00c2cb]/40 space-y-4 shadow-[0_0_30px_rgba(0,194,203,0.15)]">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-[#00c2cb]/20 text-[#00c2cb] flex items-center justify-center font-bold text-xl border border-[#00c2cb]/30">
+                    <span className="material-symbols-outlined text-2xl">person_pin</span>
                   </div>
-                  <p className="text-xs text-[#bbc9ca] mt-0.5">
-                    موعد مجدول: اليوم {targetCheckIn.timeSlot} • {targetCheckIn.visitType}
-                  </p>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base font-bold text-[#dde2f5]">{targetCheckIn.patientName || 'مريض مجدول'}</h3>
+                      <span className="bg-[#00c2cb]/15 text-[#45dee7] text-xs px-2.5 py-0.5 rounded-full font-bold border border-[#00c2cb]/20">
+                        وصل الآن للاستقبال
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#bbc9ca] mt-0.5">
+                      موعد مجدول: اليوم {targetCheckIn.timeSlot || targetCheckIn.time || '17:00'} • {targetCheckIn.visitType}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-left">
+                  <span className="text-2xl font-extrabold text-[#45dee7] font-mono">{targetCheckIn.expectedFee || 0}</span>
+                  <span className="text-xs text-[#bbc9ca] mr-1">ج.م</span>
                 </div>
               </div>
-              <div className="text-left">
-                <span className="text-2xl font-extrabold text-[#45dee7] font-mono">{targetCheckIn.expectedFee}</span>
-                <span className="text-xs text-[#bbc9ca] mr-1">ج.م</span>
+
+              {/* Interactive Steps / Verification Controls */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 bg-[#080e1b] p-2.5 rounded-xl border border-white/5">
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-[#111A2E]">
+                  <div className="w-6 h-6 rounded-full bg-[#00c2cb]/20 text-[#00c2cb] flex items-center justify-center font-bold text-xs">
+                    <span className="material-symbols-outlined text-sm">check</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-[#dde2f5] font-semibold">1. تسجيل الحضور</span>
+                    <span className="text-[10px] text-[#45dee7] font-mono">تحويل لزيارة فعلية</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-[#111A2E]">
+                  <div className="w-6 h-6 rounded-full bg-[#571bc1]/50 text-[#d0bcff] flex items-center justify-center font-bold text-xs">
+                    <span className="material-symbols-outlined text-sm">point_of_sale</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-[#dde2f5] font-semibold">2. إثبات الدفع</span>
+                    <span className="text-[10px] text-[#d0bcff] font-medium">إيداع بدرج العيادة</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-[#111A2E]">
+                  <div className="w-6 h-6 rounded-full bg-[#38BDF8]/20 text-[#9dd0ff] flex items-center justify-center font-bold text-xs">
+                    <span className="material-symbols-outlined text-sm">queue</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-[#dde2f5] font-semibold">3. منحه دور انتظار</span>
+                    <span className="text-[10px] text-[#9dd0ff] font-mono font-bold">تذكرة #09</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Payment Method Choice Selection */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[#bbc9ca] font-bold">طريقة السداد:</span>
+                  <div className="inline-flex rounded-xl bg-[#080e1b] p-1 border border-white/5">
+                    {[
+                      { id: 'cash', label: 'نقدي (كاش)' },
+                      { id: 'pos', label: 'فيزا / كارت' },
+                      { id: 'instapay', label: 'InstaPay محفظة' },
+                    ].map((m) => (
+                      <button
+                        key={m.id}
+                        onClick={() => setSelectedPayMethod(m.id)}
+                        className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                          selectedPayMethod === m.id
+                            ? 'bg-[#00c2cb] text-[#08101C] font-bold shadow'
+                            : 'text-[#bbc9ca] hover:text-white'
+                        }`}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <button
+                    onClick={() => handleAppCheckIn(targetCheckIn)}
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] font-bold text-xs shadow-[0_0_16px_rgba(0,194,203,0.35)] transition-all cursor-pointer active:scale-95"
+                  >
+                    <span className="material-symbols-outlined text-base">check_circle</span>
+                    <span>تأكيد الحضور والدفع ({targetCheckIn.expectedFee || 0} ج.م)</span>
+                  </button>
+                  <button
+                    onClick={() => alert('تم تأجيل الموعد لساعة لاحقة')}
+                    className="px-3 py-2.5 rounded-xl bg-[#111A2E] hover:bg-[#242a38] text-[#bbc9ca] hover:text-white text-xs transition-colors cursor-pointer border border-white/5"
+                  >
+                    تأجيل
+                  </button>
+                </div>
               </div>
             </div>
-
-            {/* Interactive Steps / Verification Controls */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 bg-[#080e1b] p-2.5 rounded-xl border border-white/5">
-              <div className="flex items-center gap-2 p-2 rounded-lg bg-[#111A2E]">
-                <div className="w-6 h-6 rounded-full bg-[#00c2cb]/20 text-[#00c2cb] flex items-center justify-center font-bold text-xs">
-                  <span className="material-symbols-outlined text-sm">check</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-xs text-[#dde2f5] font-semibold">1. تسجيل الحضور</span>
-                  <span className="text-[10px] text-[#45dee7] font-mono">تحويل لزيارة فعلية</span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 p-2 rounded-lg bg-[#111A2E]">
-                <div className="w-6 h-6 rounded-full bg-[#571bc1]/50 text-[#d0bcff] flex items-center justify-center font-bold text-xs">
-                  <span className="material-symbols-outlined text-sm">point_of_sale</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-xs text-[#dde2f5] font-semibold">2. إثبات الدفع</span>
-                  <span className="text-[10px] text-[#d0bcff] font-medium">إيداع بدرج العيادة</span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 p-2 rounded-lg bg-[#111A2E]">
-                <div className="w-6 h-6 rounded-full bg-[#38BDF8]/20 text-[#9dd0ff] flex items-center justify-center font-bold text-xs">
-                  <span className="material-symbols-outlined text-sm">queue</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-xs text-[#dde2f5] font-semibold">3. منحه دور انتظار</span>
-                  <span className="text-[10px] text-[#9dd0ff] font-mono font-bold">تذكرة #09</span>
-                </div>
-              </div>
+          ) : (
+            <div className="rounded-2xl bg-[#18233C]/60 p-6 border border-white/5 text-center text-xs text-[#bbc9ca]">
+              لا توجد مواعيد معلقة بحاجة لتأكيد الحضور حالياً
             </div>
-
-            {/* Payment Method Choice Selection */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-1">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-[#bbc9ca] font-bold">طريقة السداد:</span>
-                <div className="inline-flex rounded-xl bg-[#080e1b] p-1 border border-white/5">
-                  {[
-                    { id: 'cash', label: 'نقدي (كاش)' },
-                    { id: 'pos', label: 'فيزا / كارت' },
-                    { id: 'instapay', label: 'InstaPay محفظة' },
-                  ].map((m) => (
-                    <button
-                      key={m.id}
-                      onClick={() => setSelectedPayMethod(m.id)}
-                      className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                        selectedPayMethod === m.id
-                          ? 'bg-[#00c2cb] text-[#08101C] font-bold shadow'
-                          : 'text-[#bbc9ca] hover:text-white'
-                      }`}
-                    >
-                      {m.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <button
-                  onClick={() => handleAppCheckIn(targetCheckIn)}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] font-bold text-xs shadow-[0_0_16px_rgba(0,194,203,0.35)] transition-all cursor-pointer active:scale-95"
-                >
-                  <span className="material-symbols-outlined text-base">check_circle</span>
-                  <span>تأكيد الحضور والدفع ({targetCheckIn.expectedFee} ج.م)</span>
-                </button>
-                <button
-                  onClick={() => alert('تم تأجيل الموعد لساعة لاحقة')}
-                  className="px-3 py-2.5 rounded-xl bg-[#111A2E] hover:bg-[#242a38] text-[#bbc9ca] hover:text-white text-xs transition-colors cursor-pointer border border-white/5"
-                >
-                  تأجيل
-                </button>
-              </div>
-            </div>
-          </div>
+          )}
 
           {/* Appointments List */}
           <div className="space-y-2">
-            {filteredAppointments.map((app) => (
+            {filteredAppointments.length === 0 ? (
+              <div className="p-8 rounded-xl bg-[#111A2E]/50 border border-white/5 text-center text-[#859394] text-xs">
+                لا توجد مواعيد مطابقة للبحث المحدد
+              </div>
+            ) : (
+              filteredAppointments.map((app) => (
               <div
                 key={app.id}
                 className="flex flex-col md:flex-row md:items-center justify-between p-3.5 rounded-xl bg-[#111A2E] hover:bg-[#18233C] transition-all gap-3 border border-white/5"
               >
                 <div className="flex items-center gap-3">
                   <div className="w-11 h-11 rounded-xl bg-[#18233C] flex items-center justify-center text-[#dde2f5] font-bold text-xs font-mono border border-white/5">
-                    {app.timeSlot}
+                    {app.timeSlot || app.time || '17:00'}
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-[#dde2f5]">{app.patientName}</span>
+                      <span className="text-sm font-bold text-[#dde2f5]">{app.patientName || 'مريض مجدول'}</span>
                       <span
                         className={`text-xs px-2 py-0.5 rounded font-medium ${
-                          app.visitType.includes('جديد')
+                          (app.visitType || '').includes('جديد')
                             ? 'bg-[#00c2cb]/15 text-[#45dee7]'
-                            : app.visitType.includes('مجانية')
+                            : (app.visitType || '').includes('مجانية')
                             ? 'bg-[#10B981]/20 text-[#10B981]'
                             : 'bg-[#571bc1]/30 text-[#d0bcff]'
                         }`}
@@ -367,11 +384,11 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                       </span>
                     </div>
                     <div className="flex items-center gap-2 text-[#859394] text-xs mt-0.5">
-                      <span dir="ltr" className="font-mono">{app.phone}</span>
+                      <span dir="ltr" className="font-mono">{app.phone || 'بدون هاتف'}</span>
                       <span>•</span>
-                      <span>فرع {app.branch}</span>
+                      <span>فرع {app.branch || 'الرئيسي'}</span>
                       <span>•</span>
-                      <span className="text-[#38BDF8] font-mono">سعر الزيارة: {app.expectedFee} ج.م</span>
+                      <span className="text-[#38BDF8] font-mono">سعر الزيارة: {app.expectedFee || 0} ج.م</span>
                     </div>
                   </div>
                 </div>
@@ -401,7 +418,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                   )}
                   {app.status === 'في الانتظار' && (
                     <button
-                      onClick={() => onCallPatient('#09', app.patientName)}
+                      onClick={() => onCallPatient('#09', app.patientName || 'المريض')}
                       className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#571bc1] text-[#e9ddff] hover:bg-[#8B5CF6] text-xs font-bold transition-all cursor-pointer"
                     >
                       <span className="material-symbols-outlined text-base">door_open</span>
@@ -410,7 +427,8 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                   )}
                 </div>
               </div>
-            ))}
+            ))
+            )}
           </div>
         </section>
 
@@ -454,26 +472,26 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
           {/* Waiting Queue Cards Container */}
           <div className="space-y-3">
             {/* Next Patient in Line #1 - Highlighted Active Card with Pulse Aura */}
-            {queue.length > 0 && (
+            {queue.length > 0 && queue[0] ? (
               <div className="relative overflow-hidden rounded-2xl bg-[#18233C] p-4 shadow-xl border border-[#00c2cb]/50 flex flex-col space-y-3 transition-all shadow-[0_0_24px_rgba(0,194,203,0.2)]">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-xl bg-[#00c2cb] text-[#08101C] flex flex-col items-center justify-center font-bold shadow-md">
                       <span className="text-[10px] font-mono">دور</span>
-                      <span className="text-base font-bold leading-none">{queue[0].ticketNumber}</span>
+                      <span className="text-base font-bold leading-none">{queue[0].ticketNumber || '#01'}</span>
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <h3 className="text-base font-bold text-[#dde2f5]">{queue[0].patientName}</h3>
+                        <h3 className="text-base font-bold text-[#dde2f5]">{queue[0].patientName || 'مريض بالانتظار'}</h3>
                         <span className="bg-[#00c2cb]/20 text-[#45dee7] text-[10px] px-2 py-0.5 rounded-full font-bold">
                           التالي في الدخول
                         </span>
                       </div>
                       <div className="text-[#bbc9ca] text-xs mt-0.5 flex items-center gap-2">
-                        <span>{queue[0].visitType}</span>
+                        <span>{queue[0].visitType || 'كشف'}</span>
                         <span>•</span>
                         <span className="text-[#10B981] font-medium font-mono">
-                          مدفوع {queue[0].paidAmount} ج.م ({queue[0].paymentMethod}) ✓
+                          مدفوع {queue[0].paidAmount || 0} ج.م ({queue[0].paymentMethod || 'نقدي'}) ✓
                         </span>
                       </div>
                     </div>
@@ -481,31 +499,51 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                   <div className="text-left">
                     <span className="text-xs text-[#00c2cb] font-bold flex items-center gap-1 font-mono">
                       <span className="material-symbols-outlined text-sm">schedule</span>
-                      منذ {queue[0].elapsedMinutes} دقيقة
+                      منذ {queue[0].elapsedMinutes || 0} دقيقة
                     </span>
                   </div>
                 </div>
 
                 <div className="bg-[#080e1b] p-2.5 rounded-xl border border-white/5 text-xs text-[#bbc9ca]">
                   <span className="text-[#45dee7] font-semibold">الشكوى المبدئية: </span>
-                  <span>{queue[0].complaint}</span>
+                  <span>{queue[0].complaint || 'كشف عيادة باطنة'}</span>
                 </div>
 
                 {/* Doctor Primary Call Action Button */}
                 <div className="pt-1">
-                  <button
-                    onClick={() => {
-                      onCallPatient(queue[0].ticketNumber, queue[0].patientName);
-                      onNavigate('clinical-exam');
-                    }}
-                    className="w-full py-3 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] font-bold text-sm shadow-[0_0_20px_rgba(0,194,203,0.4)] flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
-                  >
-                    <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>
-                      stethoscope
-                    </span>
-                    <span>بدء الكشف ودخول الغرفة</span>
-                  </button>
+                  {canAccess('clinical-exam') ? (
+                    <button
+                      onClick={() => {
+                        if (queue[0]) {
+                          onCallPatient(queue[0].ticketNumber || '#01', queue[0].patientName || 'مريض');
+                          onNavigate('clinical-exam');
+                        }
+                      }}
+                      className="w-full py-3 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] font-bold text-sm shadow-[0_0_20px_rgba(0,194,203,0.4)] flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
+                    >
+                      <span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+                        stethoscope
+                      </span>
+                      <span>بدء الكشف ودخول الغرفة</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        if (queue[0]) {
+                          onCallPatient(queue[0].ticketNumber || '#01', queue[0].patientName || 'مريض');
+                        }
+                      }}
+                      className="w-full py-3 rounded-xl bg-[#18233C] hover:bg-[#242a38] text-[#45dee7] border border-[#00c2cb]/30 font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-xl">campaign</span>
+                      <span>نداء صوتي على المريض للشاشة</span>
+                    </button>
+                  )}
                 </div>
+              </div>
+            ) : (
+              <div className="rounded-xl bg-[#111A2E]/50 border border-white/5 p-4 text-center text-xs text-[#859394]">
+                لا يوجد مرضى حالياً في طابور الانتظار
               </div>
             )}
 
@@ -518,14 +556,14 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-[#18233C] text-[#dde2f5] flex flex-col items-center justify-center font-bold border border-white/5">
                     <span className="text-[10px] text-[#859394]">دور</span>
-                    <span className="text-sm font-bold font-mono leading-none">{item.ticketNumber}</span>
+                    <span className="text-sm font-bold font-mono leading-none">{item.ticketNumber || '#02'}</span>
                   </div>
                   <div>
-                    <h4 className="text-sm font-bold text-[#dde2f5]">{item.patientName}</h4>
+                    <h4 className="text-sm font-bold text-[#dde2f5]">{item.patientName || 'مريض بالانتظار'}</h4>
                     <div className="text-[#859394] text-xs mt-0.5 flex items-center gap-2">
-                      <span>{item.visitType}</span>
+                      <span>{item.visitType || 'كشف'}</span>
                       <span>•</span>
-                      <span className="text-[#d0bcff] font-mono">{item.paidAmount} ج.م ({item.paymentMethod})</span>
+                      <span className="text-[#d0bcff] font-mono">{item.paidAmount || 0} ج.م ({item.paymentMethod || 'نقدي'})</span>
                     </div>
                   </div>
                 </div>
@@ -533,11 +571,11 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                 <div className="flex flex-col items-end gap-1.5">
                   <span className="text-xs text-[#bbc9ca] flex items-center gap-1 font-mono">
                     <span className="material-symbols-outlined text-xs">timer</span>
-                    منذ {item.elapsedMinutes} دقيقة
+                    منذ {item.elapsedMinutes || 0} دقيقة
                   </span>
                   <div className="flex items-center gap-1">
                     <button
-                      onClick={() => onCallPatient(item.ticketNumber, item.patientName)}
+                      onClick={() => onCallPatient(item.ticketNumber || '#01', item.patientName || 'مريض')}
                       className="px-2.5 py-1 rounded-lg bg-[#18233C] hover:bg-[#242a38] text-[#45dee7] text-xs font-semibold transition-colors cursor-pointer"
                       title="استدعاء صوتي"
                     >
@@ -563,12 +601,18 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                 <span className="text-[11px] text-[#bbc9ca]">د. حازم القاضي • جاهز لاستقبال المريض</span>
               </div>
             </div>
-            <button
-              onClick={() => onNavigate('clinical-exam')}
-              className="bg-[#00c2cb]/15 hover:bg-[#00c2cb]/30 text-[#45dee7] border border-[#00c2cb]/30 text-xs px-3 py-1.5 rounded-full font-bold cursor-pointer transition-all"
-            >
-              فتح الغرفة
-            </button>
+            {canAccess('clinical-exam') ? (
+              <button
+                onClick={() => onNavigate('clinical-exam')}
+                className="bg-[#00c2cb]/15 hover:bg-[#00c2cb]/30 text-[#45dee7] border border-[#00c2cb]/30 text-xs px-3 py-1.5 rounded-full font-bold cursor-pointer transition-all"
+              >
+                فتح الغرفة
+              </button>
+            ) : (
+              <span className="text-[11px] text-[#859394] bg-white/5 px-2.5 py-1 rounded-full border border-white/5">
+                مخصصة لغرفة الطبيب
+              </span>
+            )}
           </div>
         </section>
       </div>

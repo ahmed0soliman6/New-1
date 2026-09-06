@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { AppointmentListItem, ScreenType } from '../../types';
+import { usePermissions } from '../../context/AuthContext';
 
 interface AppointmentsScreenProps {
   appointments: AppointmentListItem[];
@@ -14,6 +15,7 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
   onOpenNewAppointment,
   onNavigate,
 }) => {
+  const { canAccess } = usePermissions();
   const [activeTab, setActiveTab] = useState<'today' | 'followups' | 'late' | 'archive'>('today');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -25,9 +27,12 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
   };
 
   const filteredAppointments = appointments.filter((app) => {
+    if (!app) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      if (!app.patientName.toLowerCase().includes(q) && !app.phone.includes(q)) {
+      const pName = (app.patientName || '').toLowerCase();
+      const pPhone = app.phone || '';
+      if (!pName.includes(q) && !pPhone.includes(q)) {
         return false;
       }
     }
@@ -35,7 +40,7 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
       return false;
     }
     if (activeTab === 'followups') {
-      return app.freeFollowupEligible || app.visitType.includes('متابعة');
+      return app.freeFollowupEligible || (app.visitType || '').includes('متابعة');
     }
     if (activeTab === 'late') {
       return app.status === 'لم يحضر';
@@ -265,27 +270,27 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
                   <td className="p-3.5">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-xl bg-[#00c2cb]/15 text-[#45dee7] flex items-center justify-center font-bold">
-                        {app.patientName.slice(0, 2)}
+                        {(app.patientName || 'مريض').slice(0, 2)}
                       </div>
                       <div>
-                        <div className="font-bold text-sm text-[#dde2f5]">{app.patientName}</div>
+                        <div className="font-bold text-sm text-[#dde2f5]">{app.patientName || 'مريض غير مسجل'}</div>
                         <div className="text-[#859394] font-mono text-[11px] mt-0.5">
-                          <span dir="ltr">{app.phone}</span> • #{app.medicalCode}
+                          <span dir="ltr">{app.phone || 'بدون هاتف'}</span> • #{app.medicalCode || 'EG-NEW'}
                         </div>
                       </div>
                     </div>
                   </td>
                   <td className="p-3.5 font-mono text-[#45dee7] font-bold text-sm">
-                    {app.timeSlot}
+                    {app.timeSlot || app.time || '17:00'}
                   </td>
                   <td className="p-3.5 text-[#bbc9ca]">
-                    <div>العيادة الرئيسية - {app.branch}</div>
+                    <div>العيادة الرئيسية - {app.branch || 'الفرع الرئيسي'}</div>
                     <div className="text-[11px] text-[#859394]">د. حازم القاضي (باطنة)</div>
                   </td>
                   <td className="p-3.5">
-                    <div className="text-[#dde2f5] font-medium">{app.visitType}</div>
+                    <div className="text-[#dde2f5] font-medium">{app.visitType || 'كشف'}</div>
                     <div className="text-[#38BDF8] font-mono font-bold">
-                      {app.expectedFee > 0 ? `${app.expectedFee} ج.م متوقعة` : '0 ج.م (ضمن الـ 14 يوم)'}
+                      {(app.expectedFee || 0) > 0 ? `${app.expectedFee} ج.م متوقعة` : '0 ج.م (ضمن الـ 14 يوم)'}
                     </div>
                   </td>
                   <td className="p-3.5">
@@ -315,19 +320,21 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
                         </button>
                       )}
                       <button
-                        onClick={() => handleSendWhatsappReminder(app.phone, app.patientName)}
+                        onClick={() => handleSendWhatsappReminder(app.phone || '', app.patientName || 'المريض')}
                         className="p-1.5 rounded-lg bg-[#080e1b] hover:bg-[#242a38] text-[#10B981] transition-colors cursor-pointer"
                         title="إرسال تذكير واتساب"
                       >
                         <span className="material-symbols-outlined text-base">chat</span>
                       </button>
-                      <button
-                        onClick={() => onNavigate('patient-records')}
-                        className="p-1.5 rounded-lg bg-[#080e1b] hover:bg-[#242a38] text-[#38BDF8] transition-colors cursor-pointer"
-                        title="الملف الطبي"
-                      >
-                        <span className="material-symbols-outlined text-base">folder_shared</span>
-                      </button>
+                      {canAccess('patient-records') && (
+                        <button
+                          onClick={() => onNavigate('patient-records')}
+                          className="p-1.5 rounded-lg bg-[#080e1b] hover:bg-[#242a38] text-[#38BDF8] transition-colors cursor-pointer"
+                          title="الملف الطبي"
+                        >
+                          <span className="material-symbols-outlined text-base">folder_shared</span>
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

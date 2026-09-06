@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { PatientListItem, ScreenType } from '../../types';
+import { usePermissions } from '../../context/AuthContext';
 
 interface PatientListItemsScreenProps {
   patients: PatientListItem[];
@@ -12,6 +13,7 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
   onNavigate,
   onSelectPatientForExam,
 }) => {
+  const { canAccess } = usePermissions();
   const [selectedPatientId, setSelectedPatientId] = useState<string>(patients[0]?.id || 'p-1');
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<'visits' | 'labs' | 'chronic' | 'billing'>('visits');
@@ -132,21 +134,25 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => {
-                      onSelectPatientForExam(selectedPatient);
-                      onNavigate('clinical-exam');
-                    }}
-                    className="px-3.5 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] text-xs font-bold shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer"
-                  >
-                    بدء كشف إكلينيكي
-                  </button>
-                  <button
-                    onClick={() => onNavigate('prescription-pad')}
-                    className="px-3 py-2 rounded-xl bg-[#571bc1]/60 hover:bg-[#571bc1] text-[#e9ddff] text-xs font-bold transition-all cursor-pointer"
-                  >
-                    إصدار روشتة
-                  </button>
+                  {canAccess('clinical-exam') && (
+                    <button
+                      onClick={() => {
+                        onSelectPatientForExam(selectedPatient);
+                        onNavigate('clinical-exam');
+                      }}
+                      className="px-3.5 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] text-xs font-bold shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer"
+                    >
+                      بدء كشف إكلينيكي
+                    </button>
+                  )}
+                  {canAccess('prescription-pad') && (
+                    <button
+                      onClick={() => onNavigate('prescription-pad')}
+                      className="px-3 py-2 rounded-xl bg-[#571bc1]/60 hover:bg-[#571bc1] text-[#e9ddff] text-xs font-bold transition-all cursor-pointer"
+                    >
+                      إصدار روشتة
+                    </button>
+                  )}
                 </div>
               </div>
 

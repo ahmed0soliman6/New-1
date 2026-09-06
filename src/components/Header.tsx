@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 import { CLINIC_INFO } from '../data/previewClinicData';
+import { usePermissions } from '../context/AuthContext';
+import { PermissionGate } from './auth/PermissionGate';
+import { ROLE_LABELS } from '../permissions';
 
 interface HeaderProps {
   onOpenNewVisit: () => void;
@@ -20,10 +23,19 @@ export const Header: React.FC<HeaderProps> = ({
   isDark: externalIsDark,
   onToggleTheme: externalToggleTheme,
 }) => {
+  const { role, userProfile } = usePermissions();
   const [internalIsDark, setInternalIsDark] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
 
   const isDark = externalIsDark !== undefined ? externalIsDark : internalIsDark;
+  const roleLabel = ROLE_LABELS[role] || role;
+
+  const rolePillClass =
+    role === 'admin'
+      ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/20'
+      : role === 'doctor'
+      ? 'bg-[#00c2cb]/15 text-[#008f97] dark:text-[#45dee7] border border-[#00c2cb]/20'
+      : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20';
 
   const toggleTheme = () => {
     if (externalToggleTheme) {
@@ -69,29 +81,37 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Fast Action Buttons */}
         <div className="flex items-center gap-2">
           {onOpenDatabaseInspector && (
-            <button
-              onClick={onOpenDatabaseInspector}
-              title="استعراض هيكل قاعدة البيانات والمجموعات والمخطط الإكلينيكي"
-              className="hidden lg:flex items-center gap-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 font-bold text-xs px-3 py-2 rounded-xl border border-emerald-500/30 transition-all cursor-pointer active:scale-95"
-            >
-              <span className="material-symbols-outlined text-base">database</span>
-              <span>معمارية قاعدة البيانات </span>
-            </button>
+            <PermissionGate permission="roles.manage">
+              <button
+                onClick={onOpenDatabaseInspector}
+                title="استعراض هيكل قاعدة البيانات والمجموعات والمخطط الإكلينيكي"
+                className="hidden lg:flex items-center gap-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 font-bold text-xs px-3 py-2 rounded-xl border border-emerald-500/30 transition-all cursor-pointer active:scale-95"
+              >
+                <span className="material-symbols-outlined text-base">database</span>
+                <span>معمارية قاعدة البيانات</span>
+              </button>
+            </PermissionGate>
           )}
-          <button
-            onClick={onOpenNewVisit}
-            className="flex items-center gap-1.5 bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] font-bold text-xs px-3.5 py-2 rounded-xl shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95"
-          >
-            <span className="material-symbols-outlined text-lg">person_add</span>
-            <span>+ تسجيل زيارة جديدة</span>
-          </button>
-          <button
-            onClick={onOpenNewAppointment}
-            className="flex items-center gap-1.5 bg-purple-100 hover:bg-purple-200 dark:bg-[#571bc1]/60 dark:hover:bg-[#571bc1] text-purple-900 dark:text-[#e9ddff] font-bold text-xs px-3.5 py-2 rounded-xl border border-purple-200 dark:border-[#d0bcff]/20 transition-all cursor-pointer active:scale-95"
-          >
-            <span className="material-symbols-outlined text-lg">calendar_add_on</span>
-            <span>+ إضافة موعد</span>
-          </button>
+
+          <PermissionGate permission="visits.create">
+            <button
+              onClick={onOpenNewVisit}
+              className="flex items-center gap-1.5 bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] font-bold text-xs px-3.5 py-2 rounded-xl shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95"
+            >
+              <span className="material-symbols-outlined text-lg">person_add</span>
+              <span>+ تسجيل زيارة جديدة</span>
+            </button>
+          </PermissionGate>
+
+          <PermissionGate permission="appointments.create">
+            <button
+              onClick={onOpenNewAppointment}
+              className="flex items-center gap-1.5 bg-purple-100 hover:bg-purple-200 dark:bg-[#571bc1]/60 dark:hover:bg-[#571bc1] text-purple-900 dark:text-[#e9ddff] font-bold text-xs px-3.5 py-2 rounded-xl border border-purple-200 dark:border-[#d0bcff]/20 transition-all cursor-pointer active:scale-95"
+            >
+              <span className="material-symbols-outlined text-lg">calendar_add_on</span>
+              <span>+ إضافة موعد</span>
+            </button>
+          </PermissionGate>
         </div>
 
         {/* Dark/Light mode toggle */}
@@ -138,21 +158,6 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             </div>
           )}
-        </div>
-
-        {/* Doctor Identity */}
-        <div className="flex items-center gap-2.5 pr-2 border-r border-slate-200 dark:border-white/10">
-          <div className="text-left leading-tight hidden sm:block" dir="rtl">
-            <div className="text-xs text-slate-900 dark:text-[#dde2f5] font-bold">د. حازم القاضي</div>
-            <div className="text-[11px] text-[#008f97] dark:text-[#00c2cb] font-medium">استشاري الباطنة والقلب</div>
-          </div>
-          <div className="w-9 h-9 rounded-xl overflow-hidden border border-[#00c2cb]/40 bg-[#00c2cb]/20 flex items-center justify-center">
-            <img
-              src={CLINIC_INFO.doctorPhotoUrl}
-              alt="د. حازم القاضي"
-              className="w-full h-full object-cover"
-            />
-          </div>
         </div>
       </div>
     </header>

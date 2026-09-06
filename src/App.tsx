@@ -96,11 +96,45 @@ import { startVisit } from './services/workflows';
 import { auth, db } from './services/firebase';
 import { logoutAccount } from './services/auth';
 import { AuthScreen } from './components/AuthScreen';
+import { AuthProvider, useAuth, usePermissions } from './context/AuthContext';
 import { createAppointmentTransaction, checkInAppointmentTransaction, registerWalkInTransaction, startVisitTransaction, completeVisitTransaction } from './services/firestoreWorkflows';
 import { subscribeToPatients, subscribeToAppointments, subscribeToVisits, subscribeToInvoices, subscribeToPayments } from './services/repositories';
 
 function ClinicApp() {
-  const [activeScreen, setActiveScreen] = useState<ScreenType>('dashboard');
+  const { canAccess, allowedScreens } = usePermissions();
+
+  const [activeScreen, setActiveScreen] = useState<ScreenType>(() => {
+    if (allowedScreens && allowedScreens.length > 0 && !allowedScreens.includes('dashboard')) {
+      return (allowedScreens[0] as ScreenType) || 'new-visit';
+    }
+    return 'dashboard';
+  });
+
+  // Strict synchronization: if user's permissions change or active screen is unauthorized, redirect immediately
+  useEffect(() => {
+    if (allowedScreens && allowedScreens.length > 0) {
+      if (!canAccess(activeScreen)) {
+        const firstPermitted =
+          (allowedScreens.find((s) => canAccess(s)) as ScreenType) ||
+          (allowedScreens[0] as ScreenType) ||
+          'new-visit';
+        setActiveScreen(firstPermitted);
+      }
+    }
+  }, [allowedScreens, activeScreen, canAccess]);
+
+  const handleNavigate = (screen: ScreenType) => {
+    if (!canAccess(screen)) {
+      console.warn(`[Permissions] Navigation to '${screen}' blocked by user permissions.`);
+      const firstPermitted =
+        (allowedScreens.find((s) => canAccess(s)) as ScreenType) ||
+        (allowedScreens[0] as ScreenType) ||
+        'new-visit';
+      setActiveScreen(firstPermitted);
+      return;
+    }
+    setActiveScreen(screen);
+  };
   const [selectedBranch, setSelectedBranch] = useState<string>('mohandessin');
   const [theme, setTheme] = useState<'light' | 'dark'>('light'); // Day/Light mode enabled by default
   const [appointments, setAppointments] = useState<AppointmentListItem[]>(INITIAL_APPOINTMENTS_PREVIEW);
@@ -241,6 +275,7 @@ function ClinicApp() {
 
   // Synchronize Appointments with Schedule
   useEffect(() => {
+    if (appointmentsCanonical.length === 0) return;
     const mappedApps: AppointmentListItem[] = appointmentsCanonical.map((a) => {
       const pat = patientsCanonical.find((p) => p.patientId === a.patientId);
       return {
@@ -251,12 +286,13 @@ function ClinicApp() {
         phone: pat?.phone || '',
         date: a.scheduledDate,
         time: a.scheduledTime,
+        timeSlot: a.scheduledTime || '05:00 م',
         visitType: a.visitType,
         status: a.status === 'ARRIVED' ? 'حضر وسدد' : a.status === 'CANCELLED' ? 'ملغي' : 'مجدول',
         expectedFee: 350,
       };
     });
-    setAppointmentsCanonical(mappedApps);
+    setAppointments(mappedApps);
   }, [appointmentsCanonical, patientsCanonical]);
 
   // Modals
@@ -650,7 +686,7 @@ function ClinicApp() {
       {/* Permanent Right Sidebar Navigation */}
       <Sidebar
         activeScreen={activeScreen}
-        onNavigate={setActiveScreen}
+        onNavigate={handleNavigate}
         queueCount={queue.length}
         onLogout={() => { void logoutAccount(); }}
       />
@@ -659,7 +695,7 @@ function ClinicApp() {
       <div className="flex-1 mr-72 flex flex-col min-h-screen">
         {/* Top Header */}
         <Header
-          onOpenNewVisit={() => setActiveScreen('new-visit')}
+          onOpenNewVisit={() => handleNavigate('new-visit')}
           onOpenNewAppointment={() => setIsNewAppointmentOpen(true)}
           onOpenDatabaseInspector={() => setIsDatabaseInspectorOpen(true)}
           selectedBranch={selectedBranch}
@@ -695,125 +731,156 @@ function ClinicApp() {
 
         {/* Main View Container */}
         <main className="flex-1 mt-16 p-6 lg:p-8 max-w-7xl w-full mx-auto">
-          {activeScreen === 'dashboard' && (
-            <DashboardScreen
-              onNavigate={setActiveScreen}
-              appointments={appointments}
-              queue={queue}
-              onConfirmCheckIn={handleConfirmCheckIn}
-              onCallPatient={handleCallPatient}
-            />
-          )}
+          {!canAccess(activeScreen) ? (
+            <div className="p-8 rounded-2xl bg-white dark:bg-[#111A2E] border border-rose-500/30 text-center space-y-4 shadow-xl">
+              <div className="w-14 h-14 rounded-2xl bg-rose-500/15 text-rose-500 mx-auto flex items-center justify-center">
+                <span className="material-symbols-outlined text-3xl">lock</span>
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-slate-900 dark:text-[#dde2f5]">
+                  هذه الصفحة غير مصرحة لحسابك
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-[#859394]">
+                  تم تقييد الوصول لهذه الصفحة من قِبل إدارة العيادة. تواصل مع المسؤول في حال الحاجة لتعديل الصلاحيات.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const firstPermitted =
+                    (allowedScreens.find((s) => canAccess(s)) as ScreenType) ||
+                    (allowedScreens[0] as ScreenType) ||
+                    'new-visit';
+                  setActiveScreen(firstPermitted);
+                }}
+                className="px-4 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold text-xs transition-colors cursor-pointer"
+              >
+                الانتقال إلى أول صفحة مسموحة لك
+              </button>
+            </div>
+          ) : (
+            <>
+              {activeScreen === 'dashboard' && (
+                <DashboardScreen
+                  onNavigate={handleNavigate}
+                  appointments={appointments}
+                  queue={queue}
+                  onConfirmCheckIn={handleConfirmCheckIn}
+                  onCallPatient={handleCallPatient}
+                />
+              )}
 
-          {activeScreen === 'new-visit' && (
-            <PatientIntakeScreen
-              onAddPatientToQueue={handleAddPatientToQueue}
-              patients={patients}
-              presetChronicConditions={presetChronicConditions}
-              onAddChronicCondition={handleAddChronicCondition}
-              onNavigate={setActiveScreen}
-              nextFileNumber={nextFileNumber}
-            />
-          )}
+              {activeScreen === 'new-visit' && (
+                <PatientIntakeScreen
+                  onAddPatientToQueue={handleAddPatientToQueue}
+                  patients={patients}
+                  presetChronicConditions={presetChronicConditions}
+                  onAddChronicCondition={handleAddChronicCondition}
+                  onNavigate={handleNavigate}
+                  nextFileNumber={nextFileNumber}
+                />
+              )}
 
-          {activeScreen === 'waiting-queue' && (
-            <QueueScreen
-              queue={queue}
-              onCallPatient={handleCallPatient}
-              onNavigate={setActiveScreen}
-            />
-          )}
+              {activeScreen === 'waiting-queue' && (
+                <QueueScreen
+                  queue={queue}
+                  onCallPatient={handleCallPatient}
+                  onNavigate={handleNavigate}
+                />
+              )}
 
-          {(activeScreen === 'appointments' || activeScreen === 'upcoming-followups') && (
-            <AppointmentsScreen
-              appointments={appointments}
-              onCheckInPatient={(app) => handleConfirmCheckIn(app, app.expectedFee, 'نقدي')}
-              onOpenNewAppointment={() => setIsNewAppointmentOpen(true)}
-              onNavigate={setActiveScreen}
-            />
-          )}
+              {(activeScreen === 'appointments' || activeScreen === 'upcoming-followups') && (
+                <AppointmentsScreen
+                  appointments={appointments}
+                  onCheckInPatient={(app) => handleConfirmCheckIn(app, app.expectedFee, 'نقدي')}
+                  onOpenNewAppointment={() => setIsNewAppointmentOpen(true)}
+                  onNavigate={handleNavigate}
+                />
+              )}
 
-          {activeScreen === 'clinical-exam' && (
-            <ExaminationScreen
-              patient={activeExamPatient}
-              onNavigate={setActiveScreen}
-              onFinishExam={handleFinishExam}
-              radiologyCatalog={radiologyCatalog}
-              onAddRadiologyToCatalog={handleAddRadiologyToCatalog}
-              labCatalog={labCatalog}
-              onAddLabToCatalog={handleAddLabToCatalog}
-              drugCatalog={drugCatalog}
-              onAddDrugToCatalog={handleAddDrugToCatalog}
-              diagnosesCatalog={diagnosesCatalog}
-              onAddDiagnosisToCatalog={handleAddDiagnosisToCatalog}
-              symptomsCatalog={symptomsCatalog}
-              onAddSymptomToCatalog={handleAddSymptomToCatalog}
-              activePrescription={activePrescription}
-              onChangeActivePrescription={setActivePrescription}
-            />
-          )}
+              {activeScreen === 'clinical-exam' && (
+                <ExaminationScreen
+                  patient={activeExamPatient}
+                  onNavigate={handleNavigate}
+                  onFinishExam={handleFinishExam}
+                  radiologyCatalog={radiologyCatalog}
+                  onAddRadiologyToCatalog={handleAddRadiologyToCatalog}
+                  labCatalog={labCatalog}
+                  onAddLabToCatalog={handleAddLabToCatalog}
+                  drugCatalog={drugCatalog}
+                  onAddDrugToCatalog={handleAddDrugToCatalog}
+                  diagnosesCatalog={diagnosesCatalog}
+                  onAddDiagnosisToCatalog={handleAddDiagnosisToCatalog}
+                  symptomsCatalog={symptomsCatalog}
+                  onAddSymptomToCatalog={handleAddSymptomToCatalog}
+                  activePrescription={activePrescription}
+                  onChangeActivePrescription={setActivePrescription}
+                />
+              )}
 
-          {activeScreen === 'prescription-pad' && (
-            <PrescriptionPadScreen
-              patient={activeExamPatient}
-              items={activePrescription}
-              onChangeItems={setActivePrescription}
-            />
-          )}
+              {activeScreen === 'prescription-pad' && (
+                <PrescriptionPadScreen
+                  patient={activeExamPatient}
+                  items={activePrescription}
+                  onChangeItems={setActivePrescription}
+                />
+              )}
 
-          {activeScreen === 'patient-records' && (
-            <PatientListItemsScreen
-              patients={patients}
-              onNavigate={setActiveScreen}
-              onSelectPatientForExam={(p) => setActiveExamPatient(p)}
-            />
-          )}
+              {activeScreen === 'patient-records' && (
+                <PatientListItemsScreen
+                  patients={patients}
+                  onNavigate={handleNavigate}
+                  onSelectPatientForExam={(p) => setActiveExamPatient(p)}
+                />
+              )}
 
-          {(activeScreen === 'finance' || activeScreen === 'billing-payments') && (
-            <FinanceScreen
-              transactions={transactions}
-              onAddTransaction={(tx) => setTransactions((prev) => [tx, ...prev])}
-            />
-          )}
+              {(activeScreen === 'finance' || activeScreen === 'billing-payments') && (
+                <FinanceScreen
+                  transactions={transactions}
+                  onAddTransaction={(tx) => setTransactions((prev) => [tx, ...prev])}
+                />
+              )}
 
-          {activeScreen === 'clinical-reports' && (
-            <ClinicalReportsScreen />
-          )}
+              {activeScreen === 'clinical-reports' && (
+                <ClinicalReportsScreen />
+              )}
 
-          {activeScreen === 'prescriptions-catalog' && (
-            <PrescriptionCatalogScreen
-              onNavigate={setActiveScreen}
-              onApplyProtocolToPrescription={(_prot: ClinicProtocol) => {
-                // Pre-loads into prescription pad
-              }}
-            />
-          )}
+              {activeScreen === 'prescriptions-catalog' && (
+                <PrescriptionCatalogScreen
+                  onNavigate={handleNavigate}
+                  onApplyProtocolToPrescription={(_prot: ClinicProtocol) => {
+                    // Pre-loads into prescription pad
+                  }}
+                />
+              )}
 
-          {(activeScreen === 'settings' || activeScreen === 'system-settings') && (
-            <SettingsScreen
-              presetChronicConditions={presetChronicConditions}
-              onAddChronicCondition={handleAddChronicCondition}
-              onRemoveChronicCondition={handleRemoveChronicCondition}
-              radiologyCatalog={radiologyCatalog}
-              onAddRadiology={handleAddRadiologyToCatalog}
-              onRemoveRadiology={handleRemoveRadiology}
-              onToggleRadiologyFavorite={handleToggleRadiologyFavorite}
-              labCatalog={labCatalog}
-              onAddLab={handleAddLabToCatalog}
-              onRemoveLab={handleRemoveLab}
-              onToggleLabFavorite={handleToggleLabFavorite}
-              drugCatalog={drugCatalog}
-              onAddDrug={handleAddDrugToCatalog}
-              onRemoveDrug={handleRemoveDrug}
-              onToggleDrugFavorite={handleToggleDrugFavorite}
-              diagnosesCatalog={diagnosesCatalog}
-              onAddDiagnosis={handleAddDiagnosisToCatalog}
-              onRemoveDiagnosis={handleRemoveDiagnosis}
-              onToggleDiagnosisFavorite={handleToggleDiagnosisFavorite}
-              symptomsCatalog={symptomsCatalog}
-              onAddSymptom={handleAddSymptomToCatalog}
-              onRemoveSymptom={handleRemoveSymptom}
-            />
+              {(activeScreen === 'settings' || activeScreen === 'system-settings') && (
+                <SettingsScreen
+                  presetChronicConditions={presetChronicConditions}
+                  onAddChronicCondition={handleAddChronicCondition}
+                  onRemoveChronicCondition={handleRemoveChronicCondition}
+                  radiologyCatalog={radiologyCatalog}
+                  onAddRadiology={handleAddRadiologyToCatalog}
+                  onRemoveRadiology={handleRemoveRadiology}
+                  onToggleRadiologyFavorite={handleToggleRadiologyFavorite}
+                  labCatalog={labCatalog}
+                  onAddLab={handleAddLabToCatalog}
+                  onRemoveLab={handleRemoveLab}
+                  onToggleLabFavorite={handleToggleLabFavorite}
+                  drugCatalog={drugCatalog}
+                  onAddDrug={handleAddDrugToCatalog}
+                  onRemoveDrug={handleRemoveDrug}
+                  onToggleDrugFavorite={handleToggleDrugFavorite}
+                  diagnosesCatalog={diagnosesCatalog}
+                  onAddDiagnosis={handleAddDiagnosisToCatalog}
+                  onRemoveDiagnosis={handleRemoveDiagnosis}
+                  onToggleDiagnosisFavorite={handleToggleDiagnosisFavorite}
+                  symptomsCatalog={symptomsCatalog}
+                  onAddSymptom={handleAddSymptomToCatalog}
+                  onRemoveSymptom={handleRemoveSymptom}
+                />
+              )}
+            </>
           )}
         </main>
       </div>
@@ -856,12 +923,31 @@ function ClinicApp() {
 }
 
 
-export default function App() {
-  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
-  useEffect(() => {
-    if (!auth) return;
-    return onAuthStateChanged(auth, setFirebaseUser);
-  }, []);
-  if (!auth || !firebaseUser) return <AuthScreen />;
+function AuthenticatedApp() {
+  const { currentUser, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#080e1b] flex items-center justify-center" dir="rtl">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-3 border-[#00c2cb] border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-xs text-slate-400 font-medium">جارٍ تحميل بيانات الجلسة...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return <AuthScreen />;
+  }
+
   return <ClinicApp />;
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AuthenticatedApp />
+    </AuthProvider>
+  );
 }

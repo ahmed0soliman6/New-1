@@ -1,6 +1,8 @@
 import React from 'react';
 import { ScreenType } from '../types';
 import { CLINIC_INFO } from '../data/previewClinicData';
+import { usePermissions } from '../context/AuthContext';
+import { ROLE_LABELS, canAccessRoute } from '../permissions';
 
 interface SidebarProps {
   activeScreen: ScreenType;
@@ -10,9 +12,10 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ activeScreen, onNavigate, queueCount, onLogout }) => {
+  const { role, userProfile, canAccess } = usePermissions();
   const [doctorStatus, setDoctorStatus] = React.useState<'available' | 'break'>('available');
 
-  const navItems: { id: ScreenType; label: string; icon: string; badge?: number | string }[] = [
+  const allNavItems: { id: ScreenType; label: string; icon: string; badge?: number | string }[] = [
     { id: 'dashboard', label: 'لوحة التحكم', icon: 'space_dashboard' },
     { id: 'new-visit', label: 'تسجيل زيارة جديدة', icon: 'person_add' },
     { id: 'waiting-queue', label: 'المرضى في الانتظار', icon: 'hourglass_top', badge: queueCount },
@@ -25,6 +28,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeScreen, onNavigate, queu
     { id: 'prescription-pad', label: 'الروشتة الإلكترونية (A5)', icon: 'prescriptions' },
     { id: 'system-settings', label: 'إعدادات النظام والأدلة', icon: 'settings' },
   ];
+
+  // Dynamically filter items according to the user's allowed screens configured in Firestore
+  const navItems = allNavItems.filter((item) => canAccess(item.id));
+
+  const roleLabel = ROLE_LABELS[role] || role;
+
+  const roleBadgeStyle =
+    role === 'admin'
+      ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+      : role === 'doctor'
+      ? 'bg-[#00c2cb]/20 text-[#45dee7] border-[#00c2cb]/40'
+      : 'bg-amber-500/20 text-amber-300 border-amber-500/40';
 
   return (
     <aside className="fixed right-0 top-0 h-full w-72 bg-[#111A2E] border-l border-white/5 z-50 flex flex-col shadow-2xl">
@@ -52,7 +67,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeScreen, onNavigate, queu
       </div>
 
       {/* Navigation List */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1.5">
+      <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
         {navItems.map((item) => {
           const isActive = activeScreen === item.id;
           return (
@@ -92,37 +107,60 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeScreen, onNavigate, queu
         })}
       </nav>
 
-      {/* Doctor Availability & Footer */}
-      <div className="p-3 bg-[#080e1b] border-t border-white/5 space-y-2">
-        <div className="p-2 rounded-xl bg-[#111A2E] flex items-center justify-between border border-white/5">
-          <div className="flex items-center gap-2">
-            <span
-              className={`w-2.5 h-2.5 rounded-full ring-2 ${
-                doctorStatus === 'available'
-                  ? 'bg-[#00c2cb] ring-[#00c2cb]/30'
-                  : 'bg-amber-400 ring-amber-400/30'
-              }`}
-            ></span>
-            <span className="text-xs font-semibold text-[#dde2f5]">
-              {doctorStatus === 'available' ? 'متاح للكشف' : 'في استراحة'}
-            </span>
+      {/* Doctor Availability, User Identity & Logout */}
+      <div className="p-3 bg-[#080e1b] border-t border-white/5 space-y-2.5">
+        {role !== 'secretary' && (
+          <div className="p-2 rounded-xl bg-[#111A2E] flex items-center justify-between border border-white/5">
+            <div className="flex items-center gap-2">
+              <span
+                className={`w-2.5 h-2.5 rounded-full ring-2 ${
+                  doctorStatus === 'available'
+                    ? 'bg-[#00c2cb] ring-[#00c2cb]/30'
+                    : 'bg-amber-400 ring-amber-400/30'
+                }`}
+              ></span>
+              <span className="text-xs font-semibold text-[#dde2f5]">
+                {doctorStatus === 'available' ? 'متاح للكشف' : 'في استراحة'}
+              </span>
+            </div>
+            <button
+              onClick={() =>
+                setDoctorStatus((prev) => (prev === 'available' ? 'break' : 'available'))
+              }
+              className="px-2.5 py-1 bg-[#18233C] hover:bg-[#242a38] text-[#bbc9ca] hover:text-[#dde2f5] rounded-lg text-xs font-medium transition-colors cursor-pointer"
+            >
+              {doctorStatus === 'available' ? 'استراحة' : 'تفعيل'}
+            </button>
           </div>
-          <button
-            onClick={() =>
-              setDoctorStatus((prev) => (prev === 'available' ? 'break' : 'available'))
-            }
-            className="px-2.5 py-1 bg-[#18233C] hover:bg-[#242a38] text-[#bbc9ca] hover:text-[#dde2f5] rounded-lg text-xs font-medium transition-colors cursor-pointer"
-          >
-            {doctorStatus === 'available' ? 'استراحة' : 'تفعيل'}
-          </button>
-        </div>
+        )}
 
-        <button type="button" onClick={onLogout} className="w-full flex items-center justify-center gap-2 rounded-xl border border-red-400/30 bg-red-400/10 px-3 py-2 text-xs font-bold text-red-300 hover:bg-red-400/20">
-          <span className="material-symbols-outlined text-base">logout</span> تسجيل الخروج
-        </button>
-        <div className="flex items-center justify-between text-[#859394] text-[11px] px-2">
-          <span>إصدار النظام</span>
-          <span className="font-mono text-[#00c2cb] font-semibold">v2.4-solo-eg</span>
+        {/* User Identity (Clean, No Image) + Logout */}
+        <div className="p-2.5 rounded-xl bg-[#111A2E] border border-white/5 flex items-center justify-between gap-2">
+          <div className="min-w-0 text-right">
+            <div className="text-xs font-bold text-[#dde2f5] truncate">
+              {userProfile?.displayName || userProfile?.username || 'المستخدم'}
+            </div>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-[10px] text-[#859394] font-mono truncate" dir="ltr">
+                @{userProfile?.username || 'user'}
+              </span>
+              <span
+                className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold border shrink-0 ${roleBadgeStyle}`}
+              >
+                {roleLabel}
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onLogout}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-400/30 bg-red-400/10 text-xs font-bold text-red-300 hover:bg-red-400/20 transition-colors cursor-pointer shrink-0"
+            title="تسجيل الخروج من الحساب"
+          >
+            <span className="material-symbols-outlined text-sm">logout</span>
+            <span>خروج</span>
+          </button>
         </div>
       </div>
     </aside>

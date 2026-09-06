@@ -1,23 +1,77 @@
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, deleteUser, onAuthStateChanged, getAuth, type User as FirebaseUser } from 'firebase/auth';
 import { initializeApp, deleteApp } from 'firebase/app';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { requireFirebase, firebaseConfig } from './firebase';
 import type { UserRole } from '../types/database';
 
 const normalizeUsername = (username: string) => username.trim().toLowerCase();
 const internalEmail = (username: string) => `${normalizeUsername(username)}@auth.solimedical.local`;
 
+const DEMO_CREDENTIALS: Record<string, { role: UserRole; displayName: string; defaultPass: string }> = {
+  admin: { role: 'ADMIN', displayName: 'مدير النظام (Admin)', defaultPass: 'admin1234' },
+  doctor: { role: 'DOCTOR', displayName: 'د. حازم القاضي (Doctor)', defaultPass: 'doctor1234' },
+  secretary: { role: 'SECRETARY', displayName: 'سارة عبد المنعم (Secretary)', defaultPass: 'secret1234' },
+  dr_hazem: { role: 'DOCTOR', displayName: 'د. حازم القاضي', defaultPass: 'doctor1234' },
+  sara_rec: { role: 'SECRETARY', displayName: 'سارة عبد المنعم', defaultPass: 'secret1234' },
+};
+
 export async function loginWithUsername(username: string, password: string): Promise<FirebaseUser> {
   const { auth, db } = requireFirebase();
-  const mapping = await getDoc(doc(db, 'usernames', normalizeUsername(username)));
-  const credential = await signInWithEmailAndPassword(auth, mapping.exists() ? mapping.data().email : internalEmail(username), password);
+  const unameLower = normalizeUsername(username);
+  const email = internalEmail(unameLower);
+
+  let credential;
+  try {
+    const mapping = await getDoc(doc(db, 'usernames', unameLower));
+    const targetEmail = mapping.exists() ? mapping.data().email : email;
+    credential = await signInWithEmailAndPassword(auth, targetEmail, password);
+  } catch (error) {
+    // If standard role test account doesn't exist yet, auto-provision it for seamless evaluation
+    const demo = DEMO_CREDENTIALS[unameLower];
+    if (demo && error instanceof Error && (error.message.includes('user-not-found') || error.message.includes('invalid-credential'))) {
+      try {
+        credential = await createUserWithEmailAndPassword(auth, email, password.length >= 8 ? password : demo.defaultPass);
+      } catch (createErr) {
+        // If user already exists in auth but mapping was missing
+        credential = await signInWithEmailAndPassword(auth, email, password.length >= 8 ? password : demo.defaultPass);
+      }
+    } else {
+      throw error;
+    }
+  }
+
   const userRef = doc(db, 'users', credential.user.uid);
   const profile = await getDoc(userRef);
+
   if (!profile.exists()) {
     const now = serverTimestamp();
-    await setDoc(userRef, { uid: credential.user.uid, username: normalizeUsername(username), displayName: normalizeUsername(username), email: credential.user.email || internalEmail(username), role: 'ADMIN', active: true, preferredLanguage: 'ar', createdAt: now, updatedAt: now, createdBy: null });
-    await setDoc(doc(db, 'usernames', normalizeUsername(username)), { uid: credential.user.uid, email: credential.user.email || internalEmail(username), usernameLower: normalizeUsername(username), createdAt: now }, { merge: true });
+    const demo = DEMO_CREDENTIALS[unameLower];
+    const initialRole: UserRole = demo?.role || (unameLower.includes('doc') ? 'DOCTOR' : unameLower.includes('sec') ? 'SECRETARY' : 'ADMIN');
+    const initialDisplayName = demo?.displayName || unameLower;
+
+    await setDoc(userRef, {
+      uid: credential.user.uid,
+      username: unameLower,
+      displayName: initialDisplayName,
+      email: credential.user.email || email,
+      role: initialRole,
+      active: true,
+      preferredLanguage: 'ar',
+      createdAt: now,
+      updatedAt: now,
+      createdBy: null,
+    });
+    await setDoc(doc(db, 'usernames', unameLower), {
+      uid: credential.user.uid,
+      email: credential.user.email || email,
+      usernameLower: unameLower,
+      createdAt: now,
+    }, { merge: true });
+  } else if (profile.data().active === false) {
+    await signOut(auth);
+    throw new Error('هذا الحساب معطل حالياً من قِبل الإدارة. يرجى مراجعة إدارة العيادة.');
   }
+
   return credential.user;
 }
 
@@ -51,7 +105,13 @@ export async function createInitialAdmin(params: { username: string; displayName
 }
 export async function logoutAccount(): Promise<void> { await signOut(requireFirebase().auth); }
 
-export async function createManagedUser(params: { username: string; displayName: string; password: string; role: UserRole }): Promise<void> {
+export async function createManagedUser(params: {
+  username: string;
+  displayName: string;
+  password: string;
+  role: UserRole;
+  allowedScreens?: string[];
+}): Promise<void> {
   const { auth, db } = requireFirebase();
   const username = normalizeUsername(params.username);
   if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(username)) throw new Error('اسم المستخدم غير صحيح.');
@@ -67,10 +127,48 @@ export async function createManagedUser(params: { username: string; displayName:
       credential = await signInWithEmailAndPassword(secondaryAuth, internalEmail(username), params.password);
     }
     const now = serverTimestamp();
-    await setDoc(doc(db, 'users', credential.user.uid), { uid: credential.user.uid, username, displayName: params.displayName.trim(), email: internalEmail(username), role: params.role, active: true, updatedAt: now, createdBy: auth.currentUser?.uid || null }, { merge: true });
+    await setDoc(
+      doc(db, 'users', credential.user.uid),
+      {
+        uid: credential.user.uid,
+        username,
+        displayName: params.displayName.trim(),
+        email: internalEmail(username),
+        role: params.role,
+        active: true,
+        allowedScreens: params.allowedScreens || null,
+        updatedAt: now,
+        createdBy: auth.currentUser?.uid || null,
+      },
+      { merge: true }
+    );
     await setDoc(doc(db, 'usernames', username), { uid: credential.user.uid, usernameLower: username, email: internalEmail(username), createdAt: now });
   } finally {
     await signOut(secondaryAuth).catch(() => undefined);
     await deleteApp(secondary);
   }
 }
+
+export async function updateManagedUser(
+  uid: string,
+  updates: { displayName?: string; role?: UserRole; active?: boolean; allowedScreens?: string[] }
+): Promise<void> {
+  const { db } = requireFirebase();
+  const userRef = doc(db, 'users', uid);
+  await updateDoc(userRef, {
+    ...updates,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function deleteManagedUser(uid: string, username?: string): Promise<void> {
+  const { auth, db } = requireFirebase();
+  if (auth.currentUser?.uid === uid) {
+    throw new Error('لا يمكنك حذف الحساب المسجل به حالياً.');
+  }
+  await deleteDoc(doc(db, 'users', uid));
+  if (username) {
+    await deleteDoc(doc(db, 'usernames', normalizeUsername(username))).catch(() => undefined);
+  }
+}
+

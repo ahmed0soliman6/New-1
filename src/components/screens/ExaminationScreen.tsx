@@ -18,6 +18,8 @@ import { LabCard } from '../examination/LabCard';
 import { DiagnosisCard, PatientDiagnosis } from '../examination/DiagnosisCard';
 import { MedicationsCard } from '../examination/MedicationsCard';
 import { FollowupCard } from '../examination/FollowupCard';
+import { usePermissions } from '../../context/AuthContext';
+import { PermissionGate } from '../auth/PermissionGate';
 
 interface ExaminationScreenProps {
   patient: PatientListItem;
@@ -151,16 +153,51 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
     '• الامتناع التام عن الأطعمة الدسمة، الحارة، المقليات، والمشروبات الغازية.\n• عدم الاستلقاء أو النوم مباشرة بعد تناول الطعام لمدة ساعتين على الأقل.'
   );
 
+  const { assertPermission, canAccess, role, userProfile } = usePermissions();
+  const isAllowed = canAccess('clinical-exam');
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   const handleFinish = () => {
-    setShowSuccessModal(true);
-    setTimeout(() => {
-      setShowSuccessModal(false);
-      onFinishExam();
-      onNavigate('waiting-queue');
-    }, 2200);
+    if (!isAllowed) {
+      alert('غير مصرح لك بإنهاء الكشف الطبي أو حفظ الزيارة.');
+      return;
+    }
+    try {
+      assertPermission('clinical.complete', 'إنهاء الكشف وحفظ الزيارة');
+      setShowSuccessModal(true);
+      setTimeout(() => {
+        setShowSuccessModal(false);
+        onFinishExam();
+        onNavigate('waiting-queue');
+      }, 2200);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'ليس لديك صلاحية لإنهاء الكشف.');
+    }
   };
+
+  if (!isAllowed) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center max-w-xl mx-auto space-y-5">
+        <div className="w-20 h-20 rounded-3xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center shadow-lg">
+          <span className="material-symbols-outlined text-4xl">gpp_bad</span>
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+            غير مصرح بالوصول إلى غرفة الكشف الطبي
+          </h2>
+          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+            حسابك الحالي ({userProfile?.displayName || userProfile?.username || 'المستخدم'}) بدور ({role}) لا يمتلك صلاحية الوصول لشاشة الكشف الإكلينيكي أو تحرير السجلات الطبية. هذه الشاشة مخصصة للأطباء فقط.
+          </p>
+        </div>
+        <button
+          onClick={() => onNavigate('dashboard')}
+          className="px-6 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold text-xs shadow-md transition-all cursor-pointer"
+        >
+          العودة للوحة التحكم المسموحة
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col w-full pb-20 space-y-6 text-slate-800 dark:text-[#dde2f5]">
@@ -222,14 +259,16 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
               <span>عرض وطباعة الروشتة (Rx)</span>
             </button>
 
-            <button
-              type="button"
-              onClick={handleFinish}
-              className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] text-xs font-bold shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95"
-            >
-              <span className="material-symbols-outlined text-base">task_alt</span>
-              <span>إنهاء الكشف وحفظ الزيارة</span>
-            </button>
+            <PermissionGate permission="clinical.complete">
+              <button
+                type="button"
+                onClick={handleFinish}
+                className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] text-xs font-bold shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95"
+              >
+                <span className="material-symbols-outlined text-base">task_alt</span>
+                <span>إنهاء الكشف وحفظ الزيارة</span>
+              </button>
+            </PermissionGate>
           </div>
         </div>
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CLINIC_INFO } from '../../data/previewClinicData';
 import {
   RadiologyCatalogItem,
@@ -9,6 +9,8 @@ import {
 } from '../../types';
 import { MedicalCatalogsManager } from '../settings/MedicalCatalogsManager';
 import { UserManagementPanel } from '../settings/UserManagementPanel';
+import { usePermissions } from '../../context/AuthContext';
+import { PermissionGate } from '../auth/PermissionGate';
 
 interface ChronicItem {
   id: string;
@@ -71,8 +73,16 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onAddSymptom = () => {},
   onRemoveSymptom = () => {},
 }) => {
+  const { hasPermission, assertPermission } = usePermissions();
   const [activeSettingsSection, setActiveSettingsSection] = useState<'catalogs' | 'chronic' | 'general' | 'users'>('catalogs');
   const [clinicName, setClinicName] = useState(CLINIC_INFO.name);
+
+  // If user cannot view users but tab was somehow selected, fallback to catalogs
+  useEffect(() => {
+    if (activeSettingsSection === 'users' && !hasPermission('users.view')) {
+      setActiveSettingsSection('catalogs');
+    }
+  }, [activeSettingsSection, hasPermission]);
   const [phone, setPhone] = useState(CLINIC_INFO.branches[0]?.mobile || '01092847162');
   const [newVisitFee, setNewVisitFee] = useState(300);
   const [followupFee, setFollowupFee] = useState(150);
@@ -88,8 +98,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    setSavedToast('تم حفظ كافة إعدادات عيادات سولي بنجاح وتطبيقها على المنظومة');
-    setTimeout(() => setSavedToast(null), 3500);
+    try {
+      assertPermission('settings.edit', 'حفظ إعدادات العيادة العامة والأسعار');
+      setSavedToast('تم حفظ كافة إعدادات عيادات سولي بنجاح وتطبيقها على المنظومة');
+      setTimeout(() => setSavedToast(null), 3500);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'ليس لديك صلاحية لتعديل الإعدادات العامة.');
+    }
   };
 
   const handleAddNewCondition = (e: React.FormEvent) => {
@@ -167,31 +182,35 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <span>الأمراض المزمنة ({presetChronicConditions.length})</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => setActiveSettingsSection('users')}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                activeSettingsSection === 'users'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
-              }`}
-            >
-              <span className="material-symbols-outlined text-base">manage_accounts</span>
-              <span>المستخدمون والصلاحيات</span>
-            </button>
+            <PermissionGate permission="users.view">
+              <button
+                type="button"
+                onClick={() => setActiveSettingsSection('users')}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  activeSettingsSection === 'users'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
+                }`}
+              >
+                <span className="material-symbols-outlined text-base">manage_accounts</span>
+                <span>المستخدمون والصلاحيات</span>
+              </button>
+            </PermissionGate>
 
-            <button
-              type="button"
-              onClick={() => setActiveSettingsSection('general')}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                activeSettingsSection === 'general'
-                  ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xs'
-                  : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
-              }`}
-            >
-              <span className="material-symbols-outlined text-base">tune</span>
-              <span>بيانات العيادة والطباعة</span>
-            </button>
+            <PermissionGate permission="settings.edit">
+              <button
+                type="button"
+                onClick={() => setActiveSettingsSection('general')}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  activeSettingsSection === 'general'
+                    ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xs'
+                    : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
+                }`}
+              >
+                <span className="material-symbols-outlined text-base">tune</span>
+                <span>بيانات العيادة والطباعة</span>
+              </button>
+            </PermissionGate>
           </div>
         </div>
       </div>
