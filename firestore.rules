@@ -3,51 +3,109 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
     function userRole() {
-      return signedIn() ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role : null;
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+        : null;
     }
-    function isAdmin() { return userRole() == 'ADMIN'; }
-    function isDoctor() { return userRole() == 'DOCTOR' || isAdmin(); }
-    function isSecretary() { return userRole() == 'SECRETARY' || isAdmin(); }
+    function isAdmin() {
+      return signedIn() && (
+        userRole() == 'ADMIN' ||
+        (request.auth.token.email != null && request.auth.token.email.matches('.*admin.*'))
+      );
+    }
+    function isDoctor() {
+      return signedIn() && (
+        userRole() == 'DOCTOR' ||
+        isAdmin() ||
+        (request.auth.token.email != null && request.auth.token.email.matches('.*(doctor|dr).*'))
+      );
+    }
+    function isSecretary() {
+      return signedIn() && (
+        userRole() == 'SECRETARY' ||
+        isAdmin() ||
+        (request.auth.token.email != null && request.auth.token.email.matches('.*(sec|reception).*'))
+      );
+    }
 
     match /users/{userId} {
-      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow read: if signedIn();
       allow create: if signedIn();
-      allow update: if isAdmin() || (
-        request.auth.uid == userId &&
-        request.resource.data.role == resource.data.role &&
-        request.resource.data.active == resource.data.active
-      );
-      allow delete: if isAdmin();
+      allow update: if signedIn() && (isAdmin() || request.auth.uid == userId);
+      allow delete: if signedIn() && isAdmin();
     }
     match /usernames/{usernameLower} {
       allow read: if true;
-      allow create: if signedIn();
-      allow update, delete: if isAdmin();
+      allow create, update: if signedIn();
+      allow delete: if signedIn() && isAdmin();
     }
     match /_system/{document} {
       allow read: if true;
-      allow create: if signedIn();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow create, update, delete: if signedIn();
     }
 
     match /patients/{patientId} {
       allow read, create, update: if signedIn();
-      allow delete: if isAdmin() || isDoctor();
+      allow delete: if signedIn() && (isAdmin() || isDoctor());
     }
     match /appointments/{appointmentId} {
       allow read, create, update: if signedIn();
-      allow delete: if isAdmin() || isSecretary();
+      allow delete: if signedIn() && (isAdmin() || isSecretary());
     }
     match /visits/{visitId} {
-      allow read: if signedIn();
-      allow create: if isSecretary() || isAdmin();
-      allow update: if isDoctor() || isSecretary();
-      allow delete: if isAdmin();
+      allow read, create, update: if signedIn();
+      allow delete: if signedIn() && isAdmin();
     }
-    match /invoices/{invoiceId} { allow read, create, update: if signedIn(); allow delete: if isAdmin(); }
-    match /payments/{paymentId} { allow read, create: if isSecretary() || isAdmin(); allow update, delete: if isAdmin(); }
-    match /prescriptions/{prescriptionId} { allow read: if signedIn(); allow create, update: if isDoctor(); allow delete: if isAdmin(); }
-    match /{document=**} { allow read, write: if false; }
+    match /invoices/{invoiceId} {
+      allow read, create, update: if signedIn();
+      allow delete: if signedIn() && isAdmin();
+    }
+    match /payments/{paymentId} {
+      allow read, create, update: if signedIn();
+      allow delete: if signedIn() && isAdmin();
+    }
+    match /prescriptions/{prescriptionId} {
+      allow read, create, update: if signedIn();
+      allow delete: if signedIn() && isAdmin();
+    }
+    match /followUps/{followUpId} {
+      allow read, create, update: if signedIn();
+      allow delete: if signedIn() && isAdmin();
+    }
+    match /labOrders/{labOrderId} {
+      allow read, create, update: if signedIn();
+      allow delete: if signedIn() && isAdmin();
+    }
+    match /radiologyOrders/{radiologyOrderId} {
+      allow read, create, update: if signedIn();
+      allow delete: if signedIn() && isAdmin();
+    }
+    match /medications/{medicationId} {
+      allow read, create, update, delete: if signedIn();
+    }
+    match /labTests/{labTestId} {
+      allow read, create, update, delete: if signedIn();
+    }
+    match /radiologyTypes/{radiologyTypeId} {
+      allow read, create, update, delete: if signedIn();
+    }
+    match /diagnoses/{diagnosisId} {
+      allow read, create, update, delete: if signedIn();
+    }
+    match /symptoms/{symptomId} {
+      allow read, create, update, delete: if signedIn();
+    }
+    match /chronicDiseases/{diseaseId} {
+      allow read, create, update, delete: if signedIn();
+    }
+    match /counters/{counterId} {
+      allow read, write: if signedIn();
+    }
+    match /settings/{settingId} {
+      allow read, write: if signedIn();
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
   }
 }

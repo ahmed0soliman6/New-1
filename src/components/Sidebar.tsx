@@ -37,8 +37,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'patient-records', label: 'ملفات المرضى (EMR)', icon: 'folder_shared' },
     { id: 'billing-payments', label: 'الفواتير والمدفوعات', icon: 'receipt_long' },
     { id: 'clinical-reports', label: 'التقارير والإحصائيات', icon: 'analytics' },
-    { id: 'prescriptions-catalog', label: 'الوصفات والبروتوكولات', icon: 'medication' },
-    { id: 'prescription-pad', label: 'الروشتة الإلكترونية (A5)', icon: 'prescriptions' },
+    { id: 'prescription-pad', label: 'إعدادات الروشتة والطباعة', icon: 'print' },
     { id: 'system-settings', label: 'إعدادات النظام والأدلة', icon: 'settings' },
   ];
 

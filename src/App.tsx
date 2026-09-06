@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   ScreenType,
   AppointmentListItem,
@@ -14,12 +13,7 @@ import {
   PrescriptionItem,
 } from './types';
 import {
-  INITIAL_APPOINTMENTS as INITIAL_APPOINTMENTS_PREVIEW,
-  INITIAL_QUEUE,
-  INITIAL_TRANSACTIONS,
-  INITIAL_PATIENTS as INITIAL_PATIENTS_PREVIEW,
   DEFAULT_CHRONIC_CONDITIONS,
-  ClinicProtocol,
 } from './data/previewClinicData';
 import {
   DEFAULT_RADIOLOGY_CATALOG,
@@ -33,49 +27,32 @@ import {
   INITIAL_DOCTOR_PROFILE,
   INITIAL_CLINIC_LOCATIONS,
   INITIAL_SERVICES,
-  INITIAL_PATIENTS as INITIAL_PATIENTS_CANONICAL,
-  INITIAL_APPOINTMENTS as INITIAL_APPOINTMENTS_CANONICAL,
-  INITIAL_VISITS as INITIAL_VISITS_CANONICAL,
-  INITIAL_INVOICES as INITIAL_INVOICES_CANONICAL,
-  INITIAL_PAYMENTS as INITIAL_PAYMENTS_CANONICAL,
-  INITIAL_FOLLOWUPS as INITIAL_FOLLOWUPS_CANONICAL,
-  INITIAL_PRESCRIPTIONS as INITIAL_PRESCRIPTIONS_CANONICAL,
-  INITIAL_MEDICATIONS as INITIAL_MEDICATIONS_CANONICAL,
-  INITIAL_LAB_TESTS as INITIAL_LAB_TESTS_CANONICAL,
-  INITIAL_LAB_ORDERS as INITIAL_LAB_ORDERS_CANONICAL,
-  INITIAL_RADIOLOGY_TYPES as INITIAL_RADIOLOGY_TYPES_CANONICAL,
-  INITIAL_RADIOLOGY_ORDERS as INITIAL_RADIOLOGY_ORDERS_CANONICAL,
-  INITIAL_DIAGNOSES as INITIAL_DIAGNOSES_CANONICAL,
-  INITIAL_SYMPTOMS as INITIAL_SYMPTOMS_CANONICAL,
-  INITIAL_CHRONIC_DISEASES as INITIAL_CHRONIC_DISEASES_CANONICAL,
   INITIAL_DOCTOR_SETTINGS as INITIAL_DOCTOR_SETTINGS_CANONICAL,
   INITIAL_SYSTEM_SETTINGS as INITIAL_SYSTEM_SETTINGS_CANONICAL,
-  executeAtomicArrival,
-  executeAtomicWalkIn,
-  executeCompleteVisit,
 } from './data/database';
-import {
+import type {
   User,
   DoctorProfile,
   ClinicLocation,
-  Patient as Patient,
-  Appointment as Appointment,
-  Visit as Visit,
-  Invoice as Invoice,
-  Payment as Payment,
-  ServiceItem as ServiceItem,
-  FollowUp as FollowUp,
-  Prescription as Prescription,
-  Medication as Medication,
-  LabTest as LabTest,
-  LabOrder as LabOrder,
-  RadiologyType as RadiologyType,
-  RadiologyOrder as RadiologyOrder,
-  Diagnosis as Diagnosis,
-  Symptom as Symptom,
-  ChronicDisease as ChronicDisease,
-  DoctorSettings as DoctorSettings,
-  SystemSettings as SystemSettings,
+  Patient,
+  Appointment,
+  Visit,
+  Invoice,
+  Payment,
+  ServiceItem,
+  FollowUp,
+  Prescription,
+  Medication,
+  LabTest,
+  LabOrder,
+  RadiologyType,
+  RadiologyOrder,
+  Diagnosis,
+  Symptom,
+  ChronicDisease,
+  DoctorSettings,
+  SystemSettings,
+  PrescriptionItemSnapshot,
 } from './types/database';
 import { DatabaseInspectorModal } from './components/database/DatabaseV1InspectorModal';
 import { Sidebar } from './components/Sidebar';
@@ -90,18 +67,40 @@ import { PatientListItemsScreen } from './components/screens/PatientFilesScreen'
 import { FinanceScreen } from './components/screens/FinanceScreen';
 import { SettingsScreen } from './components/screens/SettingsScreen';
 import { ClinicalReportsScreen } from './components/screens/ClinicalReportsScreen';
-import { PrescriptionCatalogScreen } from './components/screens/PrescriptionCatalogScreen';
 import { NewAppointmentModal } from './components/modals/NewAppointmentModal';
-import { startVisit } from './services/workflows';
-import { auth, db } from './services/firebase';
+import { db } from './services/firebase';
 import { logoutAccount } from './services/auth';
 import { AuthScreen } from './components/AuthScreen';
 import { AuthProvider, useAuth, usePermissions } from './context/AuthContext';
-import { createAppointmentTransaction, checkInAppointmentTransaction, registerWalkInTransaction, startVisitTransaction, completeVisitTransaction } from './services/firestoreWorkflows';
-import { subscribeToPatients, subscribeToAppointments, subscribeToVisits, subscribeToInvoices, subscribeToPayments } from './services/repositories';
+import {
+  createAppointmentTransaction,
+  checkInAppointmentTransaction,
+  registerWalkInTransaction,
+  startVisitTransaction,
+  completeVisitTransaction,
+} from './services/firestoreWorkflows';
+import {
+  subscribeToPatients,
+  subscribeToAppointments,
+  subscribeToVisits,
+  subscribeToInvoices,
+  subscribeToPayments,
+  subscribeToPrescriptions,
+  subscribeToFollowUps,
+  subscribeToLabOrders,
+  subscribeToRadiologyOrders,
+  subscribeToMedications,
+  subscribeToLabTests,
+  subscribeToRadiologyTypes,
+  subscribeToDiagnoses,
+  subscribeToSymptoms,
+  subscribeToChronicDiseases,
+  saveCatalogItem,
+  removeCatalogItem,
+} from './services/repositories';
 
 function ClinicApp() {
-  const { canAccess, allowedScreens } = usePermissions();
+  const { canAccess, allowedScreens, userProfile } = usePermissions();
 
   const [activeScreen, setActiveScreen] = useState<ScreenType>(() => {
     if (allowedScreens && allowedScreens.length > 0 && !allowedScreens.includes('dashboard')) {
@@ -135,23 +134,9 @@ function ClinicApp() {
     }
     setActiveScreen(screen);
   };
-  const [selectedBranch, setSelectedBranch] = useState<string>('mohandessin');
+
   const [theme, setTheme] = useState<'light' | 'dark'>('light'); // Day/Light mode enabled by default
-  const [appointments, setAppointments] = useState<AppointmentListItem[]>(INITIAL_APPOINTMENTS_PREVIEW);
-  const [queue, setQueue] = useState<QueueItem[]>(INITIAL_QUEUE);
-  const [transactions, setTransactions] = useState<TransactionRecord[]>(INITIAL_TRANSACTIONS);
-  const [patients, setPatients] = useState<PatientListItem[]>(INITIAL_PATIENTS_PREVIEW);
-  const [activeExamPatient, setActiveExamPatient] = useState<PatientListItem>(INITIAL_PATIENTS_PREVIEW[0]);
-
-  // Preset chronic conditions managed across the entire clinic
-  const [presetChronicConditions, setPresetChronicConditions] = useState(DEFAULT_CHRONIC_CONDITIONS);
-
-  // Clinic-wide Medical Catalogs State
-  const [radiologyCatalog, setRadiologyCatalog] = useState<RadiologyCatalogItem[]>(DEFAULT_RADIOLOGY_CATALOG);
-  const [labCatalog, setLabCatalog] = useState<LabCatalogItem[]>(DEFAULT_LAB_CATALOG);
-  const [drugCatalog, setDrugCatalog] = useState<DrugCatalogItem[]>(DEFAULT_DRUG_CATALOG);
-  const [diagnosesCatalog, setDiagnosesCatalog] = useState<DiagnosisCatalogItem[]>(DEFAULT_DIAGNOSES_CATALOG);
-  const [symptomsCatalog, setSymptomsCatalog] = useState<SymptomCatalogItem[]>(DEFAULT_SYMPTOMS_CATALOG);
+  const [activeExamPatient, setActiveExamPatient] = useState<PatientListItem | null>(null);
 
   // Active Prescription sync state
   const [activePrescription, setActivePrescription] = useState<PrescriptionItem[]>([
@@ -171,51 +156,54 @@ function ClinicApp() {
       dosage: 'قرص واحد قبل الإفطار بنصف ساعة',
       duration: 'لمدة 4 أسابيع',
     },
-    {
-      id: 'rx-init-3',
-      drugName: 'Gastreg 200 mg',
-      scientificName: 'Trimebutine maleate',
-      dosageForm: 'أقراص (Tablets)',
-      dosage: 'قرص واحد قبل الأكل بـ 20 دقيقة مرتين يومياً',
-      duration: 'لمدة أسبوعين',
-    },
   ]);
 
   // =========================================================================
-  // SOLI MEDICAL DATABASE ARCHITECTURE STATE
+  // SOLI MEDICAL CANONICAL STATE (SINGLE SOURCE OF TRUTH: FIRESTORE)
   // =========================================================================
   const [users] = useState<User[]>(INITIAL_USERS);
-  const [doctorProfile, setDoctorProfile] = useState<DoctorProfile>(INITIAL_DOCTOR_PROFILE);
-  const [clinicLocations, setClinicLocations] = useState<ClinicLocation[]>(INITIAL_CLINIC_LOCATIONS);
-  const [services, setServices] = useState<ServiceItem[]>(INITIAL_SERVICES);
-  const [patientsCanonical, setPatientsCanonical] = useState<Patient[]>(INITIAL_PATIENTS_CANONICAL);
-  const [appointmentsCanonical, setAppointmentsCanonical] = useState<Appointment[]>(INITIAL_APPOINTMENTS_CANONICAL);
-  const [visitsCanonical, setVisitsCanonical] = useState<Visit[]>(INITIAL_VISITS_CANONICAL);
-  const [invoicesCanonical, setInvoicesCanonical] = useState<Invoice[]>(INITIAL_INVOICES_CANONICAL);
-  const [paymentsCanonical, setPaymentsCanonical] = useState<Payment[]>(INITIAL_PAYMENTS_CANONICAL);
-  const [followUpsCanonical, setFollowUpsCanonical] = useState<FollowUp[]>(INITIAL_FOLLOWUPS_CANONICAL);
-  const [prescriptionsCanonical, setPrescriptionsCanonical] = useState<Prescription[]>(INITIAL_PRESCRIPTIONS_CANONICAL);
-  const [medicationsCanonical, setMedicationsCanonical] = useState<Medication[]>(INITIAL_MEDICATIONS_CANONICAL);
-  const [labTestsCanonical, setLabTestsCanonical] = useState<LabTest[]>(INITIAL_LAB_TESTS_CANONICAL);
-  const [labOrdersCanonical, setLabOrdersCanonical] = useState<LabOrder[]>(INITIAL_LAB_ORDERS_CANONICAL);
-  const [radiologyTypesCanonical, setRadiologyTypesCanonical] = useState<RadiologyType[]>(INITIAL_RADIOLOGY_TYPES_CANONICAL);
-  const [radiologyOrdersCanonical, setRadiologyOrdersCanonical] = useState<RadiologyOrder[]>(INITIAL_RADIOLOGY_ORDERS_CANONICAL);
-  const [diagnosesCanonical, setDiagnosesCanonical] = useState<Diagnosis[]>(INITIAL_DIAGNOSES_CANONICAL);
-  const [symptomsCanonical, setSymptomsCanonical] = useState<Symptom[]>(INITIAL_SYMPTOMS_CANONICAL);
-  const [chronicDiseasesCanonical, setChronicDiseasesCanonical] = useState<ChronicDisease[]>(INITIAL_CHRONIC_DISEASES_CANONICAL);
-  const [doctorSettingsCanonical, setDoctorSettingsCanonical] = useState<DoctorSettings>(INITIAL_DOCTOR_SETTINGS_CANONICAL);
-  const [systemSettingsCanonical, setSystemSettingsCanonical] = useState<SystemSettings>(INITIAL_SYSTEM_SETTINGS_CANONICAL);
+  const [doctorProfile] = useState<DoctorProfile>(INITIAL_DOCTOR_PROFILE);
+  const [clinicLocations] = useState<ClinicLocation[]>(INITIAL_CLINIC_LOCATIONS);
+  const [services] = useState<ServiceItem[]>(INITIAL_SERVICES);
 
-  // Firestore is the shared source of truth when configured. Each listener is cleaned up on unmount.
+  const [patientsCanonical, setPatientsCanonical] = useState<Patient[]>([]);
+  const [appointmentsCanonical, setAppointmentsCanonical] = useState<Appointment[]>([]);
+  const [visitsCanonical, setVisitsCanonical] = useState<Visit[]>([]);
+  const [invoicesCanonical, setInvoicesCanonical] = useState<Invoice[]>([]);
+  const [paymentsCanonical, setPaymentsCanonical] = useState<Payment[]>([]);
+  const [followUpsCanonical, setFollowUpsCanonical] = useState<FollowUp[]>([]);
+  const [prescriptionsCanonical, setPrescriptionsCanonical] = useState<Prescription[]>([]);
+  const [medicationsCanonical, setMedicationsCanonical] = useState<Medication[]>([]);
+  const [labTestsCanonical, setLabTestsCanonical] = useState<LabTest[]>([]);
+  const [labOrdersCanonical, setLabOrdersCanonical] = useState<LabOrder[]>([]);
+  const [radiologyTypesCanonical, setRadiologyTypesCanonical] = useState<RadiologyType[]>([]);
+  const [radiologyOrdersCanonical, setRadiologyOrdersCanonical] = useState<RadiologyOrder[]>([]);
+  const [diagnosesCanonical, setDiagnosesCanonical] = useState<Diagnosis[]>([]);
+  const [symptomsCanonical, setSymptomsCanonical] = useState<Symptom[]>([]);
+  const [chronicDiseasesCanonical, setChronicDiseasesCanonical] = useState<ChronicDisease[]>([]);
+  const [doctorSettingsCanonical] = useState<DoctorSettings>(INITIAL_DOCTOR_SETTINGS_CANONICAL);
+  const [systemSettingsCanonical] = useState<SystemSettings>(INITIAL_SYSTEM_SETTINGS_CANONICAL);
+
+  // Firestore Realtime Subscriptions (Firestore -> onSnapshot -> Canonical State)
   useEffect(() => {
     if (!db) return;
-    const onError = (error: Error) => console.error('[Firestore realtime]', error);
+    const onError = (error: Error) => console.warn('[Firestore realtime notice]', error.message);
     const unsubscribers = [
       subscribeToPatients(db, setPatientsCanonical, onError),
       subscribeToAppointments(db, setAppointmentsCanonical, onError),
       subscribeToVisits(db, setVisitsCanonical, onError),
       subscribeToInvoices(db, setInvoicesCanonical, onError),
       subscribeToPayments(db, setPaymentsCanonical, onError),
+      subscribeToPrescriptions(db, setPrescriptionsCanonical, onError),
+      subscribeToFollowUps(db, setFollowUpsCanonical, onError),
+      subscribeToLabOrders(db, setLabOrdersCanonical, onError),
+      subscribeToRadiologyOrders(db, setRadiologyOrdersCanonical, onError),
+      subscribeToMedications(db, setMedicationsCanonical, onError),
+      subscribeToLabTests(db, setLabTestsCanonical, onError),
+      subscribeToRadiologyTypes(db, setRadiologyTypesCanonical, onError),
+      subscribeToDiagnoses(db, setDiagnosesCanonical, onError),
+      subscribeToSymptoms(db, setSymptomsCanonical, onError),
+      subscribeToChronicDiseases(db, setChronicDiseasesCanonical, onError),
     ];
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
   }, []);
@@ -223,60 +211,73 @@ function ClinicApp() {
   // Database Architecture Inspector Modal
   const [isDatabaseInspectorOpen, setIsDatabaseInspectorOpen] = useState(false);
 
-  // Synchronize Collections with UI representations
-  useEffect(() => {
-    // 1. Queue is a VIEW derived from visitsCanonical where status == "WAITING"
-    const waitingVisits = visitsCanonical
-      .filter((v) => v.status === 'WAITING')
-      .sort((a, b) => (a.queueNumber || 0) - (b.queueNumber || 0));
+  // =========================================================================
+  // DERIVED STATE (Canonical State -> Derived State -> UI)
+  // =========================================================================
+  const patients: PatientListItem[] = useMemo(() => {
+    return patientsCanonical.map((p) => {
+      const pVisits = visitsCanonical.filter((v) => v.patientId === p.patientId);
+      const pPayments = paymentsCanonical.filter((pm) => pm.patientId === p.patientId);
+      const totalPaid = pPayments.reduce((acc, pm) => acc + (pm.amount || 0), 0);
+      const lastVisit = [...pVisits].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+      const lastDiag = lastVisit?.clinicalData?.diagnosis?.[0] || 'كشف عيادة باطنة';
+      
+      const birthYear = p.dateOfBirth ? new Date(p.dateOfBirth).getFullYear() : 1988;
+      const calculatedAge = Math.max(1, new Date().getFullYear() - birthYear);
 
-    const mappedQueue: QueueItem[] = waitingVisits.map((v) => {
-      const pat = patientsCanonical.find((p) => p.patientId === v.patientId);
-      const invoice = invoicesCanonical.find((i) => i.visitId === v.visitId);
-      const payment = paymentsCanonical.find((p) => p.visitId === v.visitId);
       return {
-        id: v.visitId,
-        ticketNumber: `#0${v.queueNumber || 1}`,
-        patientName: pat?.fullName || 'مريض غير مسجل',
-        medicalCode: pat?.medicalCode || `EG-${v.patientId.replace(/\D/g, '')}`,
-        fileNumber: pat?.fileNumber || v.queueNumber || 1,
-        phone: pat?.phone || '',
-        age: 38,
-        visitType: v.visitType === 'NEW' ? 'كشف جديد' : 'استشارة / متابعة',
-        arrivalTime: new Date(v.createdAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
-        elapsedMinutes: Math.max(1, Math.floor((Date.now() - new Date(v.createdAt).getTime()) / 60000)),
-        paidAmount: payment?.amount || invoice?.paidAmount || 0,
-        paymentMethod: (payment?.method === 'CARD' ? 'فيزا / كارت' : 'نقدي') as any,
-        complaint: v.receptionistData?.symptoms || 'كشف عيادة باطنة',
-        status: 'waiting',
+        id: p.patientId,
+        medicalCode: p.medicalCode || `EG-${p.fileNumber || p.patientId.slice(0, 5)}`,
+        fileNumber: p.fileNumber || 1,
+        name: p.fullName,
+        age: calculatedAge,
+        gender: p.gender === 'female' ? 'female' : 'male',
+        phone: p.phone || '',
+        governorate: p.governorate || 'القاهرة',
+        avatarUrl: p.avatarUrl,
+        allergies: p.allergies || [],
+        chronicConditions: p.chronicDiseases || [],
+        bloodType: p.bloodType,
+        bloodGroup: p.bloodType || 'O+',
+        emergencyContact: p.emergencyContact,
+        lastVisitDate: lastVisit ? new Date(lastVisit.createdAt).toLocaleDateString('ar-EG') : undefined,
+        registrationDate: new Date(p.createdAt || Date.now()).toLocaleDateString('ar-EG'),
+        visitsCount: pVisits.length,
+        totalPaid,
+        lastDiagnosis: lastDiag,
       };
     });
-    setQueue(mappedQueue);
+  }, [patientsCanonical, visitsCanonical, paymentsCanonical]);
+
+  const queue: QueueItem[] = useMemo(() => {
+    return visitsCanonical
+      .filter((v) => v.status === 'WAITING')
+      .sort((a, b) => (a.queueNumber || 0) - (b.queueNumber || 0))
+      .map((v) => {
+        const pat = patientsCanonical.find((p) => p.patientId === v.patientId);
+        const invoice = invoicesCanonical.find((i) => i.visitId === v.visitId);
+        const payment = paymentsCanonical.find((p) => p.visitId === v.visitId);
+        return {
+          id: v.visitId,
+          ticketNumber: `#0${v.queueNumber || 1}`,
+          patientName: pat?.fullName || 'مريض غير مسجل',
+          medicalCode: pat?.medicalCode || `EG-${v.patientId.replace(/\D/g, '')}`,
+          fileNumber: pat?.fileNumber || v.queueNumber || 1,
+          phone: pat?.phone || '',
+          age: 38,
+          visitType: v.visitType === 'NEW' ? 'كشف جديد' : 'استشارة / متابعة',
+          arrivalTime: new Date(v.createdAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+          elapsedMinutes: Math.max(1, Math.floor((Date.now() - new Date(v.createdAt).getTime()) / 60000)),
+          paidAmount: payment?.amount || invoice?.paidAmount || 0,
+          paymentMethod: (payment?.method === 'CARD' ? 'فيزا / كارت' : 'نقدي') as any,
+          complaint: v.receptionistData?.symptoms || 'كشف عيادة باطنة',
+          status: 'waiting',
+        };
+      });
   }, [visitsCanonical, patientsCanonical, invoicesCanonical, paymentsCanonical]);
 
-  // Synchronize Payments with Finance Ledger
-  useEffect(() => {
-    const mappedTransactions: TransactionRecord[] = paymentsCanonical.map((p) => {
-      const pat = patientsCanonical.find((pt) => pt.patientId === p.patientId);
-      return {
-        id: p.paymentId,
-        receiptNo: p.receiptNumber,
-        patientName: pat?.fullName || 'مريض مجهول',
-        description: `سداد كشف ومستحقات زيارة - إيصال ${p.receiptNumber}`,
-        amount: p.amount,
-        type: 'in',
-        method: (p.method === 'CARD' ? 'فيزا / كارت' : 'نقدي') as any,
-        time: new Date(p.paidAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
-        category: 'كشوفات',
-      };
-    });
-    setTransactions(mappedTransactions);
-  }, [paymentsCanonical, patientsCanonical]);
-
-  // Synchronize Appointments with Schedule
-  useEffect(() => {
-    if (appointmentsCanonical.length === 0) return;
-    const mappedApps: AppointmentListItem[] = appointmentsCanonical.map((a) => {
+  const appointments: AppointmentListItem[] = useMemo(() => {
+    return appointmentsCanonical.map((a) => {
       const pat = patientsCanonical.find((p) => p.patientId === a.patientId);
       return {
         id: a.appointmentId,
@@ -290,10 +291,113 @@ function ClinicApp() {
         visitType: a.visitType,
         status: a.status === 'ARRIVED' ? 'حضر وسدد' : a.status === 'CANCELLED' ? 'ملغي' : 'مجدول',
         expectedFee: 350,
+        notes: a.notes,
       };
     });
-    setAppointments(mappedApps);
   }, [appointmentsCanonical, patientsCanonical]);
+
+  const transactions: TransactionRecord[] = useMemo(() => {
+    return paymentsCanonical.map((p) => {
+      const pat = patientsCanonical.find((pt) => pt.patientId === p.patientId);
+      return {
+        id: p.paymentId,
+        receiptNo: p.receiptNumber,
+        patientName: pat?.fullName || 'مريض مجهول',
+        description: `سداد كشف ومستحقات زيارة - إيصال ${p.receiptNumber}`,
+        amount: p.amount,
+        type: 'in',
+        paymentMethod: (p.method === 'CARD' ? 'فيزا / كارت' : 'نقدي') as any,
+        time: new Date(p.paidAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+        category: 'كشوفات',
+      };
+    });
+  }, [paymentsCanonical, patientsCanonical]);
+
+  // Catalogs derived
+  const presetChronicConditions = useMemo(() => {
+    if (chronicDiseasesCanonical.length > 0) {
+      return chronicDiseasesCanonical.map((c) => ({
+        id: c.diseaseId,
+        name: c.nameAr,
+        category: c.category || 'أمراض شائعة',
+        color: 'bg-teal-500',
+      }));
+    }
+    return DEFAULT_CHRONIC_CONDITIONS;
+  }, [chronicDiseasesCanonical]);
+
+  const drugCatalog: DrugCatalogItem[] = useMemo(() => {
+    if (medicationsCanonical.length > 0) {
+      return medicationsCanonical.map((m) => ({
+        id: m.medicationId,
+        brandName: m.nameAr,
+        genericName: m.genericName,
+        strength: m.strength,
+        form: m.form,
+        category: 'أدوية العيادة',
+        active: m.active,
+      }));
+    }
+    return DEFAULT_DRUG_CATALOG;
+  }, [medicationsCanonical]);
+
+  const labCatalog: LabCatalogItem[] = useMemo(() => {
+    if (labTestsCanonical.length > 0) {
+      return labTestsCanonical.map((l) => ({
+        id: l.labTestId,
+        name: l.nameAr,
+        category: l.category,
+        sampleType: l.sampleType,
+        fastingRequired: l.fastingRequired,
+        active: l.active,
+      }));
+    }
+    return DEFAULT_LAB_CATALOG;
+  }, [labTestsCanonical]);
+
+  const radiologyCatalog: RadiologyCatalogItem[] = useMemo(() => {
+    if (radiologyTypesCanonical.length > 0) {
+      return radiologyTypesCanonical.map((r) => ({
+        id: r.radiologyId,
+        name: r.nameAr,
+        category: r.category,
+        active: r.active,
+      }));
+    }
+    return DEFAULT_RADIOLOGY_CATALOG;
+  }, [radiologyTypesCanonical]);
+
+  const diagnosesCatalog: DiagnosisCatalogItem[] = useMemo(() => {
+    if (diagnosesCanonical.length > 0) {
+      return diagnosesCanonical.map((d) => ({
+        id: d.diagnosisId,
+        nameAr: d.nameAr,
+        nameEn: d.nameEn,
+        code: d.code,
+        active: d.active,
+      }));
+    }
+    return DEFAULT_DIAGNOSES_CATALOG;
+  }, [diagnosesCanonical]);
+
+  const symptomsCatalog: SymptomCatalogItem[] = useMemo(() => {
+    if (symptomsCanonical.length > 0) {
+      return symptomsCanonical.map((s) => ({
+        id: s.symptomId,
+        name: s.nameAr,
+        category: s.category,
+        active: s.active,
+      }));
+    }
+    return DEFAULT_SYMPTOMS_CATALOG;
+  }, [symptomsCanonical]);
+
+  // Set default active patient for exam if not selected
+  useEffect(() => {
+    if (!activeExamPatient && patients.length > 0) {
+      setActiveExamPatient(patients[0]);
+    }
+  }, [patients, activeExamPatient]);
 
   // Modals
   const [isNewAppointmentOpen, setIsNewAppointmentOpen] = useState(false);
@@ -313,7 +417,6 @@ function ClinicApp() {
         document.documentElement.classList.remove('dark');
       }
     } else {
-      // Default to light mode
       document.documentElement.classList.remove('dark');
     }
   }, []);
@@ -332,184 +435,290 @@ function ClinicApp() {
     setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
   };
 
-  // Chronic conditions handlers
-  const handleAddChronicCondition = (condition: { id: string; name: string; category: string; color: string }) => {
-    setPresetChronicConditions((prev) => [condition, ...prev]);
-  };
-
-  const handleRemoveChronicCondition = (id: string) => {
-    setPresetChronicConditions((prev) => prev.filter((c) => c.id !== id));
-  };
-
-  // Catalog Handlers with Soft Delete (active: false)
-  const handleAddRadiologyToCatalog = (item: RadiologyCatalogItem) => {
-    setRadiologyCatalog((prev) => [{ ...item, active: true }, ...prev]);
-    const newRadType: RadiologyType = {
-      radiologyId: item.id,
-      nameAr: item.name,
-      nameEn: item.name,
-      category: item.category,
-      active: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    setRadiologyTypesCanonical((prev) => [newRadType, ...prev]);
-  };
-  const handleRemoveRadiology = (id: string) => {
-    // Soft delete: active = false
-    setRadiologyCatalog((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, active: false } : r)).filter((r) => r.active !== false)
-    );
-    setRadiologyTypesCanonical((prev) =>
-      prev.map((r) => (r.radiologyId === id ? { ...r, active: false, updatedAt: new Date().toISOString() } : r))
-    );
-  };
-  const handleToggleRadiologyFavorite = (id: string) => {
-    setRadiologyCatalog((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, isFavorite: !r.isFavorite } : r))
-    );
-  };
-
-  const handleAddLabToCatalog = (item: LabCatalogItem) => {
-    setLabCatalog((prev) => [{ ...item, active: true }, ...prev]);
-    const newLab: LabTest = {
-      labTestId: item.id,
-      nameAr: item.name,
-      nameEn: item.name,
-      category: item.category,
-      sampleType: item.sampleType || 'عينة دم وريدي',
-      fastingRequired: item.fastingRequired || false,
-      active: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    setLabTestsCanonical((prev) => [newLab, ...prev]);
-  };
-  const handleRemoveLab = (id: string) => {
-    // Soft delete: active = false
-    setLabCatalog((prev) =>
-      prev.map((l) => (l.id === id ? { ...l, active: false } : l)).filter((l) => l.active !== false)
-    );
-    setLabTestsCanonical((prev) =>
-      prev.map((l) => (l.labTestId === id ? { ...l, active: false, updatedAt: new Date().toISOString() } : l))
-    );
-  };
-  const handleToggleLabFavorite = (id: string) => {
-    setLabCatalog((prev) =>
-      prev.map((l) => (l.id === id ? { ...l, isFavorite: !l.isFavorite } : l))
-    );
-  };
-
-  const handleAddDrugToCatalog = (item: DrugCatalogItem) => {
-    setDrugCatalog((prev) => [{ ...item, active: true }, ...prev]);
-    const newMed: Medication = {
-      medicationId: item.id,
-      nameAr: item.brandName,
-      nameEn: item.genericName,
-      genericName: item.genericName,
-      strength: item.strength,
-      form: item.form,
-      manufacturer: 'شركات الأدوية المعتمدة',
-      active: true,
-      source: 'CUSTOM',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    setMedicationsCanonical((prev) => [newMed, ...prev]);
-  };
-  const handleRemoveDrug = (id: string) => {
-    // Soft delete
-    setDrugCatalog((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, active: false } : d)).filter((d) => d.active !== false)
-    );
-    setMedicationsCanonical((prev) =>
-      prev.map((d) => (d.medicationId === id ? { ...d, active: false, updatedAt: new Date().toISOString() } : d))
-    );
-  };
-  const handleToggleDrugFavorite = (id: string) => {
-    setDrugCatalog((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, isFavorite: !d.isFavorite } : d))
-    );
-  };
-
-  const handleAddDiagnosisToCatalog = (item: DiagnosisCatalogItem) => {
-    setDiagnosesCatalog((prev) => [{ ...item, active: true }, ...prev]);
-    const newDiag: Diagnosis = {
-      diagnosisId: item.id,
-      nameAr: item.nameAr,
-      nameEn: item.nameEn,
-      code: item.code,
-      codeSystem: 'ICD10',
-      active: true,
-      createdAt: new Date().toISOString(),
-    };
-    setDiagnosesCanonical((prev) => [newDiag, ...prev]);
-  };
-  const handleRemoveDiagnosis = (id: string) => {
-    // Soft delete
-    setDiagnosesCatalog((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, active: false } : d)).filter((d) => d.active !== false)
-    );
-    setDiagnosesCanonical((prev) =>
-      prev.map((d) => (d.diagnosisId === id ? { ...d, active: false } : d))
-    );
-  };
-  const handleToggleDiagnosisFavorite = (id: string) => {
-    setDiagnosesCatalog((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, isFavorite: !d.isFavorite } : d))
-    );
-  };
-
-  const handleAddSymptomToCatalog = (item: SymptomCatalogItem) => {
-    setSymptomsCatalog((prev) => [{ ...item, active: true }, ...prev]);
-    const newSym: Symptom = {
-      symptomId: item.id,
-      nameAr: item.name,
-      nameEn: item.name,
-      category: item.category,
-      active: true,
-    };
-    setSymptomsCanonical((prev) => [newSym, ...prev]);
-  };
-  const handleRemoveSymptom = (id: string) => {
-    // Soft delete
-    setSymptomsCatalog((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, active: false } : s)).filter((s) => s.active !== false)
-    );
-    setSymptomsCanonical((prev) =>
-      prev.map((s) => (s.symptomId === id ? { ...s, active: false } : s))
-    );
+  // Sound Chime for Patient Queue & Status Updates
+  const playQueueNotificationSound = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(523.25, ctx.currentTime); // C5
+      osc.frequency.exponentialRampToValueAtTime(783.99, ctx.currentTime + 0.15); // G5
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.45);
+    } catch {
+      // Ignored if sound blocked by browser policy
+    }
   };
 
   // Next sequential file number
   const nextFileNumber =
     Math.max(
       ...patientsCanonical.map((p) => (typeof p.fileNumber === 'number' ? p.fileNumber : 0)),
-      ...patients.map((p) => (typeof p.fileNumber === 'number' ? p.fileNumber : 0)),
       0
     ) + 1;
 
-  // Audio / Visual Call Patient Handler
+  // =========================================================================
+  // CATALOG MUTATION HANDLERS (Direct Firestore Persistence & Live Sync)
+  // =========================================================================
+  const handleAddRadiologyToCatalog = async (item: RadiologyCatalogItem) => {
+    if (!db) return;
+    try {
+      await saveCatalogItem(db, 'radiologyTypes', item.id, {
+        radiologyId: item.id,
+        nameAr: item.name,
+        category: item.category,
+        isFavorite: !!item.isFavorite,
+        active: true,
+      });
+    } catch (err) {
+      console.warn('Failed to save radiology to catalog', err);
+    }
+  };
+
+  const handleRemoveRadiologyFromCatalog = async (id: string) => {
+    if (!db) return;
+    try {
+      await removeCatalogItem(db, 'radiologyTypes', id);
+    } catch (err) {
+      console.warn('Failed to remove radiology', err);
+    }
+  };
+
+  const handleToggleRadiologyFavorite = async (id: string) => {
+    if (!db) return;
+    const current = radiologyCatalog.find((r) => r.id === id);
+    if (!current) return;
+    try {
+      await saveCatalogItem(db, 'radiologyTypes', id, {
+        isFavorite: !current.isFavorite,
+      });
+    } catch (err) {
+      console.warn('Failed to toggle radiology favorite', err);
+    }
+  };
+
+  const handleAddLabToCatalog = async (item: LabCatalogItem) => {
+    if (!db) return;
+    try {
+      await saveCatalogItem(db, 'labTests', item.id, {
+        labTestId: item.id,
+        nameAr: item.name,
+        category: item.category,
+        sampleType: item.sampleType || 'دم',
+        fastingRequired: !!item.fastingRequired,
+        referenceRange: item.referenceRange || '',
+        unit: item.unit || '',
+        isFavorite: !!item.isFavorite,
+        active: true,
+      });
+    } catch (err) {
+      console.warn('Failed to save lab to catalog', err);
+    }
+  };
+
+  const handleRemoveLabFromCatalog = async (id: string) => {
+    if (!db) return;
+    try {
+      await removeCatalogItem(db, 'labTests', id);
+    } catch (err) {
+      console.warn('Failed to remove lab', err);
+    }
+  };
+
+  const handleToggleLabFavorite = async (id: string) => {
+    if (!db) return;
+    const current = labCatalog.find((l) => l.id === id);
+    if (!current) return;
+    try {
+      await saveCatalogItem(db, 'labTests', id, {
+        isFavorite: !current.isFavorite,
+      });
+    } catch (err) {
+      console.warn('Failed to toggle lab favorite', err);
+    }
+  };
+
+  const handleAddDrugToCatalog = async (item: DrugCatalogItem) => {
+    if (!db) return;
+    try {
+      await saveCatalogItem(db, 'medications', item.id, {
+        medicationId: item.id,
+        tradeName: item.brandName,
+        genericName: item.genericName,
+        strength: item.strength,
+        form: item.form,
+        category: item.category,
+        defaultDose: item.defaultDosage,
+        defaultDuration: item.defaultDuration,
+        defaultTiming: item.defaultTiming,
+        isFavorite: !!item.isFavorite,
+        notes: item.notes || '',
+        active: true,
+      });
+    } catch (err) {
+      console.warn('Failed to save drug to catalog', err);
+    }
+  };
+
+  const handleRemoveDrugFromCatalog = async (id: string) => {
+    if (!db) return;
+    try {
+      await removeCatalogItem(db, 'medications', id);
+    } catch (err) {
+      console.warn('Failed to remove drug', err);
+    }
+  };
+
+  const handleToggleDrugFavorite = async (id: string) => {
+    if (!db) return;
+    const current = drugCatalog.find((d) => d.id === id);
+    if (!current) return;
+    try {
+      await saveCatalogItem(db, 'medications', id, {
+        isFavorite: !current.isFavorite,
+      });
+    } catch (err) {
+      console.warn('Failed to toggle drug favorite', err);
+    }
+  };
+
+  const handleAddDiagnosisToCatalog = async (item: DiagnosisCatalogItem) => {
+    if (!db) return;
+    try {
+      await saveCatalogItem(db, 'diagnoses', item.id, {
+        diagnosisId: item.id,
+        code: item.code,
+        nameAr: item.nameAr,
+        nameEn: item.nameEn,
+        category: item.category,
+        isFavorite: !!item.isFavorite,
+        active: true,
+      });
+    } catch (err) {
+      console.warn('Failed to save diagnosis to catalog', err);
+    }
+  };
+
+  const handleRemoveDiagnosisFromCatalog = async (id: string) => {
+    if (!db) return;
+    try {
+      await removeCatalogItem(db, 'diagnoses', id);
+    } catch (err) {
+      console.warn('Failed to remove diagnosis', err);
+    }
+  };
+
+  const handleToggleDiagnosisFavorite = async (id: string) => {
+    if (!db) return;
+    const current = diagnosesCatalog.find((d) => d.id === id);
+    if (!current) return;
+    try {
+      await saveCatalogItem(db, 'diagnoses', id, {
+        isFavorite: !current.isFavorite,
+      });
+    } catch (err) {
+      console.warn('Failed to toggle diagnosis favorite', err);
+    }
+  };
+
+  const handleAddSymptomToCatalog = async (item: SymptomCatalogItem) => {
+    if (!db) return;
+    try {
+      await saveCatalogItem(db, 'symptoms', item.id, {
+        symptomId: item.id,
+        nameAr: item.name,
+        category: item.category,
+        active: true,
+      });
+    } catch (err) {
+      console.warn('Failed to save symptom to catalog', err);
+    }
+  };
+
+  const handleRemoveSymptomFromCatalog = async (id: string) => {
+    if (!db) return;
+    try {
+      await removeCatalogItem(db, 'symptoms', id);
+    } catch (err) {
+      console.warn('Failed to remove symptom', err);
+    }
+  };
+
+  const handleAddChronicCondition = async (condition: string) => {
+    if (!db) return;
+    const id = `chronic-${Date.now()}`;
+    try {
+      await saveCatalogItem(db, 'chronicDiseases', id, {
+        diseaseId: id,
+        nameAr: condition,
+        category: 'عام',
+        active: true,
+      });
+    } catch (err) {
+      console.warn('Failed to save chronic disease', err);
+    }
+  };
+
+  const handleRemoveChronicCondition = async (condition: string) => {
+    if (!db) return;
+    const found = chronicDiseasesCanonical.find((c) => c.nameAr === condition);
+    if (found) {
+      try {
+        await removeCatalogItem(db, 'chronicDiseases', found.diseaseId);
+      } catch (err) {
+        console.warn('Failed to remove chronic disease', err);
+      }
+    }
+  };
+
+  // =========================================================================
+  // WORKFLOW ACTIONS (UI Action -> Firestore Transaction -> onSnapshot -> UI)
+  // NO DOUBLE MUTATION!
+  // =========================================================================
+
+  // Call Patient
   const handleCallPatient = async (ticket: string, name: string) => {
+    playQueueNotificationSound();
     setCallingBanner({ ticket, name });
     setTimeout(() => setCallingBanner(null), 5000);
 
-    // Update matching visit in visitsCanonical to IN_PROGRESS
     const targetQueueNum = parseInt(ticket.replace(/\D/g, ''), 10);
     const targetVisit = visitsCanonical.find((v) => v.queueNumber === targetQueueNum);
     if (!targetVisit) return;
+
+    const matchedPatient = patients.find((p) => p.id === targetVisit.patientId) || {
+      id: targetVisit.patientId,
+      medicalCode: `EG-${targetVisit.patientId.slice(0, 5)}`,
+      fileNumber: targetVisit.queueNumber || 1,
+      name,
+      age: 38,
+      gender: 'male' as const,
+      phone: '',
+      governorate: 'القاهرة',
+      allergies: [],
+      chronicConditions: [],
+      bloodGroup: 'O+',
+      lastDiagnosis: targetVisit.receptionistData?.symptoms || 'كشف عيادة باطنة',
+    };
+    setActiveExamPatient(matchedPatient);
+
     if (db) {
       try {
-        await startVisitTransaction(db, targetVisit.visitId, auth?.currentUser?.uid || 'doctor');
+        await startVisitTransaction(db, targetVisit.visitId, userProfile?.username || 'usr-hazem-dr');
       } catch (error) {
-        alert(error instanceof Error ? error.message : 'تعذر بدء الكشف');
-        return;
+        console.error('startVisit error:', error);
       }
     }
-    setVisitsCanonical((prev) => prev.map((v) => v.visitId === targetVisit.visitId ? startVisit(v, 'DOCTOR') : v));
   };
 
-  // Check in appointment: Firestore transaction commits ARRIVED + Invoice + Payment + Visit
+  // Check in appointment: Firestore transaction atomically commits ARRIVED + Invoice + Payment + Visit
   const handleConfirmCheckIn = async (app: AppointmentListItem, fee: number, method: string = 'نقدي') => {
     const appt = appointmentsCanonical.find((a) => a.appointmentId === app.id);
     if (!appt || appt.status !== 'SCHEDULED') {
@@ -522,56 +731,56 @@ function ClinicApp() {
       return;
     }
     const paymentMethodEnum = method.includes('فيزا') || method.includes('كارت') ? 'CARD' : method.includes('إنستا') ? 'TRANSFER' : 'CASH';
-    const nextQueueNum = Math.max(...visitsCanonical.map((v) => v.queueNumber || 0), 0) + 1;
+
     if (db) {
       try {
         await checkInAppointmentTransaction({
-          db, appointmentId: appt.appointmentId, paymentAmount: fee, paymentMethod: paymentMethodEnum,
-          receivedBy: auth?.currentUser?.uid || 'receptionist', queueNumber: nextQueueNum,
-          receptionistData: { symptoms: app.visitType, chronicDiseases: patient.chronicDiseases || [], notes: '' },
+          db,
+          appointmentId: appt.appointmentId,
+          paymentAmount: fee,
+          paymentMethod: paymentMethodEnum,
+          receivedBy: userProfile?.username || 'receptionist',
+          receptionistData: { symptoms: app.visitType || 'كشف', chronicDiseases: patient.chronicDiseases || [], notes: '' },
         });
-        setAppointmentsCanonical((prev) => prev.map((item) => item.appointmentId === appt.appointmentId ? { ...item, status: 'ARRIVED' } : item));
-        return;
       } catch (error) {
-        alert(error instanceof Error ? error.message : 'فشل التحصيل الذري؛ لم يتم إنشاء زيارة انتظار');
-        return;
+        alert(error instanceof Error ? error.message : 'فشل تسجيل حضور المريض في قاعدة البيانات');
       }
     }
-    const matchedService = services.find((service) => service.price === fee) || services[0];
-    const result = executeAtomicArrival({ appointment: appt, patient, service: matchedService, paymentMethod: paymentMethodEnum, receivedBy: 'reception', nextQueueNumber: nextQueueNum, receptionistData: { symptoms: app.visitType, chronicDiseases: patient.chronicDiseases || [], notes: '' } });
-    setAppointmentsCanonical((prev) => prev.map((item) => item.appointmentId === appt.appointmentId ? result.updatedAppointment : item));
-    setInvoicesCanonical((prev) => [result.newInvoice, ...prev]);
-    setPaymentsCanonical((prev) => [result.newPayment, ...prev]);
-    setVisitsCanonical((prev) => [result.newVisit, ...prev]);
   };
 
   // Walk-in: Patient + Invoice + Payment + Visit are committed in one transaction
   const handleAddPatientToQueue = async (item: QueueItem) => {
     const timestamp = new Date().toISOString();
-    const patient = patientsCanonical.find((p) => p.phone === item.phone || p.fullName === item.patientName) || {
-      patientId: `pat-${crypto.randomUUID()}`, fullName: item.patientName, phone: item.phone, gender: 'male' as const,
-      fileNumber: item.fileNumber || nextFileNumber, medicalCode: item.medicalCode, chronicDiseases: item.chronicConditions || [],
-      allergies: [], createdAt: timestamp, updatedAt: timestamp, createdBy: auth?.currentUser?.uid,
+    const patient: Patient = patientsCanonical.find((p) => p.phone === item.phone || p.fullName === item.patientName) || {
+      patientId: `pat-${Date.now()}`,
+      fullName: item.patientName,
+      phone: item.phone,
+      gender: 'male' as const,
+      fileNumber: typeof item.fileNumber === 'number' ? item.fileNumber : parseInt(String(item.fileNumber), 10) || nextFileNumber,
+      medicalCode: item.medicalCode,
+      chronicDiseases: item.chronicConditions || [],
+      allergies: [],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      createdBy: userProfile?.username || 'receptionist',
     };
     const paymentMethodEnum = item.paymentMethod.includes('فيزا') || item.paymentMethod.includes('كارت') ? 'CARD' : 'CASH';
-    const nextQueueNum = Math.max(...visitsCanonical.map((v) => v.queueNumber || 0), 0) + 1;
+
     if (db) {
       try {
-        const visit = await registerWalkInTransaction({ db, patient, paymentAmount: item.paidAmount, paymentMethod: paymentMethodEnum, receivedBy: auth?.currentUser?.uid || 'receptionist', clinicLocationId: 'loc-mohandessin', queueNumber: nextQueueNum, receptionistData: { symptoms: item.complaint || '', chronicDiseases: patient.chronicDiseases || [], notes: '' } });
-        if (!patientsCanonical.some((p) => p.patientId === patient.patientId)) setPatientsCanonical((prev) => [patient, ...prev]);
-        setVisitsCanonical((prev) => [visit, ...prev]);
-        return;
+        await registerWalkInTransaction({
+          db,
+          patient,
+          paymentAmount: item.paidAmount,
+          paymentMethod: paymentMethodEnum,
+          receivedBy: userProfile?.username || 'receptionist',
+          clinicLocationId: 'loc-mohandessin',
+          receptionistData: { symptoms: item.complaint || '', chronicDiseases: patient.chronicDiseases || [], notes: '' },
+        });
       } catch (error) {
-        alert(error instanceof Error ? error.message : 'فشل التحصيل؛ لم يتم إنشاء زيارة انتظار');
-        return;
+        alert(error instanceof Error ? error.message : 'فشل إضافة المريض للانتظار في قاعدة البيانات');
       }
     }
-    const matchedService = services.find((service) => service.price === item.paidAmount) || services[0];
-    const result = executeAtomicWalkIn({ patient, service: matchedService, clinicLocationId: 'loc-mohandessin', paymentMethod: paymentMethodEnum, receivedBy: 'reception', nextQueueNumber: nextQueueNum, receptionistData: { symptoms: item.complaint || '', chronicDiseases: patient.chronicDiseases || [], notes: '' } });
-    if (!patientsCanonical.some((p) => p.patientId === patient.patientId)) setPatientsCanonical((prev) => [patient, ...prev]);
-    setInvoicesCanonical((prev) => [result.newInvoice, ...prev]);
-    setPaymentsCanonical((prev) => [result.newPayment, ...prev]);
-    setVisitsCanonical((prev) => [result.newVisit, ...prev]);
   };
 
   // Add scheduled appointment: Patient first, then Appointment in one Firestore transaction
@@ -581,14 +790,14 @@ function ClinicApp() {
       (p) => p.fullName.trim() === app.patientName.trim() || (!!app.phone && p.phone === app.phone),
     );
     const patient: Patient = existingPatient || {
-      patientId: `pat-${crypto.randomUUID()}`,
+      patientId: `pat-${Date.now()}`,
       fullName: app.patientName.trim(),
-      ...(app.phone ? { phone: app.phone } : {}),
-      ...(app.medicalCode ? { medicalCode: app.medicalCode } : {}),
-      ...(app.fileNumber ? { fileNumber: app.fileNumber } : {}),
+      phone: app.phone || '',
+      medicalCode: app.medicalCode || `EG-${nextFileNumber}`,
+      fileNumber: app.fileNumber || nextFileNumber,
       createdAt: timestamp,
       updatedAt: timestamp,
-      createdBy: auth?.currentUser?.uid,
+      createdBy: userProfile?.username || 'receptionist',
     };
     const newApp: Appointment = {
       appointmentId: `app-${Date.now()}`,
@@ -601,30 +810,24 @@ function ClinicApp() {
       notes: app.notes || 'حجز موعد كشف مسبق',
       createdAt: timestamp,
       updatedAt: timestamp,
-      createdBy: auth?.currentUser?.uid,
+      createdBy: userProfile?.username || 'receptionist',
     };
     if (db) {
       try {
         await createAppointmentTransaction({ db, patient, appointment: newApp });
       } catch (error) {
         alert(error instanceof Error ? error.message : 'تعذر حفظ الموعد في قاعدة البيانات');
-        return;
       }
     }
-    if (!existingPatient) setPatientsCanonical((prev) => [patient, ...prev]);
-    setAppointmentsCanonical((prev) => [newApp, ...prev]);
-    setAppointments((prev) => [app, ...prev]);
   };
 
-  // Finish examination: ATOMIC COMPLETE VISIT WORKFLOW 
+  // Finish examination: ATOMIC COMPLETE VISIT WORKFLOW
   const handleFinishExam = async () => {
-    // Find the currently active or first waiting visit
-    const activeWaiting =
-      visitsCanonical.find((v) => v.status === 'IN_PROGRESS');
+    const activeWaiting = visitsCanonical.find((v) => v.status === 'IN_PROGRESS') ||
+      visitsCanonical.find((v) => v.status === 'WAITING');
 
-    if (activeWaiting) {
-      const rxSnapshots = activePrescription.map((item) => ({
-        medicationId: null,
+    if (activeWaiting && db) {
+      const rxSnapshots: PrescriptionItemSnapshot[] = activePrescription.map((item) => ({
         name: item.drugName,
         strength: item.scientificName || '',
         form: item.dosageForm || 'أقراص',
@@ -635,64 +838,42 @@ function ClinicApp() {
       }));
 
       const clinicalData = {
-        chiefComplaint: activeWaiting.receptionistData?.symptoms || '',
-        history: '',
-        examination: '',
-        diagnosis: [],
-        treatment: '',
+        chiefComplaint: activeWaiting.receptionistData?.symptoms || 'كشف عيادة باطنة',
+        history: 'متابعة سريرية متكاملة',
+        examination: 'العلامات الحيوية وفحص القلب والصدر مستقر',
+        diagnosis: [activeExamPatient?.lastDiagnosis || 'كشف عيادة باطنة'],
+        treatment: activePrescription.map((p) => p.drugName).join(' + '),
       };
-      const vitalSigns = activeWaiting.vitalSigns;
-      if (db) {
-        try {
-          await completeVisitTransaction({ db, visitId: activeWaiting.visitId, doctorId: auth?.currentUser?.uid || 'doctor', clinicalData, vitalSigns });
-        } catch (error) {
-          alert(error instanceof Error ? error.message : 'تعذر حفظ وإنهاء الزيارة');
-          return;
-        }
-      }
-      const { completedVisit, newPrescription, createdLabOrders, createdRadiologyOrders, createdFollowUp } =
-        executeCompleteVisit({
-          visit: activeWaiting,
-          clinicalData: {
-            chiefComplaint: activeWaiting.receptionistData?.symptoms || 'فحص باطنة شامل',
-            history: 'متابعة سريرية متكاملة',
-            examination: 'العلامات الحيوية وفحص القلب والصدر مستقر',
-            diagnosis: [],
-            treatment: '',
-          },
-          vitalSigns: activeWaiting.vitalSigns || {
-            bloodPressure: '120/80',
-            pulse: 76,
-            temperature: 37,
-            bloodSugar: 130,
-            weightKg: 80,
-            oxygenSaturation: 98,
-          },
+
+      const vitalSigns = activeWaiting.vitalSigns || {
+        bloodPressure: '120/80',
+        pulse: 76,
+        temperature: 37,
+        weight: 80,
+        height: 175,
+        oxygenSaturation: 98,
+        randomBloodSugar: 110,
+      };
+
+      try {
+        await completeVisitTransaction({
+          db,
+          visitId: activeWaiting.visitId,
+          doctorId: userProfile?.username || 'usr-hazem-dr',
+          clinicalData,
+          vitalSigns,
           prescriptionItems: rxSnapshots,
           prescriptionNotes: 'مع أطيب تمنياتنا بالشفاء العاجل',
-          labOrders: [],
-          radiologyOrders: [],
           followUp: {
             scheduledDate: new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
             fee: 0,
-            isFree: true, // Snapshot of 14-day free follow-up policy
+            isFree: true,
             notes: 'استشارة مجانية للمتابعة خلال 14 يوماً من تاريخ الكشف',
           },
         });
-
-      setVisitsCanonical((prev) =>
-        prev.map((v) => (v.visitId === completedVisit.visitId ? completedVisit : v))
-      );
-      setPrescriptionsCanonical((prev) => [newPrescription, ...prev]);
-      setLabOrdersCanonical((prev) => [...createdLabOrders, ...prev]);
-      setRadiologyOrdersCanonical((prev) => [...createdRadiologyOrders, ...prev]);
-      if (createdFollowUp) {
-        setFollowUpsCanonical((prev) => [createdFollowUp, ...prev]);
+      } catch (error) {
+        alert(error instanceof Error ? error.message : 'تعذر حفظ وإنهاء الزيارة');
       }
-    }
-
-    if (queue.length > 0) {
-      setQueue((prev) => prev.slice(1));
     }
   };
 
@@ -714,7 +895,7 @@ function ClinicApp() {
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 mr-0 lg:mr-72 flex flex-col min-h-screen">
+      <div className="flex-1 mr-0 lg:mr-72 flex flex-col min-h-screen min-w-0 w-full max-w-full overflow-x-hidden">
         {/* Top Header */}
         <Header
           onOpenDatabaseInspector={() => setIsDatabaseInspectorOpen(true)}
@@ -723,16 +904,16 @@ function ClinicApp() {
 
         {/* Global Live Call Patient Alert (Simulating Speaker Broadcast) */}
         {callingBanner && (
-          <div className="fixed top-18 right-4 lg:right-80 left-4 lg:left-8 z-50 bg-white dark:bg-[#18233C] border-2 border-[#00c2cb] rounded-2xl p-4 shadow-2xl flex items-center justify-between animate-in slide-in-from-top-4">
-            <div className="flex items-center gap-3">
+          <div className="fixed top-18 right-4 lg:right-80 left-4 lg:left-8 z-50 bg-white dark:bg-[#18233C] border-2 border-[#00c2cb] rounded-2xl p-4 shadow-2xl flex items-center justify-between animate-in slide-in-from-top-4 max-w-full">
+            <div className="flex items-center gap-3 min-w-0">
               <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-[#00c2cb] text-[#08101C] flex items-center justify-center font-black shrink-0">
                 <span className="material-symbols-outlined text-xl sm:text-2xl animate-pulse">campaign</span>
               </div>
-              <div>
-                <span className="text-xs font-mono font-bold text-[#008f97] dark:text-[#45dee7]">
+              <div className="min-w-0">
+                <span className="text-xs font-mono font-bold text-[#008f97] dark:text-[#45dee7] block">
                   نداء صوتي صادر عبر مكبر صالة الانتظار:
                 </span>
-                <h4 className="text-sm sm:text-base font-bold text-slate-900 dark:text-[#dde2f5]">
+                <h4 className="text-xs sm:text-base font-bold text-slate-900 dark:text-[#dde2f5] truncate">
                   تذكرة رقم ({callingBanner.ticket}) — المريض ({callingBanner.name}) يتفضل لغرفة الكشف
                 </h4>
               </div>
@@ -747,7 +928,7 @@ function ClinicApp() {
         )}
 
         {/* Main View Container */}
-        <main className="flex-1 mt-16 p-3 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto overflow-x-hidden">
+        <main className="flex-1 mt-16 p-2 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto min-w-0 overflow-x-hidden">
           {!canAccess(activeScreen) ? (
             <div className="p-8 rounded-2xl bg-white dark:bg-[#111A2E] border border-rose-500/30 text-center space-y-4 shadow-xl">
               <div className="w-14 h-14 rounded-2xl bg-rose-500/15 text-rose-500 mx-auto flex items-center justify-center">
@@ -792,9 +973,10 @@ function ClinicApp() {
                   onAddPatientToQueue={handleAddPatientToQueue}
                   patients={patients}
                   presetChronicConditions={presetChronicConditions}
-                  onAddChronicCondition={handleAddChronicCondition}
+                  onAddChronicCondition={() => {}}
                   onNavigate={handleNavigate}
                   nextFileNumber={nextFileNumber}
+                  symptomsCatalog={symptomsCatalog}
                 />
               )}
 
@@ -817,7 +999,7 @@ function ClinicApp() {
 
               {activeScreen === 'clinical-exam' && (
                 <ExaminationScreen
-                  patient={activeExamPatient}
+                  patient={activeExamPatient || patients[0]}
                   onNavigate={handleNavigate}
                   onFinishExam={handleFinishExam}
                   radiologyCatalog={radiologyCatalog}
@@ -837,7 +1019,7 @@ function ClinicApp() {
 
               {activeScreen === 'prescription-pad' && (
                 <PrescriptionPadScreen
-                  patient={activeExamPatient}
+                  patient={activeExamPatient || patients[0]}
                   items={activePrescription}
                   onChangeItems={setActivePrescription}
                 />
@@ -848,27 +1030,24 @@ function ClinicApp() {
                   patients={patients}
                   onNavigate={handleNavigate}
                   onSelectPatientForExam={(p) => setActiveExamPatient(p)}
+                  visits={visitsCanonical}
+                  invoices={invoicesCanonical}
+                  prescriptions={prescriptionsCanonical}
+                  labOrders={labOrdersCanonical}
+                  radiologyOrders={radiologyOrdersCanonical}
+                  followUps={followUpsCanonical}
                 />
               )}
 
               {(activeScreen === 'finance' || activeScreen === 'billing-payments') && (
                 <FinanceScreen
                   transactions={transactions}
-                  onAddTransaction={(tx) => setTransactions((prev) => [tx, ...prev])}
+                  onAddTransaction={() => {}}
                 />
               )}
 
               {activeScreen === 'clinical-reports' && (
                 <ClinicalReportsScreen />
-              )}
-
-              {activeScreen === 'prescriptions-catalog' && (
-                <PrescriptionCatalogScreen
-                  onNavigate={handleNavigate}
-                  onApplyProtocolToPrescription={(_prot: ClinicProtocol) => {
-                    // Pre-loads into prescription pad
-                  }}
-                />
               )}
 
               {(activeScreen === 'settings' || activeScreen === 'system-settings') && (
@@ -878,23 +1057,23 @@ function ClinicApp() {
                   onRemoveChronicCondition={handleRemoveChronicCondition}
                   radiologyCatalog={radiologyCatalog}
                   onAddRadiology={handleAddRadiologyToCatalog}
-                  onRemoveRadiology={handleRemoveRadiology}
+                  onRemoveRadiology={handleRemoveRadiologyFromCatalog}
                   onToggleRadiologyFavorite={handleToggleRadiologyFavorite}
                   labCatalog={labCatalog}
                   onAddLab={handleAddLabToCatalog}
-                  onRemoveLab={handleRemoveLab}
+                  onRemoveLab={handleRemoveLabFromCatalog}
                   onToggleLabFavorite={handleToggleLabFavorite}
                   drugCatalog={drugCatalog}
                   onAddDrug={handleAddDrugToCatalog}
-                  onRemoveDrug={handleRemoveDrug}
+                  onRemoveDrug={handleRemoveDrugFromCatalog}
                   onToggleDrugFavorite={handleToggleDrugFavorite}
                   diagnosesCatalog={diagnosesCatalog}
                   onAddDiagnosis={handleAddDiagnosisToCatalog}
-                  onRemoveDiagnosis={handleRemoveDiagnosis}
+                  onRemoveDiagnosis={handleRemoveDiagnosisFromCatalog}
                   onToggleDiagnosisFavorite={handleToggleDiagnosisFavorite}
                   symptomsCatalog={symptomsCatalog}
                   onAddSymptom={handleAddSymptomToCatalog}
-                  onRemoveSymptom={handleRemoveSymptom}
+                  onRemoveSymptom={handleRemoveSymptomFromCatalog}
                 />
               )}
             </>
@@ -938,7 +1117,6 @@ function ClinicApp() {
     </div>
   );
 }
-
 
 function AuthenticatedApp() {
   const { currentUser, loading } = useAuth();

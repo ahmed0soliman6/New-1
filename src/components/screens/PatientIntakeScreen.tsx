@@ -8,6 +8,7 @@ interface PatientIntakeScreenProps {
   onAddChronicCondition: (condition: { id: string; name: string; category: string; color: string }) => void;
   onNavigate?: (screen: ScreenType) => void;
   nextFileNumber?: number;
+  symptomsCatalog?: { id: string; name: string; category: string }[];
 }
 
 export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
@@ -17,6 +18,16 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
   onAddChronicCondition,
   onNavigate,
   nextFileNumber = 1,
+  symptomsCatalog = [
+    { id: '1', name: 'ألم حاد بمنتصف الصدر أو الشرسوف', category: 'باطنة وجهاز هضمي' },
+    { id: '2', name: 'انتفاخ وغازات وتقلصات بالبطن', category: 'باطنة وجهاز هضمي' },
+    { id: '3', name: 'ارتجاع وحرقة شديدة في المريء', category: 'باطنة وجهاز هضمي' },
+    { id: '4', name: 'صداع ضاغط خلفي أو نبضي', category: 'مخ وأعصاب' },
+    { id: '5', name: 'حرقة أو صعوبة أثناء التبول', category: 'مسالك بولية' },
+    { id: '6', name: 'غثيان مستمر وفقدان للشهية', category: 'باطنة وجهاز هضمي' },
+    { id: '7', name: 'ارتفاع في درجة الحرارة وقشعريرة', category: 'عام' },
+    { id: '8', name: 'سعال جاف ممتد مع ضيق تنفس', category: 'صدرية' },
+  ],
 }) => {
   const [mode, setMode] = useState<'new' | 'existing'>('new');
   const [name, setName] = useState('أحمد محمد إبراهيم حسن');
@@ -431,8 +442,8 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
           </div>
 
           {/* Section 3: Preliminary Symptoms & Chief Complaint Card */}
-          <div className="bg-white dark:bg-[#111A2E] p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-white/5 flex flex-col gap-4">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/5 pb-3">
+          <div className="bg-white dark:bg-[#111A2E] p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-white/5 flex flex-col gap-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-100 dark:border-white/5 pb-3 gap-1">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb] text-xl">pulse_alert</span>
                 <span className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">3. الأعراض والشكوى الرئيسية للمريض *</span>
@@ -440,13 +451,46 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
               <span className="text-xs text-slate-500 dark:text-[#859394]">لإرشاد الطبيب قبل النداء</span>
             </div>
 
+            {/* Dropdown for Preconfigured Chief Complaints / Symptoms */}
+            <div className="flex flex-col gap-1.5 bg-teal-50/60 dark:bg-[#18233C]/60 p-3 rounded-xl border border-[#00c2cb]/20">
+              <label className="text-xs font-bold text-[#008f97] dark:text-[#45dee7] flex items-center justify-between">
+                <span>اختر من قائمة الأعراض والشكاوى المعدة مسبقاً في الإعدادات:</span>
+                {onNavigate && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('system-settings')}
+                    className="text-[11px] text-[#008f97] dark:text-[#00c2cb] hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-xs">settings</span>
+                    <span>تعديل القائمة</span>
+                  </button>
+                )}
+              </label>
+              <select
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (!val) return;
+                  setComplaint((prev) => (prev ? `${prev}، مع ${val}` : val));
+                  e.target.value = '';
+                }}
+                className="w-full bg-white dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs px-3 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-[#00c2cb] cursor-pointer"
+              >
+                <option value="">-- اضغط لاختيار عرض/شكوى من قائمة الإعدادات المسبقة --</option>
+                {symptomsCatalog.map((s) => (
+                  <option key={s.id || s.name} value={s.name}>
+                    {s.name} ({s.category})
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Chief Complaint */}
             <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-1">
                 <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">
                   الشكوى التفصيلية بلسان المريض <span className="text-red-500">*</span>
                 </label>
-                <div className="flex items-center gap-1.5 text-xs">
+                <div className="flex flex-wrap items-center gap-1.5 text-xs">
                   <span className="text-slate-500 dark:text-[#859394]">مقترحات:</span>
                   <button
                     type="button"
@@ -497,8 +541,8 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
           </div>
 
           {/* Section 4: DEDICATED CARD FOR "الامراض المزمنه" (User Explicit Requirement) */}
-          <div className="bg-white dark:bg-[#111A2E] p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-white/5 flex flex-col gap-4">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/5 pb-3">
+          <div className="bg-white dark:bg-[#111A2E] p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-white/5 flex flex-col gap-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-100 dark:border-white/5 pb-3 gap-2">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-rose-500 text-xl">medical_services</span>
                 <span className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">4. الأمراض المزمنة</span>
@@ -518,6 +562,31 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
                   </button>
                 )}
               </div>
+            </div>
+
+            {/* Dropdown Selector for Chronic Diseases */}
+            <div className="flex flex-col gap-1.5 bg-rose-50/60 dark:bg-[#18233C]/60 p-3 rounded-xl border border-rose-500/20">
+              <label className="text-xs font-bold text-rose-700 dark:text-rose-300">
+                اختر مرض مزمن من القائمة المنسدلة لإضافته للمريض:
+              </label>
+              <select
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (!val) return;
+                  if (!chronicSelected.includes(val)) {
+                    setChronicSelected([...chronicSelected, val]);
+                  }
+                  e.target.value = '';
+                }}
+                className="w-full bg-white dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs px-3 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-[#00c2cb] cursor-pointer"
+              >
+                <option value="">-- اضغط لاختيار مرض مزمن من قائمة الإعدادات --</option>
+                {presetChronicConditions.map((c) => (
+                  <option key={c.id || c.name} value={c.name}>
+                    {c.name} ({c.category})
+                  </option>
+                ))}
+              </select>
             </div>
 
             <p className="text-xs text-slate-500 dark:text-[#bbc9ca]">

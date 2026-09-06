@@ -11,7 +11,6 @@ export type ScreenType =
   | 'billing-payments'
   | 'finance'
   | 'clinical-reports'
-  | 'prescriptions-catalog'
   | 'prescription-pad'
   | 'system-settings'
   | 'settings';

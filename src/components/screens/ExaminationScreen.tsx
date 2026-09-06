@@ -60,7 +60,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
   activePrescription,
   onChangeActivePrescription,
 }) => {
-  // Navigation tabs / quick filter
+  // Navigation tabs / quick section jump
   const [activeTab, setActiveTab] = useState<'all' | 'vitals' | 'symptoms' | 'lab' | 'rad' | 'diag' | 'rx' | 'followup'>('all');
 
   // Consultation state
@@ -153,9 +153,90 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
     '• الامتناع التام عن الأطعمة الدسمة، الحارة، المقليات، والمشروبات الغازية.\n• عدم الاستلقاء أو النوم مباشرة بعد تناول الطعام لمدة ساعتين على الأقل.'
   );
 
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [copiedWhatsAppText, setCopiedWhatsAppText] = useState(false);
+
+  // Generate WhatsApp formatted message
+  const generateWhatsAppMessage = () => {
+    const primaryDiag = patientDiagnoses.find((d) => d.isPrimary)?.nameAr || patientDiagnoses[0]?.nameAr || 'كشف ومتابعة باطنة';
+    const lines = [
+      `*عيادة د. حازم سمير القاضي (Soli Medical Clinic)*`,
+      `*استشاري الباطنة والقلب والسكر*`,
+      `---------------------------------`,
+      `👤 *المريض:* ${patient.name}`,
+      `📋 *رقم الملف:* #${patient.fileNumber || 1} (${patient.medicalCode})`,
+      `📅 *التاريخ:* ${new Date().toLocaleDateString('ar-EG')}`,
+      `🔍 *التشخيص الإكلينيكي:* ${primaryDiag}`,
+      `---------------------------------`,
+      `💊 *الوصفة الطبية والعلاج (Rx):*`,
+    ];
+
+    if (activePrescription.length === 0) {
+      lines.push(`(لم يتم تسجيل أدوية في هذه الزيارة)`);
+    } else {
+      activePrescription.forEach((item, index) => {
+        lines.push(`${index + 1}. *${item.drugName}*`);
+        if (item.scientificName) lines.push(`   (${item.scientificName})`);
+        lines.push(`   ▫️ الجرعة: ${item.dosage}`);
+        lines.push(`   ▫️ التوقيت: ${item.timing}`);
+        lines.push(`   ▫️ المدة: ${item.duration}`);
+        if (item.notes) lines.push(`   ▫️ ملاحظات: ${item.notes}`);
+      });
+    }
+
+    if (labOrders.length > 0) {
+      lines.push(`---------------------------------`);
+      lines.push(`🧪 *التحاليل المطلوبة:*`);
+      labOrders.forEach((l) => lines.push(`- ${l.testName} (${l.status === 'RESULT' ? 'تمت النتيجة' : 'مطلوب'})`));
+    }
+
+    if (radiologyOrders.length > 0) {
+      lines.push(`---------------------------------`);
+      lines.push(`🩻 *الفحوصات والأشعة المطلوبة:*`);
+      radiologyOrders.forEach((r) => lines.push(`- ${r.name}`));
+    }
+
+    if (lifestyleAdvice) {
+      lines.push(`---------------------------------`);
+      lines.push(`🩺 *نصائح وتعليمات طبية:*`);
+      lines.push(lifestyleAdvice);
+    }
+
+    if (followupDate) {
+      lines.push(`---------------------------------`);
+      lines.push(`🗓️ *موعد الاستشارة القادمة:* ${followupDate}`);
+    }
+
+    lines.push(`---------------------------------`);
+    lines.push(`📞 للاستفسارات والطوارئ: 01092847162`);
+    lines.push(`نتمنى لكم دوام الصحة والعافية.`);
+
+    return lines.join('\n');
+  };
+
+  const getCleanPatientWhatsAppUrl = () => {
+    const raw = patient.phone || '';
+    let digits = raw.replace(/\D/g, '');
+    if (digits.startsWith('0')) {
+      digits = '2' + digits;
+    } else if (!digits.startsWith('20') && digits.length === 10) {
+      digits = '20' + digits;
+    }
+    const msg = encodeURIComponent(generateWhatsAppMessage());
+    return `https://wa.me/${digits}?text=${msg}`;
+  };
+
+  const handleCopyWhatsApp = () => {
+    const text = generateWhatsAppMessage();
+    navigator.clipboard.writeText(text);
+    setCopiedWhatsAppText(true);
+    setTimeout(() => setCopiedWhatsAppText(false), 3000);
+  };
+
   const { assertPermission, canAccess, role, userProfile } = usePermissions();
   const isAllowed = canAccess('clinical-exam');
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   const handleFinish = () => {
     if (!isAllowed) {
@@ -186,7 +267,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
             غير مصرح بالوصول إلى غرفة الكشف الطبي
           </h2>
           <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-            حسابك الحالي ({userProfile?.displayName || userProfile?.username || 'المستخدم'}) بدور ({role}) لا يمتلك صلاحية الوصول لشاشة الكشف الإكلينيكي أو تحرير السجلات الطبية. هذه الشاشة مخصصة للأطباء فقط.
+            حسابك الحالي ({userProfile?.displayName || userProfile?.username || 'المستخدم'}) بدور ({role}) لا يمتلك صلاحية الوصول لشاشة الكشف الإكلينيكي أو تحرير السجلات الطبية.
           </p>
         </div>
         <button
@@ -200,19 +281,21 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
   }
 
   return (
-    <div className="flex flex-col w-full pb-20 space-y-6 text-slate-800 dark:text-[#dde2f5]">
+    <div className="flex flex-col w-full max-w-full overflow-x-hidden pb-28 space-y-6 text-slate-800 dark:text-[#dde2f5]">
       {/* Top Banner: Active Consultation Session & Patient Meta */}
-      <div className="bg-white dark:bg-[#111A2E] p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm space-y-4">
+      <div className="bg-white dark:bg-[#111A2E] p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           {/* Patient Details */}
-          <div className="flex items-start gap-3.5">
-            <div className="w-12 h-12 rounded-2xl bg-teal-50 dark:bg-[#00c2cb]/15 text-[#008f97] dark:text-[#00c2cb] flex items-center justify-center font-bold text-lg shadow-sm">
+          <div className="flex items-start gap-3.5 min-w-0">
+            <div className="w-12 h-12 rounded-2xl bg-teal-50 dark:bg-[#00c2cb]/15 text-[#008f97] dark:text-[#00c2cb] flex items-center justify-center font-bold text-lg shadow-xs shrink-0">
               {patient.name.charAt(0)}
             </div>
 
-            <div>
+            <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-lg font-bold text-slate-900 dark:text-[#dde2f5]">{patient.name}</h1>
+                <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-[#dde2f5] truncate">
+                  {patient.name}
+                </h1>
                 <span className="px-2 py-0.5 rounded-full bg-teal-100 dark:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#45dee7] text-[11px] font-bold">
                   ملف رقم: #{patient.fileNumber || 1}
                 </span>
@@ -240,7 +323,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                   </div>
                 )}
 
-                <div className="text-[11px] text-slate-500 dark:text-[#859394] flex items-center gap-1 mr-2">
+                <div className="text-[11px] text-slate-500 dark:text-[#859394] flex items-center gap-1">
                   <span className="material-symbols-outlined text-xs text-teal-600">call</span>
                   <span className="font-mono">{patient.phone}</span>
                 </div>
@@ -248,22 +331,32 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
             </div>
           </div>
 
-          {/* Actions */}
-          <div className="flex items-center gap-2.5 self-end lg:self-center">
+          {/* Action Buttons */}
+          <div className="flex flex-wrap items-center gap-2 self-stretch sm:self-end lg:self-center">
             <button
               type="button"
-              onClick={() => onNavigate('prescription-pad')}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] hover:bg-slate-200 dark:hover:bg-[#242a38] text-xs font-bold transition-all cursor-pointer border border-slate-200 dark:border-white/5"
+              onClick={() => setShowWhatsAppModal(true)}
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-xs font-bold transition-all cursor-pointer border border-emerald-200 dark:border-emerald-800/40"
+              title="إرسال الروشتة وملخص الكشف للمريض عبر واتساب"
             >
-              <span className="material-symbols-outlined text-base text-[#008f97] dark:text-[#00c2cb]">prescriptions</span>
-              <span>عرض وطباعة الروشتة (Rx)</span>
+              <span className="material-symbols-outlined text-base">chat</span>
+              <span>واتساب</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowPrintModal(true)}
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] hover:bg-slate-200 dark:hover:bg-[#242a38] text-xs font-bold transition-all cursor-pointer border border-slate-200 dark:border-white/5"
+            >
+              <span className="material-symbols-outlined text-base text-[#008f97] dark:text-[#00c2cb]">print</span>
+              <span>طباعة الروشتة</span>
             </button>
 
             <PermissionGate permission="clinical.complete">
               <button
                 type="button"
                 onClick={handleFinish}
-                className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] text-xs font-bold shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95"
+                className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs font-bold shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95"
               >
                 <span className="material-symbols-outlined text-base">task_alt</span>
                 <span>إنهاء الكشف وحفظ الزيارة</span>
@@ -272,12 +365,12 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
           </div>
         </div>
 
-        {/* Section Jump Tabs */}
-        <div className="flex items-center gap-1.5 pt-2 border-t border-slate-100 dark:border-white/5 overflow-x-auto pb-1 text-xs">
+        {/* Responsive Section Jump Tabs */}
+        <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-white/5 overflow-x-auto pb-1 text-xs no-scrollbar">
           <button
             type="button"
             onClick={() => setActiveTab('all')}
-            className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
+            className={`px-3.5 py-2 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
               activeTab === 'all'
                 ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xs'
                 : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
@@ -288,7 +381,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('vitals')}
-            className={`px-3 py-1.5 rounded-xl font-medium whitespace-nowrap transition-all cursor-pointer ${
+            className={`px-3.5 py-2 rounded-xl font-medium whitespace-nowrap transition-all cursor-pointer ${
               activeTab === 'vitals'
                 ? 'bg-teal-600 text-white font-bold'
                 : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
@@ -299,7 +392,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('symptoms')}
-            className={`px-3 py-1.5 rounded-xl font-medium whitespace-nowrap transition-all cursor-pointer ${
+            className={`px-3.5 py-2 rounded-xl font-medium whitespace-nowrap transition-all cursor-pointer ${
               activeTab === 'symptoms'
                 ? 'bg-purple-600 text-white font-bold'
                 : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
@@ -310,7 +403,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('lab')}
-            className={`px-3 py-1.5 rounded-xl font-medium whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-xl font-medium whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'lab'
                 ? 'bg-emerald-600 text-white font-bold'
                 : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
@@ -324,7 +417,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('rad')}
-            className={`px-3 py-1.5 rounded-xl font-medium whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-xl font-medium whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'rad'
                 ? 'bg-sky-600 text-white font-bold'
                 : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
@@ -338,7 +431,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('diag')}
-            className={`px-3 py-1.5 rounded-xl font-medium whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-xl font-medium whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'diag'
                 ? 'bg-amber-500 text-slate-900 font-bold'
                 : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
@@ -352,7 +445,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('rx')}
-            className={`px-3 py-1.5 rounded-xl font-medium whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-xl font-medium whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'rx'
                 ? 'bg-[#00c2cb] text-slate-900 font-bold'
                 : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
@@ -366,7 +459,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('followup')}
-            className={`px-3 py-1.5 rounded-xl font-medium whitespace-nowrap transition-all cursor-pointer ${
+            className={`px-3.5 py-2 rounded-xl font-medium whitespace-nowrap transition-all cursor-pointer ${
               activeTab === 'followup'
                 ? 'bg-indigo-600 text-white font-bold'
                 : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
@@ -377,7 +470,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
         </div>
       </div>
 
-      {/* DYNAMIC EXAMINATION CARDS (Modular Architecture) */}
+      {/* DYNAMIC EXAMINATION CARDS (Modular Responsive Architecture) */}
       <div className="space-y-6">
         {/* 1. Vital Signs Card */}
         {(activeTab === 'all' || activeTab === 'vitals') && (
@@ -396,7 +489,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
           />
         )}
 
-        {/* 3. Laboratory Investigations Card (LabOrder vs LabResult with Request/Result/Report statuses) */}
+        {/* 3. Laboratory Investigations Card */}
         {(activeTab === 'all' || activeTab === 'lab') && (
           <LabCard
             labOrders={labOrders}
@@ -406,7 +499,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
           />
         )}
 
-        {/* 4. Radiology & Imaging Card (Dynamic types, Request/Result/Report statuses, add on the fly) */}
+        {/* 4. Radiology & Imaging Card */}
         {(activeTab === 'all' || activeTab === 'rad') && (
           <RadiologyCard
             radiologyOrders={radiologyOrders}
@@ -416,7 +509,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
           />
         )}
 
-        {/* 5. Clinical Diagnoses Card (ICD-10, Primary/Secondary, Favorites, Unlisted) */}
+        {/* 5. Clinical Diagnoses Card */}
         {(activeTab === 'all' || activeTab === 'diag') && (
           <DiagnosisCard
             diagnoses={patientDiagnoses}
@@ -426,7 +519,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
           />
         )}
 
-        {/* 6. Medications & Prescription Rx Card (Level 1, 2, 3 + Decoupled Snapshot) */}
+        {/* 6. Medications & Prescription Rx Card */}
         {(activeTab === 'all' || activeTab === 'rx') && (
           <MedicationsCard
             prescriptionItems={activePrescription}
@@ -449,49 +542,140 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
       </div>
 
       {/* Floating Bottom Action Bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-[#080e1b]/95 backdrop-blur-md border-t border-slate-200 dark:border-white/10 p-3.5 shadow-2xl">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">
-              جلسة الكشف الطبي الحالية:
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-[#080e1b]/95 backdrop-blur-md border-t border-slate-200 dark:border-white/10 p-3 sm:p-4 shadow-2xl">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-3 text-right w-full sm:w-auto">
+            <span className="text-xs font-bold text-slate-800 dark:text-[#dde2f5] shrink-0">
+              جلسة الكشف الحالية:
             </span>
-            <span className="text-xs text-slate-500 dark:text-[#859394]">
-              {patient.name} • {patientDiagnoses.find((d) => d.isPrimary)?.nameAr || 'في انتظار اعتماد التشخيص'}
+            <span className="text-xs text-slate-500 dark:text-[#859394] truncate">
+              {patient.name} • {patientDiagnoses.find((d) => d.isPrimary)?.nameAr || 'في انتظار اختيار التشخيص'}
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5 w-full sm:w-auto">
             <button
               type="button"
               onClick={() => onNavigate('prescription-pad')}
-              className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] hover:bg-slate-200 text-xs font-bold transition-all cursor-pointer"
+              className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] hover:bg-slate-200 dark:hover:bg-[#242a38] text-xs font-bold transition-all cursor-pointer border border-slate-200 dark:border-white/5"
             >
-              معاينة الروشتة Rx ({activePrescription.length})
+              معاينة الروشتة
             </button>
-            <button
-              type="button"
-              onClick={handleFinish}
-              className="px-6 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] text-xs font-bold shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95"
-            >
-              إنهاء الكشف وحفظ الزيارة
-            </button>
+
+            <PermissionGate permission="clinical.complete">
+              <button
+                type="button"
+                onClick={handleFinish}
+                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs font-bold shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95"
+              >
+                <span className="material-symbols-outlined text-base">task_alt</span>
+                <span>إنهاء الكشف وحفظ الزيارة</span>
+              </button>
+            </PermissionGate>
           </div>
         </div>
       </div>
 
       {/* Success Modal */}
       {showSuccessModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#18233C] border border-slate-200 dark:border-white/10 rounded-2xl p-6 max-w-sm w-full text-center shadow-2xl space-y-3 animate-in zoom-in-95">
-            <div className="w-14 h-14 rounded-2xl bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 dark:text-[#10B981] flex items-center justify-center mx-auto">
-              <span className="material-symbols-outlined text-3xl font-bold">check_circle</span>
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#111A2E] border border-emerald-500/30 rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl animate-in zoom-in-95">
+            <div className="w-16 h-16 rounded-full bg-emerald-500/15 text-emerald-500 mx-auto flex items-center justify-center">
+              <span className="material-symbols-outlined text-3xl">check_circle</span>
             </div>
-            <h3 className="text-base font-bold text-slate-900 dark:text-[#dde2f5]">
-              تم اعتماد وإنهاء الكشف بنجاح
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-[#859394] leading-relaxed">
-              تم تحديث السجل الطبي للمريض، حفظ طلبات الأشعة والتحاليل، وتوثيق بنود الروشتة في أرشيف الزيارات.
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                تم حفظ الزيارة بكتالوج الملف الطبي!
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-[#859394]">
+                تم إنهاء جلسة الكشف بنجاح، وتحديث ملف المريض ({patient.name}) وتحويل الحالة إلى مكتملة.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp Modal */}
+      {showWhatsAppModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#111A2E] border border-slate-200 dark:border-white/10 rounded-3xl p-5 max-w-md w-full space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/5 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-emerald-500 text-xl">chat</span>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">إرسال الروشتة عبر الواتساب</h3>
+              </div>
+              <button
+                onClick={() => setShowWhatsAppModal(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-[#bbc9ca] leading-relaxed">
+              سيتم فتح رابط واتساب مباشر لإرسال ملخص الروشتة والتعليمات والتحاليل المطلوبة للمريض <strong>{patient.name}</strong> على الرقم <strong>{patient.phone}</strong>.
             </p>
+
+            <div className="bg-slate-50 dark:bg-[#080e1b] p-3 rounded-xl border border-slate-200 dark:border-white/5 text-xs text-slate-700 dark:text-[#dde2f5] max-h-40 overflow-y-auto whitespace-pre-wrap font-mono">
+              {generateWhatsAppMessage()}
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={handleCopyWhatsApp}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] hover:bg-slate-200 text-xs font-bold transition-all cursor-pointer border border-slate-200 dark:border-white/5"
+              >
+                {copiedWhatsAppText ? 'تم النسخ!' : 'نسخ النص'}
+              </button>
+
+              <a
+                href={getCleanPatientWhatsAppUrl()}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => setShowWhatsAppModal(false)}
+                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-center text-xs font-bold shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <span>فتح الواتساب</span>
+                <span className="material-symbols-outlined text-base">open_in_new</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Print Modal */}
+      {showPrintModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#111A2E] border border-slate-200 dark:border-white/10 rounded-3xl p-5 max-w-sm w-full text-center space-y-4 shadow-2xl">
+            <div className="w-14 h-14 rounded-2xl bg-teal-50 dark:bg-[#00c2cb]/15 text-[#008f97] dark:text-[#00c2cb] mx-auto flex items-center justify-center">
+              <span className="material-symbols-outlined text-3xl">print</span>
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">طباعة الروشتة المعتمدة</h3>
+              <p className="text-xs text-slate-500 dark:text-[#859394]">
+                سيتم تحويلك لنموذج المعاينة والطباعة المباشرة مع الترويسة الطبية المسجلة.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowPrintModal(false)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] text-xs font-bold"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPrintModal(false);
+                  onNavigate('prescription-pad');
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs font-bold shadow-md"
+              >
+                الانتقال للطباعة
+              </button>
+            </div>
           </div>
         </div>
       )}

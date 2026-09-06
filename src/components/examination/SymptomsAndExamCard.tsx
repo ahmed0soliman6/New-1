@@ -60,17 +60,17 @@ export const SymptomsAndExamCard: React.FC<SymptomsAndExamCardProps> = ({
   };
 
   return (
-    <div className="bg-white dark:bg-[#111A2E] p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm space-y-4">
-      <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/5 pb-3">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-[#d0bcff] flex items-center justify-center">
+    <div className="bg-white dark:bg-[#111A2E] p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm space-y-4 min-w-0 max-w-full overflow-hidden">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-100 dark:border-white/5 pb-3 gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-8 h-8 rounded-xl bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-[#d0bcff] flex items-center justify-center shrink-0">
             <span className="material-symbols-outlined text-lg">clinical_notes</span>
           </div>
-          <div>
-            <h3 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">
+          <div className="min-w-0">
+            <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-[#dde2f5] truncate">
               الأعراض والشكوى السريرية والفحص البدني
             </h3>
-            <p className="text-[11px] text-slate-500 dark:text-[#859394]">
+            <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-[#859394]">
               أدلة الأعراض السريرية السريعة وملاحظات الفحص البدني المباشر
             </p>
           </div>
@@ -79,7 +79,7 @@ export const SymptomsAndExamCard: React.FC<SymptomsAndExamCardProps> = ({
         <button
           type="button"
           onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-[#d0bcff] hover:bg-purple-100 text-xs font-bold transition-all cursor-pointer"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-[#d0bcff] hover:bg-purple-100 text-xs font-bold transition-all cursor-pointer shrink-0 self-start sm:self-center"
         >
           <span className="material-symbols-outlined text-base">add_circle</span>
           <span>+ إضافة عرض جديد</span>
@@ -87,11 +87,11 @@ export const SymptomsAndExamCard: React.FC<SymptomsAndExamCardProps> = ({
       </div>
 
       {/* Quick Symptoms selection chips */}
-      <div className="space-y-1.5">
+      <div className="space-y-1.5 min-w-0">
         <span className="text-[11px] font-bold text-slate-500 dark:text-[#859394] block">
           الأعراض الشائعة (انقر للإضافة أو الإزالة السريعة):
         </span>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 min-w-0">
           {symptomsCatalog.map((sym) => {
             const isSelected = selectedSymptoms.includes(sym.name);
             return (
@@ -99,14 +99,14 @@ export const SymptomsAndExamCard: React.FC<SymptomsAndExamCardProps> = ({
                 key={sym.id}
                 type="button"
                 onClick={() => toggleSymptom(sym.name)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 border ${
+                className={`px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 border text-right break-words max-w-full ${
                   isSelected
                     ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
                     : 'bg-slate-50 dark:bg-[#080e1b] text-slate-700 dark:text-[#bbc9ca] hover:bg-slate-100 dark:hover:bg-[#18233C] border-slate-200 dark:border-white/5'
                 }`}
               >
-                {isSelected && <span className="material-symbols-outlined text-sm">check</span>}
-                <span>{sym.name}</span>
+                {isSelected && <span className="material-symbols-outlined text-sm shrink-0">check</span>}
+                <span className="break-words">{sym.name}</span>
               </button>
             );
           })}
