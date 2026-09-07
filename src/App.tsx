@@ -27,6 +27,21 @@ import {
   INITIAL_DOCTOR_PROFILE,
   INITIAL_CLINIC_LOCATIONS,
   INITIAL_SERVICES,
+  INITIAL_PATIENTS,
+  INITIAL_APPOINTMENTS,
+  INITIAL_VISITS,
+  INITIAL_INVOICES,
+  INITIAL_PAYMENTS,
+  INITIAL_FOLLOWUPS,
+  INITIAL_PRESCRIPTIONS,
+  INITIAL_MEDICATIONS,
+  INITIAL_LAB_TESTS,
+  INITIAL_LAB_ORDERS,
+  INITIAL_RADIOLOGY_TYPES,
+  INITIAL_RADIOLOGY_ORDERS,
+  INITIAL_DIAGNOSES,
+  INITIAL_SYMPTOMS,
+  INITIAL_CHRONIC_DISEASES,
   INITIAL_DOCTOR_SETTINGS as INITIAL_DOCTOR_SETTINGS_CANONICAL,
   INITIAL_SYSTEM_SETTINGS as INITIAL_SYSTEM_SETTINGS_CANONICAL,
 } from './data/database';
@@ -69,6 +84,7 @@ import { SettingsScreen } from './components/screens/SettingsScreen';
 import { ClinicalReportsScreen } from './components/screens/ClinicalReportsScreen';
 import { NewAppointmentModal } from './components/modals/NewAppointmentModal';
 import { db } from './services/firebase';
+import { doc, deleteDoc } from 'firebase/firestore';
 import { logoutAccount } from './services/auth';
 import { AuthScreen } from './components/AuthScreen';
 import { AuthProvider, useAuth, usePermissions } from './context/AuthContext';
@@ -98,6 +114,11 @@ import {
   saveCatalogItem,
   removeCatalogItem,
 } from './services/repositories';
+import {
+  loadAlertSettings,
+  playSingleAlertSound,
+  ClinicAlertPayload,
+} from './utils/alertManager';
 
 function ClinicApp() {
   const { canAccess, allowedScreens, userProfile } = usePermissions();
@@ -138,25 +159,8 @@ function ClinicApp() {
   const [theme, setTheme] = useState<'light' | 'dark'>('light'); // Day/Light mode enabled by default
   const [activeExamPatient, setActiveExamPatient] = useState<PatientListItem | null>(null);
 
-  // Active Prescription sync state
-  const [activePrescription, setActivePrescription] = useState<PrescriptionItem[]>([
-    {
-      id: 'rx-init-1',
-      drugName: 'Concor 5 Plus',
-      scientificName: 'Bisoprolol + HCTZ',
-      dosageForm: 'أقراص (Tablets)',
-      dosage: 'قرص واحد صباحاً بعد الإفطار',
-      duration: 'لمدة شهر (30 يوماً)',
-    },
-    {
-      id: 'rx-init-2',
-      drugName: 'Nexium 40 mg',
-      scientificName: 'Esomeprazole',
-      dosageForm: 'أقراص (Tablets)',
-      dosage: 'قرص واحد قبل الإفطار بنصف ساعة',
-      duration: 'لمدة 4 أسابيع',
-    },
-  ]);
+  // Active Prescription sync state - starts clean
+  const [activePrescription, setActivePrescription] = useState<PrescriptionItem[]>([]);
 
   // =========================================================================
   // SOLI MEDICAL CANONICAL STATE (SINGLE SOURCE OF TRUTH: FIRESTORE)
@@ -166,21 +170,21 @@ function ClinicApp() {
   const [clinicLocations] = useState<ClinicLocation[]>(INITIAL_CLINIC_LOCATIONS);
   const [services] = useState<ServiceItem[]>(INITIAL_SERVICES);
 
-  const [patientsCanonical, setPatientsCanonical] = useState<Patient[]>([]);
-  const [appointmentsCanonical, setAppointmentsCanonical] = useState<Appointment[]>([]);
-  const [visitsCanonical, setVisitsCanonical] = useState<Visit[]>([]);
-  const [invoicesCanonical, setInvoicesCanonical] = useState<Invoice[]>([]);
-  const [paymentsCanonical, setPaymentsCanonical] = useState<Payment[]>([]);
-  const [followUpsCanonical, setFollowUpsCanonical] = useState<FollowUp[]>([]);
-  const [prescriptionsCanonical, setPrescriptionsCanonical] = useState<Prescription[]>([]);
-  const [medicationsCanonical, setMedicationsCanonical] = useState<Medication[]>([]);
-  const [labTestsCanonical, setLabTestsCanonical] = useState<LabTest[]>([]);
-  const [labOrdersCanonical, setLabOrdersCanonical] = useState<LabOrder[]>([]);
-  const [radiologyTypesCanonical, setRadiologyTypesCanonical] = useState<RadiologyType[]>([]);
-  const [radiologyOrdersCanonical, setRadiologyOrdersCanonical] = useState<RadiologyOrder[]>([]);
-  const [diagnosesCanonical, setDiagnosesCanonical] = useState<Diagnosis[]>([]);
-  const [symptomsCanonical, setSymptomsCanonical] = useState<Symptom[]>([]);
-  const [chronicDiseasesCanonical, setChronicDiseasesCanonical] = useState<ChronicDisease[]>([]);
+  const [patientsCanonical, setPatientsCanonical] = useState<Patient[]>(INITIAL_PATIENTS);
+  const [appointmentsCanonical, setAppointmentsCanonical] = useState<Appointment[]>(INITIAL_APPOINTMENTS);
+  const [visitsCanonical, setVisitsCanonical] = useState<Visit[]>(INITIAL_VISITS);
+  const [invoicesCanonical, setInvoicesCanonical] = useState<Invoice[]>(INITIAL_INVOICES);
+  const [paymentsCanonical, setPaymentsCanonical] = useState<Payment[]>(INITIAL_PAYMENTS);
+  const [followUpsCanonical, setFollowUpsCanonical] = useState<FollowUp[]>(INITIAL_FOLLOWUPS);
+  const [prescriptionsCanonical, setPrescriptionsCanonical] = useState<Prescription[]>(INITIAL_PRESCRIPTIONS);
+  const [medicationsCanonical, setMedicationsCanonical] = useState<Medication[]>(INITIAL_MEDICATIONS);
+  const [labTestsCanonical, setLabTestsCanonical] = useState<LabTest[]>(INITIAL_LAB_TESTS);
+  const [labOrdersCanonical, setLabOrdersCanonical] = useState<LabOrder[]>(INITIAL_LAB_ORDERS);
+  const [radiologyTypesCanonical, setRadiologyTypesCanonical] = useState<RadiologyType[]>(INITIAL_RADIOLOGY_TYPES);
+  const [radiologyOrdersCanonical, setRadiologyOrdersCanonical] = useState<RadiologyOrder[]>(INITIAL_RADIOLOGY_ORDERS);
+  const [diagnosesCanonical, setDiagnosesCanonical] = useState<Diagnosis[]>(INITIAL_DIAGNOSES);
+  const [symptomsCanonical, setSymptomsCanonical] = useState<Symptom[]>(INITIAL_SYMPTOMS);
+  const [chronicDiseasesCanonical, setChronicDiseasesCanonical] = useState<ChronicDisease[]>(INITIAL_CHRONIC_DISEASES);
   const [doctorSettingsCanonical] = useState<DoctorSettings>(INITIAL_DOCTOR_SETTINGS_CANONICAL);
   const [systemSettingsCanonical] = useState<SystemSettings>(INITIAL_SYSTEM_SETTINGS_CANONICAL);
 
@@ -330,12 +334,16 @@ function ClinicApp() {
     if (medicationsCanonical.length > 0) {
       return medicationsCanonical.map((m) => ({
         id: m.medicationId,
-        brandName: m.nameAr,
-        genericName: m.genericName,
-        strength: m.strength,
-        form: m.form,
-        category: 'أدوية العيادة',
-        active: m.active,
+        brandName: m.nameAr || m.nameEn || 'دواء',
+        genericName: m.genericName || '',
+        strength: m.strength || '',
+        form: m.form || 'أقراص',
+        category: (m as any).category || 'أدوية العيادة',
+        defaultDosage: (m as any).defaultDosage || 'قرص واحد يومياً',
+        defaultDuration: (m as any).defaultDuration || 'لمدة 7 أيام',
+        defaultTiming: (m as any).defaultTiming || 'بعد الأكل',
+        isFavorite: Boolean((m as any).isFavorite),
+        active: m.active !== false,
       }));
     }
     return DEFAULT_DRUG_CATALOG;
@@ -345,11 +353,11 @@ function ClinicApp() {
     if (labTestsCanonical.length > 0) {
       return labTestsCanonical.map((l) => ({
         id: l.labTestId,
-        name: l.nameAr,
-        category: l.category,
-        sampleType: l.sampleType,
-        fastingRequired: l.fastingRequired,
-        active: l.active,
+        name: l.nameAr || l.nameEn || 'تحليل',
+        category: l.category || 'تحاليل عامة',
+        sampleType: l.sampleType || 'دم',
+        fastingRequired: Boolean(l.fastingRequired),
+        active: l.active !== false,
       }));
     }
     return DEFAULT_LAB_CATALOG;
@@ -359,9 +367,9 @@ function ClinicApp() {
     if (radiologyTypesCanonical.length > 0) {
       return radiologyTypesCanonical.map((r) => ({
         id: r.radiologyId,
-        name: r.nameAr,
-        category: r.category,
-        active: r.active,
+        name: r.nameAr || r.nameEn || 'أشعة',
+        category: r.category || 'أشعة عامة',
+        active: r.active !== false,
       }));
     }
     return DEFAULT_RADIOLOGY_CATALOG;
@@ -371,10 +379,12 @@ function ClinicApp() {
     if (diagnosesCanonical.length > 0) {
       return diagnosesCanonical.map((d) => ({
         id: d.diagnosisId,
-        nameAr: d.nameAr,
-        nameEn: d.nameEn,
-        code: d.code,
-        active: d.active,
+        nameAr: d.nameAr || 'تشخيص',
+        nameEn: d.nameEn || '',
+        code: d.code || '',
+        category: d.category || 'باطنة عامة',
+        isFavorite: Boolean((d as any).isFavorite),
+        active: d.active !== false,
       }));
     }
     return DEFAULT_DIAGNOSES_CATALOG;
@@ -384,27 +394,20 @@ function ClinicApp() {
     if (symptomsCanonical.length > 0) {
       return symptomsCanonical.map((s) => ({
         id: s.symptomId,
-        name: s.nameAr,
-        category: s.category,
-        active: s.active,
+        name: s.nameAr || 'عرض',
+        category: s.category || 'شكوى عامة',
+        active: s.active !== false,
       }));
     }
     return DEFAULT_SYMPTOMS_CATALOG;
   }, [symptomsCanonical]);
 
-  // Set default active patient for exam if not selected
-  useEffect(() => {
-    if (!activeExamPatient && patients.length > 0) {
-      setActiveExamPatient(patients[0]);
-    }
-  }, [patients, activeExamPatient]);
-
   // Modals
   const [isNewAppointmentOpen, setIsNewAppointmentOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // Sound/Announcement banner
-  const [callingBanner, setCallingBanner] = useState<{ ticket: string; name: string } | null>(null);
+  // Sound/Announcement banner (Controlled by Settings)
+  const [callingBanner, setCallingBanner] = useState<ClinicAlertPayload | null>(null);
 
   // Synchronize Theme class on HTML document root and localStorage
   useEffect(() => {
@@ -683,29 +686,118 @@ function ClinicApp() {
   // NO DOUBLE MUTATION!
   // =========================================================================
 
+  // Delete queue item / visit
+  const handleRemoveFromQueue = async (ticket: string) => {
+    const targetQueueNum = parseInt(ticket.replace(/\D/g, ''), 10);
+    const targetVisit =
+      visitsCanonical.find((v) => v.visitId === ticket) ||
+      visitsCanonical.find((v) => v.queueNumber === targetQueueNum);
+    if (targetVisit) {
+      if (db) {
+        try {
+          await deleteDoc(doc(db, 'visits', targetVisit.visitId));
+        } catch (err) {
+          console.error('Error removing visit from Firestore:', err);
+        }
+      }
+      setVisitsCanonical((prev) => prev.filter((v) => v.visitId !== targetVisit.visitId));
+    }
+  };
+
+  // Delete patient record
+  const handleDeletePatient = async (patientId: string) => {
+    setPatientsCanonical((prev) => prev.filter((p) => p.patientId !== patientId));
+    if (db) {
+      try {
+        await deleteDoc(doc(db, 'patients', patientId));
+      } catch (err) {
+        console.warn('Error deleting patient from Firestore:', err);
+      }
+    }
+  };
+
+  // Delete invoice / transaction safely
+  const handleDeleteTransaction = async (txId: string) => {
+    // 1. Optimistic local state update
+    const matchingPayment = paymentsCanonical.find((p) => p.paymentId === txId || p.invoiceId === txId || p.visitId === txId);
+    const targetInvoiceId = matchingPayment?.invoiceId || txId;
+    const targetPaymentId = matchingPayment?.paymentId || txId;
+    const targetVisitId = matchingPayment?.visitId;
+
+    setInvoicesCanonical((prev) => prev.filter((i) => i.invoiceId !== targetInvoiceId && i.invoiceId !== txId && (targetVisitId ? i.visitId !== targetVisitId : true)));
+    setPaymentsCanonical((prev) => prev.filter((p) => p.paymentId !== targetPaymentId && p.paymentId !== txId && (targetVisitId ? p.visitId !== targetVisitId : true)));
+
+    // 2. Cloud Firestore deletion
+    if (db) {
+      try {
+        const deleteTasks: Promise<unknown>[] = [];
+        if (targetPaymentId) {
+          deleteTasks.push(deleteDoc(doc(db, 'payments', targetPaymentId)).catch((e) => console.warn('Payment delete fallback:', e)));
+        }
+        if (targetInvoiceId) {
+          deleteTasks.push(deleteDoc(doc(db, 'invoices', targetInvoiceId)).catch((e) => console.warn('Invoice delete fallback:', e)));
+        }
+        // Also clean up any standalone transaction entry if registered
+        deleteTasks.push(deleteDoc(doc(db, 'transactions', txId)).catch((e) => console.warn('Transaction delete fallback:', e)));
+
+        await Promise.allSettled(deleteTasks);
+      } catch (err) {
+        console.warn('Error deleting transaction from Firestore:', err);
+      }
+    }
+  };
+
   // Call Patient
   const handleCallPatient = async (ticket: string, name: string) => {
-    playQueueNotificationSound();
-    setCallingBanner({ ticket, name });
-    setTimeout(() => setCallingBanner(null), 5000);
+    const alertConfig = loadAlertSettings();
+    if (alertConfig.audioEnabled && alertConfig.callPatientAudio) {
+      playSingleAlertSound('call');
+    }
+    if (alertConfig.visualEnabled && alertConfig.callPatientVisual) {
+      setCallingBanner({
+        id: `call-${Date.now()}`,
+        type: 'call',
+        title: 'نداء دخول المريض لغرفة الكشف',
+        message: `تذكرة (${ticket}) — المريض (${name}) يتفضل لغرفة الطبيب للكشف`,
+        ticket,
+        timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+      });
+      setTimeout(() => setCallingBanner(null), 5000);
+    }
 
     const targetQueueNum = parseInt(ticket.replace(/\D/g, ''), 10);
-    const targetVisit = visitsCanonical.find((v) => v.queueNumber === targetQueueNum);
+    const targetVisit =
+      visitsCanonical.find((v) => v.queueNumber === targetQueueNum) ||
+      visitsCanonical.find((v) => v.visitId === ticket) ||
+      visitsCanonical.find((v) => patientsCanonical.find((p) => p.patientId === v.patientId)?.fullName === name);
     if (!targetVisit) return;
 
-    const matchedPatient = patients.find((p) => p.id === targetVisit.patientId) || {
+    const basePatient = patients.find((p) => p.id === targetVisit.patientId);
+    const registeredComplaint = targetVisit.receptionistData?.symptoms || basePatient?.chiefComplaint || '';
+    const registeredSymptoms = targetVisit.receptionistData?.symptoms
+      ? [targetVisit.receptionistData.symptoms]
+      : basePatient?.intakeSymptoms || [];
+    const registeredChronic =
+      targetVisit.receptionistData?.chronicDiseases && targetVisit.receptionistData.chronicDiseases.length > 0
+        ? targetVisit.receptionistData.chronicDiseases
+        : basePatient?.chronicConditions || [];
+
+    const matchedPatient: PatientListItem = {
       id: targetVisit.patientId,
-      medicalCode: `EG-${targetVisit.patientId.slice(0, 5)}`,
-      fileNumber: targetVisit.queueNumber || 1,
-      name,
-      age: 38,
-      gender: 'male' as const,
-      phone: '',
-      governorate: 'القاهرة',
-      allergies: [],
-      chronicConditions: [],
-      bloodGroup: 'O+',
-      lastDiagnosis: targetVisit.receptionistData?.symptoms || 'كشف عيادة باطنة',
+      medicalCode: basePatient?.medicalCode || `EG-${targetVisit.patientId.slice(0, 5)}`,
+      fileNumber: basePatient?.fileNumber || targetVisit.queueNumber || 1,
+      name: basePatient?.name || name,
+      age: basePatient?.age || 38,
+      gender: basePatient?.gender || 'male',
+      phone: basePatient?.phone || '',
+      governorate: basePatient?.governorate || 'القاهرة',
+      allergies: basePatient?.allergies || [],
+      chronicConditions: registeredChronic,
+      bloodGroup: basePatient?.bloodGroup || 'O+',
+      visitsCount: basePatient?.visitsCount || 1,
+      chiefComplaint: registeredComplaint,
+      intakeSymptoms: registeredSymptoms,
+      lastDiagnosis: targetVisit.receptionistData?.symptoms || basePatient?.lastDiagnosis || '',
     };
     setActiveExamPatient(matchedPatient);
 
@@ -742,6 +834,22 @@ function ClinicApp() {
           receivedBy: userProfile?.username || 'receptionist',
           receptionistData: { symptoms: app.visitType || 'كشف', chronicDiseases: patient.chronicDiseases || [], notes: '' },
         });
+
+        const alertConfig = loadAlertSettings();
+        if (alertConfig.audioEnabled && alertConfig.newVisitAudio) {
+          playSingleAlertSound('new_visit');
+        }
+        if (alertConfig.visualEnabled && alertConfig.newVisitVisual) {
+          setCallingBanner({
+            id: `new-${Date.now()}`,
+            type: 'new_visit',
+            title: 'تسجيل حضور موعد مسبق بالانتظار',
+            message: `تم تأكيد حضور المريض (${patient.fullName}) وتحويله لصالة الانتظار.`,
+            ticket: String(nextFileNumber),
+            timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+          });
+          setTimeout(() => setCallingBanner(null), 5000);
+        }
       } catch (error) {
         alert(error instanceof Error ? error.message : 'فشل تسجيل حضور المريض في قاعدة البيانات');
       }
@@ -777,6 +885,22 @@ function ClinicApp() {
           clinicLocationId: 'loc-mohandessin',
           receptionistData: { symptoms: item.complaint || '', chronicDiseases: patient.chronicDiseases || [], notes: '' },
         });
+
+        const alertConfig = loadAlertSettings();
+        if (alertConfig.audioEnabled && alertConfig.newVisitAudio) {
+          playSingleAlertSound('new_visit');
+        }
+        if (alertConfig.visualEnabled && alertConfig.newVisitVisual) {
+          setCallingBanner({
+            id: `new-${Date.now()}`,
+            type: 'new_visit',
+            title: 'تسجيل كشف وزيارة جديدة',
+            message: `تم تسجيل المريض (${item.patientName}) في قائمة الانتظار بنجاح.`,
+            ticket: String(item.ticketNumber || nextFileNumber),
+            timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+          });
+          setTimeout(() => setCallingBanner(null), 5000);
+        }
       } catch (error) {
         alert(error instanceof Error ? error.message : 'فشل إضافة المريض للانتظار في قاعدة البيانات');
       }
@@ -871,6 +995,22 @@ function ClinicApp() {
             notes: 'استشارة مجانية للمتابعة خلال 14 يوماً من تاريخ الكشف',
           },
         });
+
+        const alertConfig = loadAlertSettings();
+        if (alertConfig.audioEnabled && alertConfig.finishExamAudio) {
+          playSingleAlertSound('finish');
+        }
+        if (alertConfig.visualEnabled && alertConfig.finishExamVisual) {
+          setCallingBanner({
+            id: `finish-${Date.now()}`,
+            type: 'finish',
+            title: 'إشعار السكرتارية: انتهاء الكشف الطبي',
+            message: `تم الانتهاء من كشف المريض (${activeExamPatient?.name || 'المريض'}) واعتماد الروشتة. العيادة جاهزة لاستقبال المريض التالي.`,
+            ticket: String(activeWaiting.queueNumber || ''),
+            timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+          });
+          setTimeout(() => setCallingBanner(null), 6000);
+        }
       } catch (error) {
         alert(error instanceof Error ? error.message : 'تعذر حفظ وإنهاء الزيارة');
       }
@@ -902,25 +1042,62 @@ function ClinicApp() {
           onToggleMobileMenu={() => setIsMobileMenuOpen((prev) => !prev)}
         />
 
-        {/* Global Live Call Patient Alert (Simulating Speaker Broadcast) */}
+        {/* Global Live Clinic Notification Banner (Controlled by Settings: Audio & Visual) */}
         {callingBanner && (
-          <div className="fixed top-18 right-4 lg:right-80 left-4 lg:left-8 z-50 bg-white dark:bg-[#18233C] border-2 border-[#00c2cb] rounded-2xl p-4 shadow-2xl flex items-center justify-between animate-in slide-in-from-top-4 max-w-full">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-[#00c2cb] text-[#08101C] flex items-center justify-center font-black shrink-0">
-                <span className="material-symbols-outlined text-xl sm:text-2xl animate-pulse">campaign</span>
-              </div>
-              <div className="min-w-0">
-                <span className="text-xs font-mono font-bold text-[#008f97] dark:text-[#45dee7] block">
-                  نداء صوتي صادر عبر مكبر صالة الانتظار:
+          <div
+            className={`fixed top-18 right-4 lg:right-80 left-4 lg:left-8 z-50 bg-white dark:bg-[#18233C] border-2 rounded-2xl p-4 shadow-2xl flex items-center justify-between animate-in slide-in-from-top-4 max-w-full transition-all ${
+              callingBanner.type === 'finish'
+                ? 'border-emerald-500 shadow-emerald-500/10'
+                : callingBanner.type === 'call'
+                ? 'border-amber-500 shadow-amber-500/10'
+                : 'border-[#00c2cb] shadow-[#00c2cb]/10'
+            }`}
+          >
+            <div className="flex items-center gap-3.5 min-w-0">
+              <div
+                className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center font-black shrink-0 ${
+                  callingBanner.type === 'finish'
+                    ? 'bg-emerald-500 text-slate-950'
+                    : callingBanner.type === 'call'
+                    ? 'bg-amber-500 text-slate-950'
+                    : 'bg-[#00c2cb] text-slate-950'
+                }`}
+              >
+                <span className="material-symbols-outlined text-xl sm:text-2xl animate-pulse">
+                  {callingBanner.type === 'finish'
+                    ? 'task_alt'
+                    : callingBanner.type === 'call'
+                    ? 'campaign'
+                    : 'person_add'}
                 </span>
-                <h4 className="text-xs sm:text-base font-bold text-slate-900 dark:text-[#dde2f5] truncate">
-                  تذكرة رقم ({callingBanner.ticket}) — المريض ({callingBanner.name}) يتفضل لغرفة الكشف
+              </div>
+              <div className="min-w-0 space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`text-[11px] font-mono font-bold block ${
+                      callingBanner.type === 'finish'
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : callingBanner.type === 'call'
+                        ? 'text-amber-600 dark:text-amber-400'
+                        : 'text-[#008f97] dark:text-[#45dee7]'
+                    }`}
+                  >
+                    {callingBanner.title}
+                  </span>
+                  {callingBanner.timestamp && (
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      • {callingBanner.timestamp}
+                    </span>
+                  )}
+                </div>
+                <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-[#dde2f5] truncate">
+                  {callingBanner.message}
                 </h4>
               </div>
             </div>
             <button
               onClick={() => setCallingBanner(null)}
-              className="text-xs text-slate-500 dark:text-[#859394] hover:text-slate-900 dark:hover:text-white px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-[#080e1b] cursor-pointer shrink-0"
+              className="text-xs text-slate-500 dark:text-[#859394] hover:text-slate-900 dark:hover:text-white px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-[#080e1b] dark:hover:bg-[#111A2E] cursor-pointer shrink-0 font-bold transition-colors"
             >
               إغلاق
             </button>
@@ -985,6 +1162,8 @@ function ClinicApp() {
                   queue={queue}
                   onCallPatient={handleCallPatient}
                   onNavigate={handleNavigate}
+                  onRemoveFromQueue={handleRemoveFromQueue}
+                  onOpenNewVisit={() => handleNavigate('new-visit')}
                 />
               )}
 
@@ -999,7 +1178,10 @@ function ClinicApp() {
 
               {activeScreen === 'clinical-exam' && (
                 <ExaminationScreen
-                  patient={activeExamPatient || patients[0]}
+                  patient={activeExamPatient}
+                  availablePatients={patients}
+                  onSelectPatient={setActiveExamPatient}
+                  presetChronicConditions={presetChronicConditions}
                   onNavigate={handleNavigate}
                   onFinishExam={handleFinishExam}
                   radiologyCatalog={radiologyCatalog}
@@ -1019,7 +1201,7 @@ function ClinicApp() {
 
               {activeScreen === 'prescription-pad' && (
                 <PrescriptionPadScreen
-                  patient={activeExamPatient || patients[0]}
+                  patient={activeExamPatient}
                   items={activePrescription}
                   onChangeItems={setActivePrescription}
                 />
@@ -1030,6 +1212,7 @@ function ClinicApp() {
                   patients={patients}
                   onNavigate={handleNavigate}
                   onSelectPatientForExam={(p) => setActiveExamPatient(p)}
+                  onDeletePatient={handleDeletePatient}
                   visits={visitsCanonical}
                   invoices={invoicesCanonical}
                   prescriptions={prescriptionsCanonical}
@@ -1043,6 +1226,7 @@ function ClinicApp() {
                 <FinanceScreen
                   transactions={transactions}
                   onAddTransaction={() => {}}
+                  onDeleteTransaction={handleDeleteTransaction}
                 />
               )}
 

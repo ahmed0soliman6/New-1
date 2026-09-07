@@ -23,6 +23,7 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
 
   // Add existing item from catalog to active patient orders
   const handleAddFromCatalog = (item: RadiologyCatalogItem) => {
+    if (!item || !item.name) return;
     // Check if already ordered
     if (radiologyOrders.some((o) => o.name === item.name)) {
       return;
@@ -96,10 +97,14 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
     onChangeOrders(radiologyOrders.filter((ord) => ord.id !== id));
   };
 
-  const filteredCatalog = radiologyCatalog.filter((item) =>
-    item.name.toLowerCase().includes(searchFilter.toLowerCase()) ||
-    item.category.toLowerCase().includes(searchFilter.toLowerCase())
-  );
+  const filteredCatalog = (radiologyCatalog || []).filter((item) => {
+    if (!item) return false;
+    const q = (searchFilter || '').toLowerCase();
+    return (
+      (item.name || '').toLowerCase().includes(q) ||
+      (item.category || '').toLowerCase().includes(q)
+    );
+  });
 
   return (
     <div className="bg-white dark:bg-[#111A2E] p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm space-y-4">

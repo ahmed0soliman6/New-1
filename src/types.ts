@@ -40,6 +40,8 @@ export interface PatientListItem {
   visitsCount: number;
   totalPaid?: number;
   lastDiagnosis?: string;
+  chiefComplaint?: string;
+  intakeSymptoms?: string[];
 }
 
 export interface QueueItem {
@@ -204,3 +206,14 @@ export interface SymptomCatalogItem {
   isFavorite?: boolean;
   active?: boolean;
 }
+
+export interface ChronicItem {
+  id: string;
+  name: string;
+  category: string;
+  color?: string;
+  isFavorite?: boolean;
+  active?: boolean;
+  notes?: string;
+}
+

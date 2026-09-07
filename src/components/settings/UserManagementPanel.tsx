@@ -5,6 +5,7 @@ import { createManagedUser, updateManagedUser, deleteManagedUser } from '../../s
 import type { UserRole } from '../../types/database';
 import {
   ALL_SYSTEM_SCREENS,
+  CustomPermissionsMap,
   getDefaultAllowedScreens,
   normalizeRole,
   Role,
@@ -13,6 +14,9 @@ import {
 } from '../../permissions';
 import { usePermissions } from '../../context/AuthContext';
 import { PermissionGate } from '../auth/PermissionGate';
+import { ScreenPermissionsModal } from './ScreenPermissionsModal';
+import { ChangePasswordModal } from './ChangePasswordModal';
+import { AdminRecoveryModal } from './AdminRecoveryModal';
 
 type ManagedUser = {
   uid: string;
@@ -22,6 +26,7 @@ type ManagedUser = {
   role: UserRole;
   active: boolean;
   allowedScreens?: string[];
+  customPermissions?: CustomPermissionsMap;
 };
 
 export const UserManagementPanel: React.FC = () => {
@@ -41,10 +46,12 @@ export const UserManagementPanel: React.FC = () => {
   const [editDisplayName, setEditDisplayName] = useState('');
   const [editRole, setEditRole] = useState<UserRole>('SECRETARY');
 
-  // Screen Permissions Modal State (User-requested dynamic page selection)
+  // Screen Permissions Modal State (Granular 4-action modal)
   const [screensModalUser, setScreensModalUser] = useState<ManagedUser | null>(null);
-  const [selectedScreens, setSelectedScreens] = useState<string[]>([]);
-  const [isSavingScreens, setIsSavingScreens] = useState(false);
+
+  // Security modals state
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [showAdminRecoveryModal, setShowAdminRecoveryModal] = useState(false);
 
   // New User Form Custom Screens
   const [createAllowedScreens, setCreateAllowedScreens] = useState<string[]>(
@@ -117,52 +124,7 @@ export const UserManagementPanel: React.FC = () => {
       return;
     }
     setScreensModalUser(user);
-    const existing =
-      user.allowedScreens && Array.isArray(user.allowedScreens) && user.allowedScreens.length > 0
-        ? user.allowedScreens
-        : getDefaultAllowedScreens(user.role);
-    setSelectedScreens([...existing]);
     setError('');
-  };
-
-  const toggleScreen = (screenId: string) => {
-    setSelectedScreens((prev) =>
-      prev.includes(screenId) ? prev.filter((id) => id !== screenId) : [...prev, screenId]
-    );
-  };
-
-  const handleSelectAllScreens = () => {
-    setSelectedScreens(ALL_SYSTEM_SCREENS.map((s) => s.id));
-  };
-
-  const handleClearAllScreens = () => {
-    setSelectedScreens([]);
-  };
-
-  const handleApplyRoleDefault = (targetRole: Role) => {
-    setSelectedScreens(getDefaultAllowedScreens(targetRole));
-  };
-
-  const handleSaveScreens = async () => {
-    if (!screensModalUser) return;
-    setIsSavingScreens(true);
-    setActionUserId(screensModalUser.uid);
-    setError('');
-    setMessage('');
-    try {
-      await updateManagedUser(screensModalUser.uid, {
-        allowedScreens: selectedScreens,
-      });
-      setMessage(
-        `تم حفظ صلاحيات الصفحات للمستخدم "${screensModalUser.displayName || screensModalUser.username}" بنجاح في Firestore (${selectedScreens.length} صفحة مسموحة). سيتم تطبيق القائمة فورياً.`
-      );
-      setScreensModalUser(null);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'تعذر حفظ صلاحيات الصفحات في قاعدة البيانات.');
-    } finally {
-      setIsSavingScreens(false);
-      setActionUserId(null);
-    }
   };
 
   // 2. Start inline edit
@@ -357,18 +319,43 @@ export const UserManagementPanel: React.FC = () => {
   return (
     <section className="space-y-6 rounded-2xl border border-[#00c2cb]/20 bg-white dark:bg-[#111A2E] p-6 shadow-sm" dir="rtl">
       <div>
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold flex items-center gap-2 text-slate-900 dark:text-[#dde2f5]">
-            <span className="material-symbols-outlined text-[#00c2cb]">manage_accounts</span>
-            <span>إدارة المستخدمين والصلاحيات (User & Role Management)</span>
-          </h2>
-          <span className="text-xs px-3 py-1 rounded-full bg-purple-500/15 text-purple-600 dark:text-purple-400 font-bold border border-purple-500/20">
-            مخصصة لمدير النظام فقط
-          </span>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h2 className="text-lg font-bold flex items-center gap-2 text-slate-900 dark:text-[#dde2f5]">
+              <span className="material-symbols-outlined text-[#00c2cb]">manage_accounts</span>
+              <span>إدارة المستخدمين والصلاحيات (User & Role Management)</span>
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-[#859394] mt-1">
+              إدارة حسابات الفريق وتعيين الأدوار والصلاحيات الدقيقة (عرض، إضافة، تعديل، حذف) مع حماية الحسابات.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setShowChangePasswordModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 dark:border-white/15 bg-white dark:bg-[#161f33] text-xs font-bold text-slate-700 dark:text-slate-200 hover:border-[#00c2cb] transition-colors cursor-pointer shadow-xs"
+            >
+              <span className="material-symbols-outlined text-sm text-[#00c2cb]">key</span>
+              <span>تغيير كلمة المرور</span>
+            </button>
+
+            {normalizeRole(currentRole) === 'admin' && (
+              <button
+                type="button"
+                onClick={() => setShowAdminRecoveryModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-purple-500/30 bg-purple-500/10 text-xs font-bold text-purple-700 dark:text-purple-300 hover:bg-purple-500/20 transition-colors cursor-pointer shadow-xs"
+              >
+                <span className="material-symbols-outlined text-sm text-purple-500">encrypted</span>
+                <span>رمز استرداد المدير (PBKDF2)</span>
+              </button>
+            )}
+
+            <span className="text-xs px-3 py-1 rounded-full bg-purple-500/15 text-purple-600 dark:text-purple-400 font-bold border border-purple-500/20">
+              مخصصة لمدير النظام فقط
+            </span>
+          </div>
         </div>
-        <p className="text-xs text-slate-500 dark:text-[#859394] mt-1">
-          إدارة حسابات الفريق وتعيين الأدوار (مدير / طبيب / سكرتير) وتفعيل أو تعطيل الحسابات مع حماية الحساب الحالي وتأكيد التغييرات الحساسة.
-        </p>
       </div>
 
       {/* Create New User Form (Guarded by users.create) */}
@@ -1061,192 +1048,33 @@ export const UserManagementPanel: React.FC = () => {
         </div>
       )}
 
-      {/* Modal 4: Dynamic Screen Permissions Customizer (User-requested granular screen control) */}
+      {/* Modal 4: Dynamic Granular Permissions Customizer */}
       {screensModalUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 animate-in fade-in overflow-y-auto">
-          <div className="w-full max-w-4xl rounded-2xl border border-[#00c2cb]/40 bg-white dark:bg-[#111A2E] shadow-2xl text-right flex flex-col max-h-[92vh] overflow-hidden">
-            {/* Modal Header */}
-            <div className="p-5 border-b border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#0c1322] flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#00c2cb]/15 text-[#008f97] dark:text-[#45dee7] flex items-center justify-center font-bold">
-                  <span className="material-symbols-outlined text-2xl">dashboard_customize</span>
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                    <span>تخصيص صفحات وشاشات النظام للحساب</span>
-                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#00c2cb]/20 text-[#008f97] dark:text-[#45dee7] font-bold">
-                      {selectedScreens.length} من {ALL_SYSTEM_SCREENS.length} مسموحة
-                    </span>
-                  </h3>
-                  <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 dark:text-[#859394]">
-                    <span className="font-bold text-slate-800 dark:text-slate-200">
-                      {screensModalUser.displayName || screensModalUser.username}
-                    </span>
-                    <span>(@{screensModalUser.username})</span>
-                    <span>•</span>
-                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${roleBadgeClass(screensModalUser.role)}`}>
-                      {roleLabel(screensModalUser.role)}
-                    </span>
-                    <span>•</span>
-                    <span dir="ltr">{screensModalUser.email}</span>
-                  </div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setScreensModalUser(null)}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10 transition-colors cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-lg">close</span>
-              </button>
-            </div>
+        <ScreenPermissionsModal
+          user={screensModalUser}
+          onClose={() => setScreensModalUser(null)}
+          onSaved={(msg) => {
+            setMessage(msg);
+            setScreensModalUser(null);
+          }}
+          onError={(err) => setError(err)}
+        />
+      )}
 
-            {/* Presets & Controls Bar */}
-            <div className="p-4 bg-slate-100/70 dark:bg-[#161f33] border-b border-slate-200 dark:border-white/10 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">إجراءات سريعة:</span>
-                <button
-                  type="button"
-                  onClick={handleSelectAllScreens}
-                  className="px-2.5 py-1 rounded-lg bg-white dark:bg-[#111A2E] border border-slate-300 dark:border-white/15 text-xs font-bold text-slate-700 dark:text-slate-200 hover:border-[#00c2cb] transition-colors cursor-pointer"
-                >
-                  تحديد كل الصفحات (11)
-                </button>
-                <button
-                  type="button"
-                  onClick={handleClearAllScreens}
-                  className="px-2.5 py-1 rounded-lg bg-white dark:bg-[#111A2E] border border-slate-300 dark:border-white/15 text-xs font-bold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors cursor-pointer"
-                >
-                  إلغاء تحديد الكل
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleApplyRoleDefault('doctor')}
-                  className="px-2.5 py-1 rounded-lg bg-[#00c2cb]/10 border border-[#00c2cb]/30 text-xs font-bold text-[#008f97] dark:text-[#45dee7] hover:bg-[#00c2cb]/20 transition-colors cursor-pointer"
-                >
-                  نموذج الطبيب (8 صفحات)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleApplyRoleDefault('secretary')}
-                  className="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs font-bold text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors cursor-pointer"
-                >
-                  نموذج السكرتير (6 صفحات)
-                </button>
-              </div>
+      {/* Modal 5: Change Password */}
+      {showChangePasswordModal && (
+        <ChangePasswordModal
+          onClose={() => setShowChangePasswordModal(false)}
+          onSuccess={(msg) => setMessage(msg)}
+        />
+      )}
 
-              <div className="text-[11px] text-slate-500 dark:text-[#859394]">
-                اختر أي صفحة تظهر للمستخدم أو تُحجب عنه فور الحفظ في Firestore
-              </div>
-            </div>
-
-            {/* Scrollable List of All 11 System Screens */}
-            <div className="p-5 overflow-y-auto space-y-3 flex-1">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {ALL_SYSTEM_SCREENS.map((screen) => {
-                  const isChecked = selectedScreens.includes(screen.id);
-                  const isClinicalExam = screen.id === 'clinical-exam';
-                  const isUserSecretary = normalizeRole(screensModalUser.role) === 'secretary';
-
-                  return (
-                    <div
-                      key={screen.id}
-                      onClick={() => toggleScreen(screen.id)}
-                      className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-start gap-3 select-none ${
-                        isChecked
-                          ? 'border-[#00c2cb] bg-[#00c2cb]/5 dark:bg-[#00c2cb]/10 ring-1 ring-[#00c2cb]/40'
-                          : 'border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/[0.02] hover:border-slate-300 dark:hover:border-white/20'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => toggleScreen(screen.id)}
-                        className="mt-1 w-4 h-4 rounded accent-[#00c2cb] cursor-pointer shrink-0"
-                      />
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 font-bold text-xs text-slate-900 dark:text-[#dde2f5]">
-                            <span className="material-symbols-outlined text-base text-[#00c2cb]">
-                              {screen.icon}
-                            </span>
-                            <span className="truncate">{screen.title}</span>
-                          </div>
-
-                          <span
-                            className={`px-2 py-0.5 rounded-md text-[10px] font-bold shrink-0 ${
-                              isChecked
-                                ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400'
-                                : 'bg-slate-200 dark:bg-white/10 text-slate-500 dark:text-slate-400'
-                            }`}
-                          >
-                            {isChecked ? 'تظهر في القائمة ✓' : 'محجوبة ✕'}
-                          </span>
-                        </div>
-
-                        <p className="text-[11px] text-slate-500 dark:text-[#859394] mt-1 line-clamp-2 leading-relaxed">
-                          {screen.description}
-                        </p>
-
-                        <div className="flex items-center gap-2 mt-2">
-                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400">
-                            ID: {screen.id}
-                          </span>
-                          <span className="text-[10px] text-slate-400">
-                            القسم: {screen.category}
-                          </span>
-                        </div>
-
-                        {/* Special warning for Secretary + Clinical Exam */}
-                        {isClinicalExam && isChecked && isUserSecretary && (
-                          <div className="mt-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-[10px] flex items-center gap-1.5 font-bold">
-                            <span className="material-symbols-outlined text-sm">warning</span>
-                            <span>تنبيه: تفعيل هذه الصفحة للسكرتير يسمح له ببدء وإنهاء كشوفات المرضى.</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Modal Footer with Save Button */}
-            <div className="p-4 border-t border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#0c1322] flex items-center justify-between">
-              <div className="text-xs text-slate-600 dark:text-[#859394]">
-                <span>الصفحات المحددة لهذا الحساب: </span>
-                <strong className="text-[#008f97] dark:text-[#45dee7] font-bold">
-                  {selectedScreens.length} صفحة
-                </strong>
-                <span> (سيتم تقييد القائمة الجانبية فورياً)</span>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  disabled={isSavingScreens}
-                  onClick={() => setScreensModalUser(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-[#859394] hover:bg-slate-200 dark:hover:bg-white/10 transition-colors cursor-pointer"
-                >
-                  إلغاء
-                </button>
-
-                <button
-                  type="button"
-                  disabled={isSavingScreens}
-                  onClick={handleSaveScreens}
-                  className="flex items-center gap-2 px-5 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold text-xs transition-all cursor-pointer shadow-md shadow-[#00c2cb]/20 disabled:opacity-50"
-                >
-                  <span className="material-symbols-outlined text-base">
-                    {isSavingScreens ? 'sync' : 'save'}
-                  </span>
-                  <span>{isSavingScreens ? 'جارٍ الحفظ في Firestore...' : 'حفظ وتطبيق صفحات الحساب في Firestore'}</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* Modal 6: Admin Recovery Setup */}
+      {showAdminRecoveryModal && (
+        <AdminRecoveryModal
+          onClose={() => setShowAdminRecoveryModal(false)}
+          onSuccess={(msg) => setMessage(msg)}
+        />
       )}
     </section>
   );

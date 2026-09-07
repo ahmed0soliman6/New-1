@@ -14,6 +14,7 @@ interface PatientListItemsScreenProps {
   patients: PatientListItem[];
   onNavigate: (screen: ScreenType) => void;
   onSelectPatientForExam: (patient: PatientListItem) => void;
+  onDeletePatient?: (patientId: string) => void;
   visits?: Visit[];
   invoices?: Invoice[];
   prescriptions?: Prescription[];
@@ -26,6 +27,7 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
   patients,
   onNavigate,
   onSelectPatientForExam,
+  onDeletePatient,
   visits = [],
   invoices = [],
   prescriptions = [],
@@ -37,6 +39,7 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
   const [selectedPatientId, setSelectedPatientId] = useState<string>(patients[0]?.id || '');
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<'visits' | 'labs' | 'chronic' | 'billing' | 'prescriptions'>('visits');
+  const [patientToDelete, setPatientToDelete] = useState<PatientListItem | null>(null);
 
   const selectedPatient = patients.find((p) => p.id === selectedPatientId) || patients[0];
 
@@ -44,9 +47,9 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return (
-      p.name.toLowerCase().includes(q) ||
-      p.phone.includes(q) ||
-      p.medicalCode.toLowerCase().includes(q)
+      (p.name || '').toLowerCase().includes(q) ||
+      (p.phone || '').includes(q) ||
+      (p.medicalCode || '').toLowerCase().includes(q)
     );
   });
 
@@ -211,6 +214,17 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
                       className="px-3 py-2 rounded-xl bg-purple-50 dark:bg-[#571bc1]/60 hover:bg-purple-100 dark:hover:bg-[#571bc1] text-purple-700 dark:text-[#e9ddff] text-xs font-bold transition-all cursor-pointer border border-purple-200 dark:border-transparent"
                     >
                       إصدار روشتة
+                    </button>
+                  )}
+                  {onDeletePatient && (
+                    <button
+                      type="button"
+                      onClick={() => setPatientToDelete(selectedPatient)}
+                      className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 text-xs font-bold transition-all cursor-pointer border border-rose-200 dark:border-rose-900/30 flex items-center gap-1"
+                      title="حذف ملف المريض بالكامل"
+                    >
+                      <span className="material-symbols-outlined text-sm">delete</span>
+                      <span>حذف الملف</span>
                     </button>
                   )}
                 </div>
@@ -458,6 +472,53 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
           </div>
         )}
       </div>
+
+      {/* Confirmation Modal for Deleting Patient File */}
+      {patientToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#111A2E] border border-rose-500/30 rounded-3xl p-6 max-w-md w-full text-center space-y-4 shadow-2xl animate-in zoom-in-95">
+            <div className="w-14 h-14 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-500 mx-auto flex items-center justify-center">
+              <span className="material-symbols-outlined text-3xl">delete_forever</span>
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                تأكيد حذف ملف المريض نهائياً
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-[#859394] leading-relaxed">
+                هل أنت متأكد من رغبتك في حذف ملف المريض <strong className="text-slate-800 dark:text-white">({patientToDelete.name})</strong> كود ملف <strong className="text-[#008f97] dark:text-[#00c2cb] font-mono">{patientToDelete.medicalCode}</strong>؟
+              </p>
+              <p className="text-[11px] text-rose-600 dark:text-rose-400 font-medium pt-1">
+                ⚠️ تحذير: سيتم حذف كافة البيانات الطبية والزيارات المرتبطة بهذا الملف ولا يمكن التراجع بعد الحذف.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 pt-3">
+              <button
+                type="button"
+                onClick={() => setPatientToDelete(null)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] text-xs font-bold transition-all cursor-pointer hover:bg-slate-200 dark:hover:bg-[#242a38]"
+              >
+                إلغاء التراجع
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onDeletePatient && patientToDelete) {
+                    onDeletePatient(patientToDelete.id);
+                    if (selectedPatientId === patientToDelete.id) {
+                      const remaining = patients.filter((p) => p.id !== patientToDelete.id);
+                      setSelectedPatientId(remaining[0]?.id || '');
+                    }
+                    setPatientToDelete(null);
+                  }
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md transition-all cursor-pointer active:scale-95"
+              >
+                تأكيد الحذف النهائي
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

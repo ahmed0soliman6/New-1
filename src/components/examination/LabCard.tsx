@@ -28,6 +28,7 @@ export const LabCard: React.FC<LabCardProps> = ({
   const [saveToCatalog, setSaveToCatalog] = useState(true);
 
   const handleAddFromCatalog = (item: LabCatalogItem) => {
+    if (!item || !item.name) return;
     if (labOrders.some((o) => o.testName === item.name)) return;
 
     const newOrder: LabOrderItem = {
@@ -111,10 +112,14 @@ export const LabCard: React.FC<LabCardProps> = ({
     onChangeOrders(labOrders.filter((ord) => ord.id !== id));
   };
 
-  const filteredCatalog = labCatalog.filter((item) =>
-    item.name.toLowerCase().includes(searchFilter.toLowerCase()) ||
-    item.category.toLowerCase().includes(searchFilter.toLowerCase())
-  );
+  const filteredCatalog = (labCatalog || []).filter((item) => {
+    if (!item) return false;
+    const q = (searchFilter || '').toLowerCase();
+    return (
+      (item.name || '').toLowerCase().includes(q) ||
+      (item.category || '').toLowerCase().includes(q)
+    );
+  });
 
   return (
     <div className="bg-white dark:bg-[#111A2E] p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm space-y-4">

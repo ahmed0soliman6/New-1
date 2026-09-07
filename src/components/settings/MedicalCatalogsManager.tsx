@@ -5,6 +5,7 @@ import {
   DrugCatalogItem,
   DiagnosisCatalogItem,
   SymptomCatalogItem,
+  ChronicItem,
 } from '../../types';
 
 interface MedicalCatalogsManagerProps {
@@ -31,6 +32,10 @@ interface MedicalCatalogsManagerProps {
   symptomsCatalog: SymptomCatalogItem[];
   onAddSymptom: (item: SymptomCatalogItem) => void;
   onRemoveSymptom: (id: string) => void;
+
+  presetChronicConditions?: ChronicItem[];
+  onAddChronicCondition?: (item: ChronicItem) => void;
+  onRemoveChronicCondition?: (id: string) => void;
 }
 
 export const MedicalCatalogsManager: React.FC<MedicalCatalogsManagerProps> = ({
@@ -57,6 +62,10 @@ export const MedicalCatalogsManager: React.FC<MedicalCatalogsManagerProps> = ({
   symptomsCatalog,
   onAddSymptom,
   onRemoveSymptom,
+
+  presetChronicConditions = [],
+  onAddChronicCondition = (_item: ChronicItem) => {},
+  onRemoveChronicCondition = (_id: string) => {},
 }) => {
   // Accordion state - ALL closed by default as requested
   const [openSections, setOpenSections] = useState<{ [key: string]: boolean }>({
@@ -65,6 +74,7 @@ export const MedicalCatalogsManager: React.FC<MedicalCatalogsManagerProps> = ({
     drugs: false,
     diagnoses: false,
     symptoms: false,
+    chronic: false,
   });
 
   const toggleSection = (section: string) => {
@@ -116,6 +126,11 @@ export const MedicalCatalogsManager: React.FC<MedicalCatalogsManagerProps> = ({
 
   const [symName, setSymName] = useState('');
   const [symCat, setSymCat] = useState('الجهاز الهضمي');
+
+  const [chronicSearch, setChronicSearch] = useState('');
+  const [chronicName, setChronicName] = useState('');
+  const [chronicCat, setChronicCat] = useState('أمراض مزمنة شائعة');
+  const [chronicColor, setChronicColor] = useState('teal');
 
   // Add handlers
   const handleAddRadiologySubmit = (e: React.FormEvent) => {
@@ -201,42 +216,69 @@ export const MedicalCatalogsManager: React.FC<MedicalCatalogsManagerProps> = ({
     setSymName('');
   };
 
+  const handleAddChronicSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chronicName.trim()) return;
+    onAddChronicCondition({
+      id: `chronic-${Date.now()}`,
+      name: chronicName.trim(),
+      category: chronicCat,
+      color: chronicColor,
+      isFavorite: true,
+      active: true,
+    });
+    setChronicName('');
+  };
+
   // Filtered lists
   const filteredRadiology = radiologyCatalog.filter((item) => {
+    const q = (radSearch || '').toLowerCase();
     const matchSearch =
-      item.name.toLowerCase().includes(radSearch.toLowerCase()) ||
-      item.category.toLowerCase().includes(radSearch.toLowerCase());
+      (item.name || '').toLowerCase().includes(q) ||
+      (item.category || '').toLowerCase().includes(q);
     const matchCat = radCatFilter === 'ALL' || item.category === radCatFilter;
     return matchSearch && matchCat;
   });
 
   const filteredLab = labCatalog.filter((item) => {
+    const q = (labSearch || '').toLowerCase();
     const matchSearch =
-      item.name.toLowerCase().includes(labSearch.toLowerCase()) ||
-      item.category.toLowerCase().includes(labSearch.toLowerCase());
+      (item.name || '').toLowerCase().includes(q) ||
+      (item.category || '').toLowerCase().includes(q);
     const matchCat = labCatFilter === 'ALL' || item.category === labCatFilter;
     return matchSearch && matchCat;
   });
 
   const filteredDrugs = drugCatalog.filter((item) => {
+    const q = (drugSearch || '').toLowerCase();
     const matchSearch =
-      item.brandName.toLowerCase().includes(drugSearch.toLowerCase()) ||
-      (item.genericName && item.genericName.toLowerCase().includes(drugSearch.toLowerCase()));
+      (item.brandName || '').toLowerCase().includes(q) ||
+      (item.genericName && item.genericName.toLowerCase().includes(q));
     return matchSearch;
   });
 
   const filteredDiagnoses = diagnosesCatalog.filter((item) => {
+    const q = (diagSearch || '').toLowerCase();
     return (
-      item.nameAr.toLowerCase().includes(diagSearch.toLowerCase()) ||
-      (item.nameEn && item.nameEn.toLowerCase().includes(diagSearch.toLowerCase())) ||
-      (item.code && item.code.toLowerCase().includes(diagSearch.toLowerCase()))
+      (item.nameAr || '').toLowerCase().includes(q) ||
+      (item.nameEn && item.nameEn.toLowerCase().includes(q)) ||
+      (item.code && item.code.toLowerCase().includes(q))
     );
   });
 
   const filteredSymptoms = symptomsCatalog.filter((item) => {
+    const q = (symSearch || '').toLowerCase();
     return (
-      item.name.toLowerCase().includes(symSearch.toLowerCase()) ||
-      item.category.toLowerCase().includes(symSearch.toLowerCase())
+      (item.name || '').toLowerCase().includes(q) ||
+      (item.category || '').toLowerCase().includes(q)
+    );
+  });
+
+  const filteredChronic = (presetChronicConditions || []).filter((item) => {
+    const q = (chronicSearch || '').toLowerCase();
+    return (
+      (item.name || '').toLowerCase().includes(q) ||
+      (item.category || '').toLowerCase().includes(q)
     );
   });
 
@@ -1147,6 +1189,153 @@ export const MedicalCatalogsManager: React.FC<MedicalCatalogsManagerProps> = ({
                   </button>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 6. CHRONIC CONDITIONS CATALOG ACCORDION */}
+      <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
+        <div
+          onClick={() => toggleSection('chronic')}
+          className="p-4 sm:p-5 flex items-center justify-between cursor-pointer hover:bg-slate-50/50 dark:hover:bg-white/[0.02] transition-colors select-none"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-xl">monitor_heart</span>
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">
+                  دليل الأمراض المزمنة (Chronic Diseases)
+                </h3>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-600 dark:text-teal-400">
+                  {presetChronicConditions.length} مرض مسجل
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
+                قائمة الأمراض المزمنة المتاحة للاختيار في شاشة تسجيل الزيارة وغرفة الكشف
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                openSectionWithAdd('chronic');
+              }}
+              className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs flex items-center gap-1 transition-all cursor-pointer shadow-xs"
+            >
+              <span className="material-symbols-outlined text-sm">add</span>
+              <span className="hidden sm:inline">إضافة مرض مزمن</span>
+            </button>
+            <span
+              className={`material-symbols-outlined text-slate-400 text-xl transition-transform duration-200 ${
+                openSections.chronic ? 'rotate-180' : ''
+              }`}
+            >
+              expand_more
+            </span>
+          </div>
+        </div>
+
+        {openSections.chronic && (
+          <div className="p-4 sm:p-5 pt-0 border-t border-slate-100 dark:border-white/5 space-y-4 animate-in fade-in duration-200">
+            {/* Add New Chronic Condition Form */}
+            <form
+              onSubmit={handleAddChronicSubmit}
+              className="bg-teal-50/50 dark:bg-teal-950/20 p-3.5 sm:p-4 rounded-xl border border-teal-200/60 dark:border-teal-900/40 space-y-3"
+            >
+              <span className="text-xs font-bold text-teal-800 dark:text-teal-300 block">
+                + إضافة مرض مزمن جديد إلى الدليل:
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                <div className="sm:col-span-7">
+                  <input
+                    type="text"
+                    required
+                    placeholder="اسم المرض المزمن (مثال: قصور الشريان التاجي، الربو الشعبي، حساسية الصدر)..."
+                    value={chronicName}
+                    onChange={(e) => setChronicName(e.target.value)}
+                    className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  />
+                </div>
+                <div className="sm:col-span-3">
+                  <select
+                    value={chronicCat}
+                    onChange={(e) => setChronicCat(e.target.value)}
+                    className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none cursor-pointer"
+                  >
+                    <option value="القلب والأوعية الدموية">القلب والأوعية الدموية</option>
+                    <option value="الغدد والسكري">الغدد والسكري</option>
+                    <option value="الجهاز التنفسي">الجهاز التنفسي</option>
+                    <option value="الجهاز الهضمي والكبد">الجهاز الهضمي والكبد</option>
+                    <option value="الكلى والمسالك">الكلى والمسالك</option>
+                    <option value="المخ والأعصاب">المخ والأعصاب</option>
+                    <option value="العظام والمفاصل">العظام والمفاصل</option>
+                    <option value="أمراض مزمنة شائعة">أمراض مزمنة شائعة</option>
+                  </select>
+                </div>
+                <div className="sm:col-span-2">
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 px-4 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs transition-all cursor-pointer shadow-xs"
+                  >
+                    حفظ المرض
+                  </button>
+                </div>
+              </div>
+            </form>
+
+            {/* Search */}
+            <div className="relative">
+              <span className="material-symbols-outlined absolute right-3 top-2.5 text-slate-400 text-base">
+                search
+              </span>
+              <input
+                type="text"
+                placeholder="بحث في الأمراض المزمنة المسجلة..."
+                value={chronicSearch}
+                onChange={(e) => setChronicSearch(e.target.value)}
+                className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs pr-9 pl-3 py-2 rounded-xl border border-slate-200 dark:border-white/5 focus:outline-none"
+              />
+            </div>
+
+            {/* Items Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-96 overflow-y-auto pr-1">
+              {filteredChronic.length > 0 ? (
+                filteredChronic.map((item) => (
+                  <div
+                    key={item.id}
+                    className="bg-slate-50 dark:bg-[#080e1b] p-3 rounded-xl border border-slate-200 dark:border-white/5 flex items-center justify-between gap-2 hover:border-teal-300 dark:hover:border-teal-800 transition-all"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-teal-500 shrink-0" />
+                        <h4 className="text-xs font-bold text-slate-900 dark:text-[#dde2f5] truncate">{item.name}</h4>
+                      </div>
+                      <span className="text-[10px] text-teal-600 dark:text-teal-400 block mt-0.5 mr-3.5">
+                        {item.category || 'مرض مزمن'}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => onRemoveChronicCondition(item.id)}
+                      className="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center justify-center transition-colors cursor-pointer text-xs"
+                      title="حذف من الدليل"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <div className="col-span-full py-8 text-center text-xs text-slate-400">
+                  لا توجد أمراض مزمنة مطابقة للبحث
+                </div>
+              )}
             </div>
           </div>
         )}

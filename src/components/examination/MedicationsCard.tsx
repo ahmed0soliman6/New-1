@@ -36,12 +36,14 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
 
   // Level 2: Search Egyptian Drug Archive
   const searchResults = searchQuery.trim()
-    ? drugCatalog.filter(
-        (d) =>
-          d.brandName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          d.genericName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          d.category.toLowerCase().includes(searchQuery.toLowerCase())
-      )
+    ? drugCatalog.filter((d) => {
+        const q = searchQuery.toLowerCase();
+        return (
+          (d.brandName || '').toLowerCase().includes(q) ||
+          (d.genericName || '').toLowerCase().includes(q) ||
+          (d.category || '').toLowerCase().includes(q)
+        );
+      })
     : [];
 
   // Add drug from catalog creating a decoupled SNAPSHOT into PrescriptionItem

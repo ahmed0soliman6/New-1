@@ -6,9 +6,10 @@ import { PermissionGate } from '../auth/PermissionGate';
 interface FinanceScreenProps {
   transactions: TransactionRecord[];
   onAddTransaction: (tx: TransactionRecord) => void;
+  onDeleteTransaction?: (txId: string) => void;
 }
 
-export const FinanceScreen: React.FC<FinanceScreenProps> = ({ transactions, onAddTransaction }) => {
+export const FinanceScreen: React.FC<FinanceScreenProps> = ({ transactions, onAddTransaction, onDeleteTransaction }) => {
   const { assertPermission, userProfile } = usePermissions();
   const [filter, setFilter] = useState<string>('all');
   const [showExpenseModal, setShowExpenseModal] = useState(false);
@@ -16,6 +17,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({ transactions, onAd
   const [expenseAmount, setExpenseAmount] = useState(150);
   const [toast, setToast] = useState<string | null>(null);
   const [selectedReceipt, setSelectedReceipt] = useState<TransactionRecord | null>(null);
+  const [txToDelete, setTxToDelete] = useState<TransactionRecord | null>(null);
 
   const totalIn = transactions.filter((t) => t.type === 'in').reduce((sum, t) => sum + t.amount, 0);
   const totalOut = transactions.filter((t) => t.type === 'out').reduce((sum, t) => sum + t.amount, 0);
@@ -265,13 +267,25 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({ transactions, onAd
                     {tx.type === 'in' ? `+${tx.amount}` : `-${tx.amount}`} ج.م
                   </td>
                   <td className="p-3 text-center">
-                    <button
-                      onClick={() => setSelectedReceipt(tx)}
-                      className="p-1.5 rounded-lg bg-slate-100 dark:bg-[#080e1b] hover:bg-[#00c2cb]/20 text-slate-600 dark:text-[#bbc9ca] hover:text-[#008f97] dark:hover:text-[#00c2cb] transition-colors cursor-pointer"
-                      title="عرض وطباعة إيصال السداد"
-                    >
-                      <span className="material-symbols-outlined text-base">print</span>
-                    </button>
+                    <div className="flex items-center justify-center gap-1.5">
+                      <button
+                        onClick={() => setSelectedReceipt(tx)}
+                        className="p-1.5 rounded-lg bg-slate-100 dark:bg-[#080e1b] hover:bg-[#00c2cb]/20 text-slate-600 dark:text-[#bbc9ca] hover:text-[#008f97] dark:hover:text-[#00c2cb] transition-colors cursor-pointer"
+                        title="عرض وطباعة إيصال السداد"
+                      >
+                        <span className="material-symbols-outlined text-base">print</span>
+                      </button>
+                      {onDeleteTransaction && (
+                        <button
+                          type="button"
+                          onClick={() => setTxToDelete(tx)}
+                          className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900 text-rose-600 dark:text-rose-400 transition-colors cursor-pointer"
+                          title="حذف الفاتورة/المعاملة المالية"
+                        >
+                          <span className="material-symbols-outlined text-base">delete</span>
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -409,6 +423,48 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({ transactions, onAd
                 className="flex-1 py-2 rounded-xl bg-[#00c2cb] text-[#08101C] text-xs font-bold font-sans cursor-pointer hover:bg-[#45dee7]"
               >
                 طباعة الآن
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal for Deleting Transaction / Invoice */}
+      {txToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#111A2E] border border-rose-500/30 rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl animate-in zoom-in-95">
+            <div className="w-14 h-14 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-500 mx-auto flex items-center justify-center">
+              <span className="material-symbols-outlined text-3xl">delete_sweep</span>
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                تأكيد حذف المعاملة المالية
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-[#859394] leading-relaxed">
+                هل أنت متأكد من حذف الإيصال رقم <strong className="text-slate-800 dark:text-white">({txToDelete.receiptNo})</strong> بمبلغ <strong className="text-[#008f97] dark:text-[#00c2cb] font-mono">{txToDelete.amount} ج.م</strong> لـ ({txToDelete.patientName})؟
+              </p>
+            </div>
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setTxToDelete(null)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] text-xs font-bold transition-all cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onDeleteTransaction && txToDelete) {
+                    onDeleteTransaction(txToDelete.id);
+                    setToast(`تم حذف المعاملة رقم ${txToDelete.receiptNo} بنجاح`);
+                    setTimeout(() => setToast(null), 3000);
+                    setTxToDelete(null);
+                  }
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md transition-all cursor-pointer"
+              >
+                تأكيد الحذف
               </button>
             </div>
           </div>

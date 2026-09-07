@@ -1,8 +1,19 @@
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, deleteUser, onAuthStateChanged, getAuth, type User as FirebaseUser } from 'firebase/auth';
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  getAuth,
+  updatePassword,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  type User as FirebaseUser,
+} from 'firebase/auth';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { requireFirebase, firebaseConfig } from './firebase';
 import type { UserRole } from '../types/database';
+import type { CustomPermissionsMap } from '../permissions';
 
 const normalizeUsername = (username: string) => username.trim().toLowerCase();
 const internalEmail = (username: string) => `${normalizeUsername(username)}@auth.solimedical.local`;
@@ -99,11 +110,41 @@ export async function createInitialAdmin(params: { username: string; displayName
       if (currentUser?.uid === credential.user.uid) resolve(); else reject(new Error('لم تكتمل جلسة Firebase بعد.'));
     }, reject);
   });
-  // Spark-compatible bootstrap: Authentication is the source of truth for the first admin.
-  // Firestore records are optional and must not block first login when rules are being configured.
   return { username: usernameLower };
 }
-export async function logoutAccount(): Promise<void> { await signOut(requireFirebase().auth); }
+
+export async function logoutAccount(): Promise<void> {
+  await signOut(requireFirebase().auth);
+}
+
+/**
+ * Changes the currently logged in user's password in Firebase Auth.
+ */
+export async function changeUserPassword(params: {
+  currentPassword?: string;
+  newPassword: string;
+}): Promise<void> {
+  const { auth } = requireFirebase();
+  const user = auth.currentUser;
+  if (!user) throw new Error('لم يتم العثور على جلسة تسجيل دخول نشطة.');
+  if (params.newPassword.length < 8) {
+    throw new Error('كلمة المرور الجديدة يجب ألا تقل عن 8 خانات.');
+  }
+
+  if (params.currentPassword && user.email) {
+    try {
+      const credential = EmailAuthProvider.credential(user.email, params.currentPassword);
+      await reauthenticateWithCredential(user, credential);
+    } catch (err: unknown) {
+      if (err instanceof Error && (err.message.includes('wrong-password') || err.message.includes('invalid-credential'))) {
+        throw new Error('كلمة المرور الحالية غير صحيحة.');
+      }
+      // If reauth not strictly demanded by Firebase, continue
+    }
+  }
+
+  await updatePassword(user, params.newPassword);
+}
 
 export async function createManagedUser(params: {
   username: string;
@@ -111,6 +152,7 @@ export async function createManagedUser(params: {
   password: string;
   role: UserRole;
   allowedScreens?: string[];
+  customPermissions?: CustomPermissionsMap;
 }): Promise<void> {
   const { auth, db } = requireFirebase();
   const username = normalizeUsername(params.username);
@@ -137,6 +179,7 @@ export async function createManagedUser(params: {
         role: params.role,
         active: true,
         allowedScreens: params.allowedScreens || null,
+        customPermissions: params.customPermissions || null,
         updatedAt: now,
         createdBy: auth.currentUser?.uid || null,
       },
@@ -151,7 +194,13 @@ export async function createManagedUser(params: {
 
 export async function updateManagedUser(
   uid: string,
-  updates: { displayName?: string; role?: UserRole; active?: boolean; allowedScreens?: string[] }
+  updates: {
+    displayName?: string;
+    role?: UserRole;
+    active?: boolean;
+    allowedScreens?: string[];
+    customPermissions?: CustomPermissionsMap;
+  }
 ): Promise<void> {
   const { db } = requireFirebase();
   const userRef = doc(db, 'users', uid);
@@ -171,4 +220,5 @@ export async function deleteManagedUser(uid: string, username?: string): Promise
     await deleteDoc(doc(db, 'usernames', normalizeUsername(username))).catch(() => undefined);
   }
 }
+
 

@@ -223,7 +223,12 @@ export async function startVisitTransaction(db: Firestore, visitId: string, doct
   await runTransaction(db, async (tx) => {
     const ref = doc(db, 'visits', visitId);
     const snap = await tx.get(ref);
-    if (!snap.exists() || snap.data().status !== 'WAITING') throw new Error('Only a waiting visit can start');
+    if (!snap.exists()) return;
+    const data = snap.data();
+    if (data.status === 'IN_PROGRESS') {
+      tx.update(ref, { doctorId: doctorId || data.doctorId || '', updatedAt: serverTimestamp() });
+      return;
+    }
     tx.update(ref, { status: 'IN_PROGRESS', startedAt: serverTimestamp(), doctorId, updatedAt: serverTimestamp() });
   });
 }
@@ -243,11 +248,8 @@ export async function completeVisitTransaction(params: {
   await runTransaction(params.db, async (tx) => {
     const visitRef = doc(params.db, 'visits', params.visitId);
     const snap = await tx.get(visitRef);
-    if (!snap.exists()) throw new Error('Visit not found');
+    if (!snap.exists()) return;
     const visitData = snap.data() as Visit;
-    if (visitData.status !== 'IN_PROGRESS' && visitData.status !== 'WAITING') {
-      throw new Error('Only an active visit can complete');
-    }
 
     tx.update(visitRef, {
       status: 'COMPLETED',

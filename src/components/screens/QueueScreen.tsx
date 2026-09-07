@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { QueueItem, ScreenType } from '../../types';
 
 interface QueueScreenProps {
@@ -16,54 +16,24 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({
   onRemoveFromQueue,
   onOpenNewVisit,
 }) => {
+  const [patientToRemove, setPatientToRemove] = useState<QueueItem | null>(null);
   const [notification, setNotification] = useState<{
     id: string;
     patientName: string;
     visible: boolean;
-  } | null>(() => {
-    if (queue.length > 0) {
-      return {
-        id: queue[0].id || '1',
-        patientName: queue[0].patientName,
-        visible: true,
-      };
-    }
-    return null;
-  });
+  } | null>(null);
 
   const handleOpenExam = (item: QueueItem) => {
     onCallPatient(item.ticketNumber, item.patientName);
     onNavigate('clinical-exam');
   };
 
-  const playNotificationChime = () => {
-    try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (AudioCtx) {
-        const ctx = new AudioCtx();
-        const now = ctx.currentTime;
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(587.33, now); // D5
-        osc.frequency.exponentialRampToValueAtTime(880, now + 0.15); // A5
-        gain.gain.setValueAtTime(0.3, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.5);
-      }
-    } catch (e) {
-      console.warn('Audio chime could not be played', e);
+  const confirmRemove = () => {
+    if (patientToRemove && onRemoveFromQueue) {
+      onRemoveFromQueue(patientToRemove.id);
+      setPatientToRemove(null);
     }
   };
-
-  useEffect(() => {
-    if (notification?.visible) {
-      playNotificationChime();
-    }
-  }, []);
 
   return (
     <div className="flex flex-col w-full max-w-full overflow-x-hidden pb-28 space-y-5 text-slate-800 dark:text-[#dde2f5]">
@@ -81,7 +51,6 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({
         <button
           type="button"
           onClick={() => {
-            playNotificationChime();
             if (onOpenNewVisit) onOpenNewVisit();
             else onNavigate('new-visit');
           }}
@@ -123,7 +92,7 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({
               {/* Patient Info Block */}
               <div className="flex items-start gap-3.5 min-w-0">
                 <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-teal-50 dark:bg-[#00c2cb]/15 text-[#008f97] dark:text-[#00c2cb] flex items-center justify-center font-bold text-lg shrink-0">
-                  {item.patientName.charAt(0)}
+                  {item.patientName ? item.patientName.charAt(0) : 'م'}
                 </div>
 
                 <div className="min-w-0 space-y-1">
@@ -140,12 +109,12 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({
                       في الانتظار
                     </span>
                     <span className="text-xs text-slate-500 dark:text-[#859394] font-mono">
-                      {item.patientPhone || '01021434947'} • عيادة الطبيب
+                      {item.phone || '01021434947'} • عيادة الطبيب
                     </span>
                   </div>
 
                   <p className="text-[11px] text-slate-400 dark:text-[#64748B] font-mono">
-                    تذكرة #{item.ticketNumber} • وقت الوصول: {item.arrivalTime || '٠:٣٩ م'}
+                    تذكرة {item.ticketNumber} • وقت الوصول: {item.arrivalTime || '٠:٣٩ م'}
                   </p>
                 </div>
               </div>
@@ -154,13 +123,11 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({
               <div className="flex flex-wrap items-center gap-2.5 self-stretch md:self-center justify-start md:justify-end shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100 dark:border-white/5">
                 <button
                   type="button"
-                  onClick={() => {
-                    if (onRemoveFromQueue) onRemoveFromQueue(item.ticketNumber);
-                  }}
+                  onClick={() => setPatientToRemove(item)}
                   className="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 dark:bg-[#18233C] dark:hover:bg-rose-950/40 dark:text-[#bbc9ca] dark:hover:text-rose-400 text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
                 >
                   <span className="text-sm">✕</span>
-                  <span>إزالة</span>
+                  <span>إزالة من الانتظار</span>
                 </button>
 
                 <div className="relative inline-block">
@@ -218,6 +185,41 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({
           >
             ✕
           </button>
+        </div>
+      )}
+
+      {/* Confirmation Modal for Removing Patient from Queue */}
+      {patientToRemove && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#111A2E] border border-rose-500/30 rounded-3xl p-5 max-w-sm w-full text-center space-y-4 shadow-2xl animate-in zoom-in-95">
+            <div className="w-14 h-14 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-500 mx-auto flex items-center justify-center">
+              <span className="material-symbols-outlined text-3xl">person_remove</span>
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                إزالة المريض من الانتظار
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-[#859394] leading-relaxed">
+                هل أنت متأكد من إزالة المريض <strong className="text-slate-800 dark:text-white">({patientToRemove.patientName})</strong> تذكرة <strong className="text-[#008f97] dark:text-[#00c2cb] font-mono">{patientToRemove.ticketNumber}</strong> من قائمة الانتظار الحالية؟
+              </p>
+            </div>
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setPatientToRemove(null)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] text-xs font-bold transition-all cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={confirmRemove}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md transition-all cursor-pointer"
+              >
+                تأكيد الإزالة
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

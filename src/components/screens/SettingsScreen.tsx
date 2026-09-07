@@ -11,6 +11,12 @@ import { MedicalCatalogsManager } from '../settings/MedicalCatalogsManager';
 import { UserManagementPanel } from '../settings/UserManagementPanel';
 import { usePermissions } from '../../context/AuthContext';
 import { PermissionGate } from '../auth/PermissionGate';
+import { loadAlertSettings, saveAlertSettings, playSingleAlertSound, AlertSettings } from '../../utils/alertManager';
+import {
+  loadExamDisplaySettings,
+  saveExamDisplaySettings,
+  ExamDisplaySettings,
+} from '../../utils/examDisplaySettings';
 
 interface ChronicItem {
   id: string;
@@ -50,6 +56,9 @@ interface SettingsScreenProps {
 }
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
+  presetChronicConditions = [],
+  onAddChronicCondition = () => {},
+  onRemoveChronicCondition = () => {},
   radiologyCatalog = [],
   onAddRadiology = () => {},
   onRemoveRadiology = () => {},
@@ -71,7 +80,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onRemoveSymptom = () => {},
 }) => {
   const { hasPermission, assertPermission } = usePermissions();
-  const [activeSettingsSection, setActiveSettingsSection] = useState<'catalogs' | 'general' | 'users'>('catalogs');
+  const [activeSettingsSection, setActiveSettingsSection] = useState<'catalogs' | 'alerts' | 'general' | 'users'>('catalogs');
   const [clinicName, setClinicName] = useState(CLINIC_INFO.name);
 
   // If user cannot view users but tab was somehow selected, fallback to catalogs
@@ -87,13 +96,61 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const [freeFollowupDays, setFreeFollowupDays] = useState(14);
   const [printerPaper, setPrinterPaper] = useState('80mm');
   const [autoPrintReceipt, setAutoPrintReceipt] = useState(true);
+  const [alertConfig, setAlertConfig] = useState<AlertSettings>(loadAlertSettings);
+  const [examDisplayConfig, setExamDisplayConfig] = useState<ExamDisplaySettings>(loadExamDisplaySettings);
   const [savedToast, setSavedToast] = useState<string | null>(null);
+
+  const updateExamDisplayConfig = (key: keyof ExamDisplaySettings, value: boolean) => {
+    const updated = { ...examDisplayConfig, [key]: value };
+    setExamDisplayConfig(updated);
+    saveExamDisplaySettings(updated);
+    const names: Record<keyof ExamDisplaySettings, string> = {
+      showVitals: 'العلامات الحيوية',
+      showLabs: 'التحاليل الطبية',
+      showRadiology: 'الأشعة والتصوير',
+    };
+    setSavedToast(
+      `تم تحديث شاشة الكشف: ${value ? 'إظهار' : 'إخفاء'} قسم ${names[key]} بنجاح ✓`
+    );
+    setTimeout(() => setSavedToast(null), 2500);
+  };
+
+  const updateAlertConfig = (key: keyof AlertSettings, value: boolean) => {
+    const updated = { ...alertConfig, [key]: value };
+    setAlertConfig(updated);
+    saveAlertSettings(updated);
+    setSavedToast(
+      `تم تحديث التنبيهات: ${
+        key === 'audioEnabled'
+          ? value
+            ? 'تشغيل الصوت العام ✓'
+            : 'إيقاف الصوت العام ✕'
+          : key === 'visualEnabled'
+          ? value
+            ? 'تشغيل التنبيه المرئي ✓'
+            : 'إيقاف التنبيه المرئي ✕'
+          : value
+          ? 'تم تفعيل التنبيه'
+          : 'تم إيقاف التنبيه'
+      }`
+    );
+    setTimeout(() => setSavedToast(null), 2500);
+  };
+
+  const handleTestAlertSound = (type: 'new_visit' | 'call' | 'finish' = 'new_visit') => {
+    if (alertConfig.audioEnabled) {
+      playSingleAlertSound(type);
+    }
+    setSavedToast('🔔 تم إطلاق نغمة التنبيه لمرة واحدة للتجربة');
+    setTimeout(() => setSavedToast(null), 3000);
+  };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     try {
       assertPermission('settings.edit', 'حفظ إعدادات العيادة العامة والأسعار');
-      setSavedToast('تم حفظ كافة إعدادات عيادات سولي بنجاح وتطبيقها على المنظومة');
+      saveAlertSettings(alertConfig);
+      setSavedToast('تم حفظ كافة إعدادات عيادات سولي وإعدادات التنبيهات بنجاح وتطبيقها');
       setTimeout(() => setSavedToast(null), 3500);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'ليس لديك صلاحية لتعديل الإعدادات العامة.');
@@ -137,6 +194,19 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             >
               <span className="material-symbols-outlined text-base">menu_book</span>
               <span>الأدلة الطبية (Medical Catalogs)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveSettingsSection('alerts')}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeSettingsSection === 'alerts'
+                  ? 'bg-amber-500 text-slate-950 shadow-xs'
+                  : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
+              }`}
+            >
+              <span className="material-symbols-outlined text-base">notifications_active</span>
+              <span>نظام التنبيهات والأصوات</span>
             </button>
 
             <PermissionGate permission="users.view">
@@ -197,7 +267,298 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           symptomsCatalog={symptomsCatalog}
           onAddSymptom={onAddSymptom}
           onRemoveSymptom={onRemoveSymptom}
+          presetChronicConditions={presetChronicConditions}
+          onAddChronicCondition={onAddChronicCondition}
+          onRemoveChronicCondition={onRemoveChronicCondition}
         />
+      )}
+
+      {/* ALERTS & NOTIFICATIONS TAB */}
+      {activeSettingsSection === 'alerts' && (
+        <div className="bg-white dark:bg-[#111A2E] p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-white/5 shadow-sm space-y-6 max-w-4xl mx-auto w-full">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-white/5 pb-4">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2.5">
+                <span className="material-symbols-outlined text-amber-500 text-2xl">notifications_active</span>
+                <span>إعدادات نظام التنبيهات والأصوات بالعيادة</span>
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-[#859394] mt-1">
+                تخصيص التنبيهات المرئية والصوتية للسكرتارية وغرفة الكشف. الصافرة تعمل مرة واحدة فقط عند كل إجراء.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => handleTestAlertSound('new_visit')}
+              className="px-4 py-2.5 rounded-xl bg-amber-500 text-slate-950 text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shadow-md shadow-amber-500/20 active:scale-95 shrink-0"
+            >
+              <span className="material-symbols-outlined text-base">volume_up</span>
+              <span>تجربة التنبيه والصوت الآن</span>
+            </button>
+          </div>
+
+          {/* Master Toggles: Audio & Visual */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Audio Master */}
+            <div className="p-5 rounded-2xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex flex-col justify-between gap-4">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb]">volume_up</span>
+                    التنبيه الصوتي (الصافرة والنغمات)
+                  </span>
+                  <span
+                    className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+                      alertConfig.audioEnabled
+                        ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                        : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+                    }`}
+                  >
+                    {alertConfig.audioEnabled ? 'الصوت مفعّل ✓' : 'الصوت متوقف ✕'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-[#859394] leading-relaxed">
+                  يُصدر نغمة طبية هادئة لمرة واحدة فقط عند حدوث أي إجراء، ولا يتكرر تلقائياً لتفادي أي إزعاج.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 pt-2 border-t border-slate-200/50 dark:border-white/5">
+                <button
+                  type="button"
+                  onClick={() => updateAlertConfig('audioEnabled', true)}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    alertConfig.audioEnabled
+                      ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-500/30'
+                      : 'bg-white dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] border border-slate-200 dark:border-white/10 hover:bg-slate-100'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-base">check_circle</span>
+                  <span>تشغيل الصوت</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateAlertConfig('audioEnabled', false)}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    !alertConfig.audioEnabled
+                      ? 'bg-rose-600 text-white shadow-sm ring-2 ring-rose-500/30'
+                      : 'bg-white dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] border border-slate-200 dark:border-white/10 hover:bg-slate-100'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-base">cancel</span>
+                  <span>إيقاف الصوت</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Visual Master */}
+            <div className="p-5 rounded-2xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex flex-col justify-between gap-4">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb]">visibility</span>
+                    التنبيه المرئي (اللافتة المنبثقة)
+                  </span>
+                  <span
+                    className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+                      alertConfig.visualEnabled
+                        ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                        : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+                    }`}
+                  >
+                    {alertConfig.visualEnabled ? 'المرئي مفعّل ✓' : 'المرئي متوقف ✕'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-[#859394] leading-relaxed">
+                  يُظهر لافتة إشعار ملونة ومنبثقة أعلى الشاشة لتنبيه السكرتارية وغرفة الكشف فور حدوث الإجراء.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 pt-2 border-t border-slate-200/50 dark:border-white/5">
+                <button
+                  type="button"
+                  onClick={() => updateAlertConfig('visualEnabled', true)}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    alertConfig.visualEnabled
+                      ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-500/30'
+                      : 'bg-white dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] border border-slate-200 dark:border-white/10 hover:bg-slate-100'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-base">check_circle</span>
+                  <span>تشغيل التنبيه المرئي</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateAlertConfig('visualEnabled', false)}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    !alertConfig.visualEnabled
+                      ? 'bg-rose-600 text-white shadow-sm ring-2 ring-rose-500/30'
+                      : 'bg-white dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] border border-slate-200 dark:border-white/10 hover:bg-slate-100'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-base">cancel</span>
+                  <span>إيقاف التنبيه المرئي</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Granular event controls */}
+          <div className="space-y-4 pt-2">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
+              <span className="material-symbols-outlined text-[#00c2cb] text-lg">checklist</span>
+              <span>التحكم في التنبيهات عند كل حدث مستقل:</span>
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Event 1 */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 space-y-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-teal-500/15 text-[#008f97] dark:text-[#00c2cb] flex items-center justify-center font-bold text-sm">
+                    1
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-white">إضافة زيارة جديدة</h4>
+                    <p className="text-[10px] text-slate-500 dark:text-[#859394]">تسجيل مريض جديد بالانتظار</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2 pt-2 border-t border-slate-200/60 dark:border-white/5">
+                  <label className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-[#111A2E] cursor-pointer">
+                    <span className="text-xs text-slate-700 dark:text-[#dde2f5] flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-sm text-teal-600">volume_up</span>
+                      تنبيه صوتي
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={alertConfig.newVisitAudio}
+                      onChange={(e) => updateAlertConfig('newVisitAudio', e.target.checked)}
+                      className="w-4 h-4 rounded text-[#00c2cb] accent-[#00c2cb] cursor-pointer"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-[#111A2E] cursor-pointer">
+                    <span className="text-xs text-slate-700 dark:text-[#dde2f5] flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-sm text-teal-600">visibility</span>
+                      تنبيه مرئي (لافتة)
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={alertConfig.newVisitVisual}
+                      onChange={(e) => updateAlertConfig('newVisitVisual', e.target.checked)}
+                      className="w-4 h-4 rounded text-[#00c2cb] accent-[#00c2cb] cursor-pointer"
+                    />
+                  </label>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleTestAlertSound('new_visit')}
+                  className="w-full py-1.5 text-[11px] font-bold text-teal-700 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/40 rounded-lg hover:bg-teal-100 transition-colors cursor-pointer"
+                >
+                  تجربة الصوت لمرة واحدة
+                </button>
+              </div>
+
+              {/* Event 2 */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 space-y-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-500 flex items-center justify-center font-bold text-sm">
+                    2
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-white">دخول مريض للكشف</h4>
+                    <p className="text-[10px] text-slate-500 dark:text-[#859394]">نداء الدخول لغرفة الطبيب</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2 pt-2 border-t border-slate-200/60 dark:border-white/5">
+                  <label className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-[#111A2E] cursor-pointer">
+                    <span className="text-xs text-slate-700 dark:text-[#dde2f5] flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-sm text-amber-500">volume_up</span>
+                      تنبيه صوتي
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={alertConfig.callPatientAudio}
+                      onChange={(e) => updateAlertConfig('callPatientAudio', e.target.checked)}
+                      className="w-4 h-4 rounded text-[#00c2cb] accent-[#00c2cb] cursor-pointer"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-[#111A2E] cursor-pointer">
+                    <span className="text-xs text-slate-700 dark:text-[#dde2f5] flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-sm text-amber-500">visibility</span>
+                      تنبيه مرئي (لافتة)
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={alertConfig.callPatientVisual}
+                      onChange={(e) => updateAlertConfig('callPatientVisual', e.target.checked)}
+                      className="w-4 h-4 rounded text-[#00c2cb] accent-[#00c2cb] cursor-pointer"
+                    />
+                  </label>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleTestAlertSound('call')}
+                  className="w-full py-1.5 text-[11px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 rounded-lg hover:bg-amber-100 transition-colors cursor-pointer"
+                >
+                  تجربة الصوت لمرة واحدة
+                </button>
+              </div>
+
+              {/* Event 3 */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 space-y-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-500 flex items-center justify-center font-bold text-sm">
+                    3
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-white">انتهاء الكشف الطبي</h4>
+                    <p className="text-[10px] text-slate-500 dark:text-[#859394]">إشعار السكرتارية بانتهاء الزيارة</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2 pt-2 border-t border-slate-200/60 dark:border-white/5">
+                  <label className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-[#111A2E] cursor-pointer">
+                    <span className="text-xs text-slate-700 dark:text-[#dde2f5] flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-sm text-emerald-600">volume_up</span>
+                      تنبيه صوتي
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={alertConfig.finishExamAudio}
+                      onChange={(e) => updateAlertConfig('finishExamAudio', e.target.checked)}
+                      className="w-4 h-4 rounded text-[#00c2cb] accent-[#00c2cb] cursor-pointer"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-[#111A2E] cursor-pointer">
+                    <span className="text-xs text-slate-700 dark:text-[#dde2f5] flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-sm text-emerald-600">visibility</span>
+                      تنبيه مرئي (لافتة)
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={alertConfig.finishExamVisual}
+                      onChange={(e) => updateAlertConfig('finishExamVisual', e.target.checked)}
+                      className="w-4 h-4 rounded text-[#00c2cb] accent-[#00c2cb] cursor-pointer"
+                    />
+                  </label>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleTestAlertSound('finish')}
+                  className="w-full py-1.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 rounded-lg hover:bg-emerald-100 transition-colors cursor-pointer"
+                >
+                  تجربة الصوت لمرة واحدة
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* CLINIC DATA & PRINT SETTINGS TAB */}
@@ -328,6 +689,338 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   <label htmlFor="autoPrint" className="text-xs text-slate-700 dark:text-[#dde2f5] cursor-pointer">
                     طباعة إيصال السداد تلقائياً عند تأكيد حضور المريض
                   </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Card 4: Audio & Visual Notification Controls */}
+            <div className="bg-white dark:bg-[#111A2E] p-5 sm:p-6 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-white/5 pb-3">
+                <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
+                  <span className="material-symbols-outlined text-amber-500 text-lg">notifications_active</span>
+                  <span>4. نظام التنبيهات والأصوات (إشعار السكرتارية والعيادة)</span>
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => handleTestAlertSound('new_visit')}
+                  className="px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-600 dark:text-amber-400 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 self-start sm:self-auto border border-amber-500/30"
+                >
+                  <span className="material-symbols-outlined text-sm">volume_up</span>
+                  <span>تجربة الصوت والتنبيه الآن</span>
+                </button>
+              </div>
+
+              {/* Master Toggles: Audio & Visual */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Audio Master */}
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex flex-col justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-base text-[#008f97] dark:text-[#00c2cb]">volume_up</span>
+                        التنبيه الصوتي (صافرة الكشف)
+                      </span>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          alertConfig.audioEnabled
+                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                            : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+                        }`}
+                      >
+                        {alertConfig.audioEnabled ? 'الصوت يعمل ✓' : 'الصوت متوقف ✕'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-[#859394]">
+                      يصدر نغمة طبية هادئة لمرة واحدة فقط عند كل حدث ولا يتكرر تلقائياً.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => updateAlertConfig('audioEnabled', !alertConfig.audioEnabled)}
+                    className={`w-full py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      alertConfig.audioEnabled
+                        ? 'bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 dark:text-rose-400 border border-rose-200 dark:border-rose-900/30'
+                        : 'bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 shadow-xs'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-sm">
+                      {alertConfig.audioEnabled ? 'volume_off' : 'volume_up'}
+                    </span>
+                    <span>{alertConfig.audioEnabled ? 'إيقاف الصوت' : 'تشغيل الصوت'}</span>
+                  </button>
+                </div>
+
+                {/* Visual Master */}
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex flex-col justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-base text-[#008f97] dark:text-[#00c2cb]">visibility</span>
+                        التنبيه المرئي (اللافتة المنبثقة)
+                      </span>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          alertConfig.visualEnabled
+                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                            : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+                        }`}
+                      >
+                        {alertConfig.visualEnabled ? 'المرئي يعمل ✓' : 'المرئي متوقف ✕'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-[#859394]">
+                      إظهار شريط إشعار ملون أعلى الشاشة لتنبيه السكرتارية بالحدث.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => updateAlertConfig('visualEnabled', !alertConfig.visualEnabled)}
+                    className={`w-full py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      alertConfig.visualEnabled
+                        ? 'bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 dark:text-rose-400 border border-rose-200 dark:border-rose-900/30'
+                        : 'bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 shadow-xs'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-sm">
+                      {alertConfig.visualEnabled ? 'visibility_off' : 'visibility'}
+                    </span>
+                    <span>{alertConfig.visualEnabled ? 'إيقاف التنبيه المرئي' : 'تشغيل التنبيه المرئي'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Event-by-event Controls */}
+              <div className="space-y-3 pt-2">
+                <h4 className="text-xs font-bold text-slate-700 dark:text-[#bbc9ca]">
+                  التحكم في التنبيهات عند كل حدث:
+                </h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {/* Event 1: New Visit */}
+                  <div className="p-3.5 rounded-xl bg-slate-50/80 dark:bg-[#080e1b]/80 border border-slate-200 dark:border-white/5 space-y-2.5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-teal-500/15 text-[#008f97] dark:text-[#00c2cb] flex items-center justify-center font-bold text-xs">
+                        1
+                      </div>
+                      <span className="text-xs font-bold text-slate-900 dark:text-white">إضافة زيارة جديدة</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200/60 dark:border-white/5">
+                      <label className="flex items-center gap-1.5 cursor-pointer text-[11px]">
+                        <input
+                          type="checkbox"
+                          checked={alertConfig.newVisitAudio}
+                          onChange={(e) => updateAlertConfig('newVisitAudio', e.target.checked)}
+                          className="rounded text-[#00c2cb] accent-[#00c2cb]"
+                        />
+                        <span>صوت 🔔</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer text-[11px]">
+                        <input
+                          type="checkbox"
+                          checked={alertConfig.newVisitVisual}
+                          onChange={(e) => updateAlertConfig('newVisitVisual', e.target.checked)}
+                          className="rounded text-[#00c2cb] accent-[#00c2cb]"
+                        />
+                        <span>مرئي 👁️</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Event 2: Call patient into exam */}
+                  <div className="p-3.5 rounded-xl bg-slate-50/80 dark:bg-[#080e1b]/80 border border-slate-200 dark:border-white/5 space-y-2.5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-amber-500/15 text-amber-500 flex items-center justify-center font-bold text-xs">
+                        2
+                      </div>
+                      <span className="text-xs font-bold text-slate-900 dark:text-white">دخول مريض للكشف</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200/60 dark:border-white/5">
+                      <label className="flex items-center gap-1.5 cursor-pointer text-[11px]">
+                        <input
+                          type="checkbox"
+                          checked={alertConfig.callPatientAudio}
+                          onChange={(e) => updateAlertConfig('callPatientAudio', e.target.checked)}
+                          className="rounded text-[#00c2cb] accent-[#00c2cb]"
+                        />
+                        <span>صوت 🔔</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer text-[11px]">
+                        <input
+                          type="checkbox"
+                          checked={alertConfig.callPatientVisual}
+                          onChange={(e) => updateAlertConfig('callPatientVisual', e.target.checked)}
+                          className="rounded text-[#00c2cb] accent-[#00c2cb]"
+                        />
+                        <span>مرئي 👁️</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Event 3: Finish exam */}
+                  <div className="p-3.5 rounded-xl bg-slate-50/80 dark:bg-[#080e1b]/80 border border-slate-200 dark:border-white/5 space-y-2.5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-500/15 text-emerald-500 flex items-center justify-center font-bold text-xs">
+                        3
+                      </div>
+                      <span className="text-xs font-bold text-slate-900 dark:text-white">انتهاء الكشف الطبي</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200/60 dark:border-white/5">
+                      <label className="flex items-center gap-1.5 cursor-pointer text-[11px]">
+                        <input
+                          type="checkbox"
+                          checked={alertConfig.finishExamAudio}
+                          onChange={(e) => updateAlertConfig('finishExamAudio', e.target.checked)}
+                          className="rounded text-[#00c2cb] accent-[#00c2cb]"
+                        />
+                        <span>صوت 🔔</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer text-[11px]">
+                        <input
+                          type="checkbox"
+                          checked={alertConfig.finishExamVisual}
+                          onChange={(e) => updateAlertConfig('finishExamVisual', e.target.checked)}
+                          className="rounded text-[#00c2cb] accent-[#00c2cb]"
+                        />
+                        <span>مرئي 👁️</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Card 5: Examination Screen Display Customization (Vitals, Labs, Radiology) */}
+            <div className="bg-white dark:bg-[#111A2E] p-5 sm:p-6 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-white/5 pb-3">
+                <div>
+                  <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb] text-lg">view_carousel</span>
+                    <span>5. تخصيص أقسام شاشة الكشف الطبي (عرض وإخفاء)</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
+                    اختر الأقسام الطبية المطلوب إظهارها أو إخفاؤها داخل غرفة الكشف حسب متطلبات تخصص العيادة
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                {/* Toggle 1: Vital Signs */}
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex flex-col justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-base text-teal-600">vital_signs</span>
+                        العلامات الحيوية
+                      </span>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          examDisplayConfig.showVitals
+                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                            : 'bg-slate-200 dark:bg-white/10 text-slate-500'
+                        }`}
+                      >
+                        {examDisplayConfig.showVitals ? 'معروض ✓' : 'مخفي ✕'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-[#859394]">
+                      بطاقة قياس الضغط، النبض، الحرارة، والوزن
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => updateExamDisplayConfig('showVitals', !examDisplayConfig.showVitals)}
+                    className={`w-full py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      examDisplayConfig.showVitals
+                        ? 'bg-teal-600 hover:bg-teal-500 text-white shadow-xs'
+                        : 'bg-slate-200 dark:bg-[#18233C] text-slate-600 dark:text-slate-400 hover:bg-slate-300'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-sm">
+                      {examDisplayConfig.showVitals ? 'visibility' : 'visibility_off'}
+                    </span>
+                    <span>{examDisplayConfig.showVitals ? 'معروض في الكشف (إخفاء)' : 'مخفي حالياً (إظهار)'}</span>
+                  </button>
+                </div>
+
+                {/* Toggle 2: Labs */}
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex flex-col justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-base text-emerald-600">biotechnology</span>
+                        التحاليل الطبية
+                      </span>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          examDisplayConfig.showLabs
+                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                            : 'bg-slate-200 dark:bg-white/10 text-slate-500'
+                        }`}
+                      >
+                        {examDisplayConfig.showLabs ? 'معروض ✓' : 'مخفي ✕'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-[#859394]">
+                      بطاقة طلب التحاليل المخبرية وتسجيل نتائج الفحوصات
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => updateExamDisplayConfig('showLabs', !examDisplayConfig.showLabs)}
+                    className={`w-full py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      examDisplayConfig.showLabs
+                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs'
+                        : 'bg-slate-200 dark:bg-[#18233C] text-slate-600 dark:text-slate-400 hover:bg-slate-300'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-sm">
+                      {examDisplayConfig.showLabs ? 'visibility' : 'visibility_off'}
+                    </span>
+                    <span>{examDisplayConfig.showLabs ? 'معروض في الكشف (إخفاء)' : 'مخفي حالياً (إظهار)'}</span>
+                  </button>
+                </div>
+
+                {/* Toggle 3: Radiology */}
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex flex-col justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-base text-sky-600">radiology</span>
+                        الأشعة والتصوير
+                      </span>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          examDisplayConfig.showRadiology
+                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                            : 'bg-slate-200 dark:bg-white/10 text-slate-500'
+                        }`}
+                      >
+                        {examDisplayConfig.showRadiology ? 'معروض ✓' : 'مخفي ✕'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-[#859394]">
+                      بطاقة طلب الأشعة السينية، السونار، والرنين
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => updateExamDisplayConfig('showRadiology', !examDisplayConfig.showRadiology)}
+                    className={`w-full py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      examDisplayConfig.showRadiology
+                        ? 'bg-sky-600 hover:bg-sky-500 text-white shadow-xs'
+                        : 'bg-slate-200 dark:bg-[#18233C] text-slate-600 dark:text-slate-400 hover:bg-slate-300'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-sm">
+                      {examDisplayConfig.showRadiology ? 'visibility' : 'visibility_off'}
+                    </span>
+                    <span>{examDisplayConfig.showRadiology ? 'معروض في الكشف (إخفاء)' : 'مخفي حالياً (إظهار)'}</span>
+                  </button>
                 </div>
               </div>
             </div>

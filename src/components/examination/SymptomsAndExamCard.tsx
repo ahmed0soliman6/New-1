@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SymptomCatalogItem } from '../../types';
 
 interface SymptomsAndExamCardProps {
@@ -8,6 +8,7 @@ interface SymptomsAndExamCardProps {
   onChangeComplaint: (val: string) => void;
   physicalExam: string;
   onChangePhysicalExam: (val: string) => void;
+  initialSelectedSymptoms?: string[];
 }
 
 export const SymptomsAndExamCard: React.FC<SymptomsAndExamCardProps> = ({
@@ -17,12 +18,17 @@ export const SymptomsAndExamCard: React.FC<SymptomsAndExamCardProps> = ({
   onChangeComplaint,
   physicalExam,
   onChangePhysicalExam,
+  initialSelectedSymptoms = [],
 }) => {
-  const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>(['ألم حاد بمنتصف الصدر أو الشرسوف', 'حموضة وحرقان خلف عظمة القص']);
+  const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>(initialSelectedSymptoms);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newSymptomName, setNewSymptomName] = useState('');
   const [newSymptomCat, setNewSymptomCat] = useState('الجهاز الهضمي');
   const [saveToCatalog, setSaveToCatalog] = useState(true);
+
+  useEffect(() => {
+    setSelectedSymptoms(initialSelectedSymptoms);
+  }, [initialSelectedSymptoms]);
 
   const toggleSymptom = (name: string) => {
     if (selectedSymptoms.includes(name)) {
@@ -92,13 +98,14 @@ export const SymptomsAndExamCard: React.FC<SymptomsAndExamCardProps> = ({
           الأعراض الشائعة (انقر للإضافة أو الإزالة السريعة):
         </span>
         <div className="flex flex-wrap gap-2 min-w-0">
-          {symptomsCatalog.map((sym) => {
-            const isSelected = selectedSymptoms.includes(sym.name);
+          {(symptomsCatalog || []).filter((s) => Boolean(s && s.name)).map((sym) => {
+            const symName = sym.name;
+            const isSelected = selectedSymptoms.includes(symName);
             return (
               <button
-                key={sym.id}
+                key={sym.id || symName}
                 type="button"
-                onClick={() => toggleSymptom(sym.name)}
+                onClick={() => toggleSymptom(symName)}
                 className={`px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 border text-right break-words max-w-full ${
                   isSelected
                     ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
@@ -106,7 +113,7 @@ export const SymptomsAndExamCard: React.FC<SymptomsAndExamCardProps> = ({
                 }`}
               >
                 {isSelected && <span className="material-symbols-outlined text-sm shrink-0">check</span>}
-                <span className="break-words">{sym.name}</span>
+                <span className="break-words">{symName}</span>
               </button>
             );
           })}

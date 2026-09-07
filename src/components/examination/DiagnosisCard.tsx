@@ -101,11 +101,14 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({
     onChangeDiagnoses(remaining);
   };
 
-  const filteredCatalog = diagnosesCatalog.filter((item) =>
-    item.nameAr.toLowerCase().includes(searchFilter.toLowerCase()) ||
-    item.nameEn.toLowerCase().includes(searchFilter.toLowerCase()) ||
-    item.code.toLowerCase().includes(searchFilter.toLowerCase())
-  );
+  const filteredCatalog = diagnosesCatalog.filter((item) => {
+    const q = (searchFilter || '').toLowerCase();
+    return (
+      (item.nameAr || '').toLowerCase().includes(q) ||
+      (item.nameEn || '').toLowerCase().includes(q) ||
+      (item.code || '').toLowerCase().includes(q)
+    );
+  });
 
   const favoriteDiagnoses = diagnosesCatalog.filter((d) => d.isFavorite);
 
