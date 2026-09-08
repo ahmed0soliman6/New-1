@@ -227,6 +227,26 @@ export const subscribeToSystemSettings = (
   );
 };
 
+export const subscribeToPrescriptionSettings = <T = Record<string, unknown>>(
+  db: Firestore,
+  next: (settings: T | null) => void,
+  error: (reason: Error) => void
+): Unsubscribe => {
+  return onSnapshot(
+    doc(db, 'settings', 'prescriptionSettings'),
+    (snap) => {
+      if (snap.exists()) {
+        next(normalize(snap.data()) as T);
+      } else {
+        next(null);
+      }
+    },
+    (reason) => {
+      error(handleFirestoreError(reason, OperationType.GET, 'settings/prescriptionSettings'));
+    }
+  );
+};
+
 export async function saveCatalogItem<T extends Record<string, unknown>>(
   db: Firestore,
   collectionName: string,

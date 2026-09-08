@@ -109,7 +109,7 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({
                       في الانتظار
                     </span>
                     <span className="text-xs text-slate-500 dark:text-[#859394] font-mono">
-                      {item.phone || '01021434947'} • عيادة الطبيب
+                      {item.phone || 'بدون هاتف'} • عيادة الطبيب
                     </span>
                   </div>
 

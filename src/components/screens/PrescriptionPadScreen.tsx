@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CLINIC_INFO } from '../../data/previewClinicData';
 import { db } from '../../services/firebase';
-import { saveSettingsDocument } from '../../services/repositories';
+import { saveSettingsDocument, subscribeToPrescriptionSettings } from '../../services/repositories';
 import { usePermissions } from '../../context/AuthContext';
 import { PermissionGate } from '../auth/PermissionGate';
 import { PatientListItem, PrescriptionItem } from '../../types';
@@ -108,7 +108,39 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
   onChangeItems,
 }) => {
   const { assertPermission } = usePermissions();
-  const [config, setConfig] = useState<PrescriptionLayoutSettings>(DEFAULT_LAYOUT);
+  const [config, setConfig] = useState<PrescriptionLayoutSettings>(() => {
+    const cached = localStorage.getItem('soli_prescription_settings');
+    if (cached) {
+      try {
+        return { ...DEFAULT_LAYOUT, ...JSON.parse(cached) };
+      } catch {
+        // ignore JSON error
+      }
+    }
+    return DEFAULT_LAYOUT;
+  });
+
+  // Real-time synchronization across accounts from Firestore
+  useEffect(() => {
+    if (!db) return;
+    const unsubscribe = subscribeToPrescriptionSettings<PrescriptionLayoutSettings>(
+      db,
+      (remoteConfig) => {
+        if (remoteConfig && Object.keys(remoteConfig).length > 0) {
+          setConfig((prev) => ({
+            ...prev,
+            ...remoteConfig,
+          }));
+          localStorage.setItem('soli_prescription_settings', JSON.stringify(remoteConfig));
+        }
+      },
+      (err) => {
+        console.warn('Prescription settings subscription error:', err);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
   const [activeTab, setActiveTab] = useState<'layout' | 'header' | 'qr' | 'branches' | 'printers'>('layout');
   const [printerPaper, setPrinterPaper] = useState<string>(() => localStorage.getItem('soli_printer_paper') || '80mm');
   const [autoPrintReceipt, setAutoPrintReceipt] = useState<boolean>(() => localStorage.getItem('soli_auto_print') !== 'false');
@@ -165,8 +197,20 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
       setIsSaving(true);
       if (db) {
         await saveSettingsDocument(db, 'prescriptionSettings', config as unknown as Record<string, unknown>);
+        await saveSettingsDocument(db, 'doctorProfile', {
+          doctorNameAr: config.doctorName,
+          doctorNameEn: config.doctorNameEn,
+          specialtyAr: config.specialtyAr,
+          specialtyEn: config.specialtyEn,
+          credentialsAr: [config.degreesAr],
+          credentialsEn: [config.degreesEn],
+          phone: config.phone,
+          logoUrl: config.logoUrl,
+          updatedAt: new Date().toISOString(),
+        });
       }
-      setToastMessage('تم حفظ إعدادات الروشتة والطباعة بنجاح');
+      localStorage.setItem('soli_prescription_settings', JSON.stringify(config));
+      setToastMessage('تم حفظ وتزامن إعدادات الروشتة وبيانات الطبيب بنجاح عبر جميع الحسابات!');
       setTimeout(() => setToastMessage(null), 3500);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'تعذر حفظ الإعدادات');

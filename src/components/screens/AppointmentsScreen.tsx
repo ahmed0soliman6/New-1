@@ -115,7 +115,7 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
     {
       id: 'app-sample-1',
       patientName: 'جمال على محمد',
-      phone: '01021434947',
+      phone: '01029384751',
       medicalCode: 'EG-102',
       timeSlot: '09:00 ص',
       time: '09:00 ص',

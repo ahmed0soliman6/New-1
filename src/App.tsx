@@ -114,6 +114,9 @@ import {
   subscribeToDiagnoses,
   subscribeToSymptoms,
   subscribeToChronicDiseases,
+  subscribeToDoctorProfile,
+  subscribeToDoctorSettings,
+  subscribeToPrescriptionSettings,
   saveCatalogItem,
   removeCatalogItem,
 } from './services/repositories';
@@ -211,7 +214,7 @@ function ClinicApp() {
   // SOLI MEDICAL CANONICAL STATE (SINGLE SOURCE OF TRUTH: FIRESTORE)
   // =========================================================================
   const [users] = useState<User[]>(INITIAL_USERS);
-  const [doctorProfile] = useState<DoctorProfile>(INITIAL_DOCTOR_PROFILE);
+  const [doctorProfile, setDoctorProfile] = useState<DoctorProfile>(INITIAL_DOCTOR_PROFILE);
   const [clinicLocations] = useState<ClinicLocation[]>(INITIAL_CLINIC_LOCATIONS);
   const [services] = useState<ServiceItem[]>(INITIAL_SERVICES);
 
@@ -230,7 +233,7 @@ function ClinicApp() {
   const [diagnosesCanonical, setDiagnosesCanonical] = useState<Diagnosis[]>(INITIAL_DIAGNOSES);
   const [symptomsCanonical, setSymptomsCanonical] = useState<Symptom[]>(INITIAL_SYMPTOMS);
   const [chronicDiseasesCanonical, setChronicDiseasesCanonical] = useState<ChronicDisease[]>(INITIAL_CHRONIC_DISEASES);
-  const [doctorSettingsCanonical] = useState<DoctorSettings>(INITIAL_DOCTOR_SETTINGS_CANONICAL);
+  const [doctorSettingsCanonical, setDoctorSettingsCanonical] = useState<DoctorSettings>(INITIAL_DOCTOR_SETTINGS_CANONICAL);
   const [systemSettingsCanonical] = useState<SystemSettings>(INITIAL_SYSTEM_SETTINGS_CANONICAL);
 
   // Auto-seed Firestore if empty
@@ -338,6 +341,8 @@ function ClinicApp() {
       subscribeToDiagnoses(db, (items) => { onDataSuccess(); setDiagnosesCanonical(items); }, onError),
       subscribeToSymptoms(db, (items) => { onDataSuccess(); setSymptomsCanonical(items); }, onError),
       subscribeToChronicDiseases(db, (items) => { onDataSuccess(); setChronicDiseasesCanonical(items); }, onError),
+      subscribeToDoctorProfile(db, (profile) => { if (profile) setDoctorProfile(profile); }, onError),
+      subscribeToDoctorSettings(db, (settings) => { if (settings) setDoctorSettingsCanonical(settings); }, onError),
     ];
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
   }, [syncRetryCounter]);
@@ -1246,7 +1251,17 @@ function ClinicApp() {
   // Walk-in: Patient + Invoice + Payment + Visit are committed in one transaction
   const handleAddPatientToQueue = async (item: QueueItem) => {
     const timestamp = new Date().toISOString();
-    const basePat = patientsCanonical.find((p) => p.phone === item.phone || p.fullName === item.patientName);
+    const cleanPhone = (item.phone || '').trim();
+    const cleanName = (item.patientName || '').trim();
+
+    // Look up existing patient strictly by valid non-empty phone or exact name match
+    const basePat = patientsCanonical.find((p) => {
+      const pPhone = (p.phone || '').trim();
+      const pName = (p.fullName || '').trim().toLowerCase();
+      const phoneMatches = cleanPhone !== '' && pPhone !== '' && pPhone === cleanPhone;
+      const nameMatches = cleanName !== '' && pName !== '' && pName === cleanName.toLowerCase();
+      return phoneMatches || nameMatches;
+    });
     
     // Convert entered age to a valid dateOfBirth so the age calculation is perfectly synchronized and correct
     const calculatedDOB = new Date(new Date().getFullYear() - (Number(item.age) || 30), 0, 1).toISOString().split('T')[0];
@@ -1254,6 +1269,8 @@ function ClinicApp() {
     const patient: Patient = basePat
       ? {
           ...basePat,
+          fullName: cleanName || basePat.fullName,
+          phone: cleanPhone || basePat.phone,
           chronicDiseases: Array.from(new Set([...(basePat.chronicDiseases || []), ...(item.chronicConditions || [])])),
           address: item.address || basePat.address || basePat.governorate || '',
           bloodType: item.bloodType && item.bloodType !== 'غير محدد' ? item.bloodType : (basePat.bloodType || 'غير محدد'),
@@ -1262,11 +1279,11 @@ function ClinicApp() {
         }
       : {
           patientId: `pat-${Date.now()}`,
-          fullName: item.patientName,
-          phone: item.phone,
+          fullName: cleanName || 'مريض جديد',
+          phone: cleanPhone,
           gender: item.gender === 'female' ? 'female' : 'male',
           fileNumber: typeof item.fileNumber === 'number' ? item.fileNumber : parseInt(String(item.fileNumber), 10) || nextFileNumber,
-          medicalCode: item.medicalCode,
+          medicalCode: item.medicalCode || `EG-${Math.floor(Math.random() * 90000) + 10000}`,
           chronicDiseases: item.chronicConditions || [],
           allergies: [],
           address: item.address || '',
@@ -1325,19 +1342,32 @@ function ClinicApp() {
   // Add scheduled appointment: Patient first, then Appointment in one Firestore transaction
   const handleAddAppointment = async (app: AppointmentListItem) => {
     const timestamp = new Date().toISOString();
-    const existingPatient = patientsCanonical.find(
-      (p) => p.fullName.trim() === app.patientName.trim() || (!!app.phone && p.phone === app.phone),
-    );
-    const patient: Patient = existingPatient || {
-      patientId: `pat-${Date.now()}`,
-      fullName: app.patientName.trim(),
-      phone: app.phone || '',
-      medicalCode: app.medicalCode || `EG-${nextFileNumber}`,
-      fileNumber: app.fileNumber || nextFileNumber,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      createdBy: userProfile?.username || 'receptionist',
-    };
+    const cleanPhone = (app.phone || '').trim();
+    const cleanName = (app.patientName || '').trim();
+    const existingPatient = patientsCanonical.find((p) => {
+      const pPhone = (p.phone || '').trim();
+      const pName = (p.fullName || '').trim().toLowerCase();
+      const phoneMatch = cleanPhone !== '' && pPhone !== '' && pPhone === cleanPhone;
+      const nameMatch = cleanName !== '' && pName !== '' && pName === cleanName.toLowerCase();
+      return phoneMatch || nameMatch;
+    });
+    const patient: Patient = existingPatient
+      ? {
+          ...existingPatient,
+          fullName: cleanName || existingPatient.fullName,
+          phone: cleanPhone || existingPatient.phone,
+          updatedAt: timestamp,
+        }
+      : {
+          patientId: `pat-${Date.now()}`,
+          fullName: cleanName || 'مريض محجوز',
+          phone: cleanPhone,
+          medicalCode: app.medicalCode || `EG-${nextFileNumber}`,
+          fileNumber: app.fileNumber || nextFileNumber,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          createdBy: userProfile?.username || 'receptionist',
+        };
     const newApp: Appointment = {
       appointmentId: `app-${Date.now()}`,
       patientId: patient.patientId,
