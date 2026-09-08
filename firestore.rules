@@ -31,7 +31,7 @@ service cloud.firestore {
       return signedIn() && isUserActive() && (
         role == 'ADMIN' ||
         role == 'admin' ||
-        (request.auth.token.email != null && request.auth.token.email.matches('.*admin.*'))
+        (request.auth.token != null && 'email' in request.auth.token && request.auth.token.email != null && request.auth.token.email.matches('.*admin.*'))
       );
     }
 
@@ -41,17 +41,7 @@ service cloud.firestore {
         isAdmin() ||
         role == 'DOCTOR' ||
         role == 'doctor' ||
-        (request.auth.token.email != null && request.auth.token.email.matches('.*(doctor|dr).*'))
-      );
-    }
-
-    function isSecretary() {
-      let role = getUserRole();
-      return signedIn() && isUserActive() && (
-        isAdmin() ||
-        role == 'SECRETARY' ||
-        role == 'secretary' ||
-        (request.auth.token.email != null && request.auth.token.email.matches('.*(sec|reception|staff).*'))
+        (request.auth.token != null && 'email' in request.auth.token && request.auth.token.email != null && request.auth.token.email.matches('.*(doctor|dr).*'))
       );
     }
 
@@ -85,15 +75,20 @@ service cloud.firestore {
         (
           u != null &&
           u.customPermissions != null &&
-          u.customPermissions[screen] != null &&
+          screen in u.customPermissions &&
+          action in u.customPermissions[screen] &&
           u.customPermissions[screen][action] == true
         ) ||
         (
           u != null &&
-          (u.customPermissions == null || u.customPermissions[screen] == null) &&
+          (
+            u.customPermissions == null ||
+            !(screen in u.customPermissions) ||
+            !(action in u.customPermissions[screen])
+          ) &&
           (
             // If action is view and allowedScreens array is populated, check screen inclusion
-            (action == 'view' && u.allowedScreens != null && screen in u.allowedScreens) ||
+            (action == 'view' && u.allowedScreens != null && u.allowedScreens is list && screen in u.allowedScreens) ||
             // Fallback to role-based default permission
             roleDefaultPermission(getUserRole(), screen, action)
           )
@@ -130,7 +125,8 @@ service cloud.firestore {
     // 2. USERNAMES DIRECTORY
     // =============================================================
     match /usernames/{usernameLower} {
-      allow read: if true; // Needed for username resolution on login screen
+      allow get: if true; // Single doc lookup for username resolution on login
+      allow list: if signedIn();
       allow create, update: if signedIn() && (isAdmin() || request.resource.data.uid == request.auth.uid);
       allow delete: if signedIn() && isAdmin();
     }
@@ -139,14 +135,18 @@ service cloud.firestore {
     // 3. SYSTEM BOOTSTRAP & PBKDF2 ADMIN RECOVERY
     // =============================================================
     match /_system/bootstrap {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow get: if true; // Single doc lookup for bootstrap state check
+      allow list: if signedIn();
+      allow create, update, delete: if isAdmin();
     }
 
     match /_system/recovery {
-      allow read: if true; // Needed for PBKDF2 verification before login
-      allow create, update: if isAdmin() || (
-        // Allow rate limiting and escrow update during valid recovery
+      allow get: if true; // Single doc lookup for PBKDF2 verification before login
+      allow list: if signedIn();
+      allow create: if isAdmin() || (
+        request.resource.data.keys().hasOnly(['hash', 'salt', 'createdAt', 'updatedAt', 'attempts', 'lockedUntil', 'envelope', 'iv', 'lastRecoveredAt'])
+      );
+      allow update: if isAdmin() || (
         resource != null && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attempts', 'lockedUntil', 'envelope', 'iv', 'lastRecoveredAt'])
       );
       allow delete: if false; // Recovery document should never be deleted
