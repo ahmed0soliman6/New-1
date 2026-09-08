@@ -89,7 +89,21 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
 
   const handleUpdateOrderField = (id: string, field: 'resultSummary' | 'reportDetails' | 'notes', val: string) => {
     onChangeOrders(
-      radiologyOrders.map((ord) => (ord.id === id ? { ...ord, [field]: val } : ord))
+      radiologyOrders.map((ord) => {
+        if (ord.id === id) {
+          const updated = { ...ord, [field]: val };
+          // If typing report or summary while in REQUEST status, auto-promote so it is saved and shown properly
+          if (field === 'reportDetails' && val.trim().length > 0) {
+            if (ord.status === 'REQUEST') updated.status = 'REPORT';
+            if (!updated.resultAt) updated.resultAt = new Date().toLocaleDateString('ar-EG');
+          } else if (field === 'resultSummary' && val.trim().length > 0) {
+            if (ord.status === 'REQUEST') updated.status = 'RESULT';
+            if (!updated.resultAt) updated.resultAt = new Date().toLocaleDateString('ar-EG');
+          }
+          return updated;
+        }
+        return ord;
+      })
     );
   };
 
@@ -296,9 +310,21 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
 
               {/* Clinical note for 'REQUEST' status */}
               {ord.status === 'REQUEST' && (
-                <div className="flex items-center gap-2 pt-1 text-[11px] text-slate-500 dark:text-[#859394]">
-                  <span className="material-symbols-outlined text-xs text-amber-500">schedule</span>
-                  <span>تم إصدار طلب الفحص الساعة {ord.orderedAt} - في انتظار إجراء الفحص وورود التقرير.</span>
+                <div className="pt-2 border-t border-slate-200 dark:border-white/5 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-[#859394]">
+                    <div className="flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-xs text-amber-500">schedule</span>
+                      <span>طلب فحص جديد ({ord.orderedAt})</span>
+                    </div>
+                    <span className="text-xs text-sky-600 dark:text-[#38BDF8] font-semibold">أو اكتب التقرير/النتيجة الآن:</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={ord.reportDetails || ord.resultSummary || ''}
+                    onChange={(e) => handleUpdateOrderField(ord.id, 'reportDetails', e.target.value)}
+                    placeholder="مثال: تقرير أشعة الصدر: الصدر سليم ولا توجد ارتشاحات رئوية..."
+                    className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-lg border border-amber-300 dark:border-amber-700/50 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  />
                 </div>
               )}
             </div>

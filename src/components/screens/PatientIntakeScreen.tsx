@@ -9,12 +9,13 @@ interface PatientIntakeScreenProps {
   onNavigate?: (screen: ScreenType) => void;
   nextFileNumber?: number;
   symptomsCatalog?: { id: string; name: string; category: string }[];
+  visitTypesList?: { id: string; name: string; fee: number }[];
 }
 
 export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
   onAddPatientToQueue,
-  patients,
-  presetChronicConditions,
+  patients = [],
+  presetChronicConditions = [],
   onAddChronicCondition,
   onNavigate,
   nextFileNumber = 1,
@@ -28,25 +29,73 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
     { id: '7', name: 'ارتفاع في درجة الحرارة وقشعريرة', category: 'عام' },
     { id: '8', name: 'سعال جاف ممتد مع ضيق تنفس', category: 'صدرية' },
   ],
+  visitTypesList = [
+    { id: '1', name: 'كشف جديد', fee: 300 },
+    { id: '2', name: 'استشارة / متابعة', fee: 150 },
+    { id: '3', name: 'كشف طوارئ', fee: 400 },
+  ],
 }) => {
   const [mode, setMode] = useState<'new' | 'existing'>('new');
   // Form fields start CLEAN for new patients
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [age, setAge] = useState<number | string>(30);
-  const [gender, setGender] = useState<'male' | 'female'>('male');
+  const [age, setAge] = useState<number | string>(''); // Requirement 4: empty by default
+  const [gender, setGender] = useState<'male' | 'female' | ''>(''); // Requirement 5: unselected by default
   const [address, setAddress] = useState('');
-  const [fileNumber, setFileNumber] = useState<number | string>(nextFileNumber);
-  const [visitType, setVisitType] = useState<'كشف جديد' | 'استشارة / متابعة'>('كشف جديد');
-  const [tariff, setTariff] = useState(300);
-  const [complaint, setComplaint] = useState('');
+  const [bloodType, setBloodType] = useState<string>('غير محدد');
+
+  // Requirement 6: Sequential auto-calculated file number
+  const autoFileNumber = React.useMemo(() => {
+    if (patients && patients.length > 0) {
+      const maxNum = Math.max(...patients.map((p) => Number(p.fileNumber) || 0));
+      return maxNum > 0 ? maxNum + 1 : nextFileNumber;
+    }
+    return nextFileNumber || 1;
+  }, [patients, nextFileNumber]);
+
+  const [selectedVisitType, setSelectedVisitType] = useState<{ id: string; name: string; fee: number }>(
+    visitTypesList[0] || { id: '1', name: 'كشف جديد', fee: 300 }
+  );
+  
+  // Requirement 7: Separate badge pills for symptoms & complaint
+  const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>([]);
+  const [customSymptomInput, setCustomSymptomInput] = useState('');
+  const [complaintText, setComplaintText] = useState('');
+
+  // Chronic conditions
   const [chronicSelected, setChronicSelected] = useState<string[]>([]);
   const [newChronicInput, setNewChronicInput] = useState('');
-  const [notes, setNotes] = useState('');
+
   const [payMethod, setPayMethod] = useState<'نقدي' | 'فيزا / كارت' | 'إنستاباي'>('نقدي');
-  const [tendered, setTendered] = useState(300);
-  const [printReceipt, setPrintReceipt] = useState(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [autoFilledPatientId, setAutoFilledPatientId] = useState<string | null>(null);
+
+  // Requirement 3: Auto-suggest registered patient when typing name or phone
+  const matchingPatients = React.useMemo(() => {
+    const trimmedName = name.trim().toLowerCase();
+    const trimmedPhone = phone.trim();
+    if (!trimmedName && !trimmedPhone) return [];
+
+    return patients.filter((p) => {
+      const matchName = trimmedName.length >= 2 && p.name?.toLowerCase().includes(trimmedName);
+      const matchPhone = trimmedPhone.length >= 3 && p.phone?.includes(trimmedPhone);
+      return matchName || matchPhone;
+    });
+  }, [name, phone, patients]);
+
+  const handleSelectExisting = (p: PatientListItem) => {
+    if (!p) return;
+    setName(p.name || '');
+    setPhone(p.phone || '');
+    setAge(p.age || '');
+    setGender(p.gender || '');
+    setAddress(p.address || p.governorate || '');
+    setBloodType(p.bloodType || p.bloodGroup || 'غير محدد');
+    setChronicSelected(p.chronicConditions || []);
+    setAutoFilledPatientId(p.id);
+    setToastMessage(`تم استرجاع وتعبئة ملف المريض تلقائياً: ${p.name || ''} (ملف #${p.fileNumber || 1})`);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
 
   const toggleChronic = (tag: string) => {
     if (chronicSelected.includes(tag)) {
@@ -64,40 +113,51 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
       setChronicSelected([...chronicSelected, trimmed]);
     }
     const alreadyPreset = presetChronicConditions.some((c) => (c?.name || '').toLowerCase() === trimmed.toLowerCase());
-    if (!alreadyPreset) {
+    if (!alreadyPreset && onAddChronicCondition) {
       onAddChronicCondition({
         id: `cc-${Date.now()}`,
         name: trimmed,
         category: 'أمراض شائعة',
-        color: 'bg-teal-500',
+        color: 'bg-[#00c2cb]',
       });
     }
     setNewChronicInput('');
-    setToastMessage(`تمت إضافة "${trimmed}" إلى الأمراض المزمنة`);
+    setToastMessage(`تمت إضافة "${trimmed}" إلى الأمراض المزمنة للمريض`);
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const handleSelectExisting = (p: PatientListItem) => {
-    if (!p) return;
-    setName(p.name || '');
-    setPhone(p.phone || '');
-    setAge(p.age || 30);
-    setGender(p.gender || 'male');
-    setAddress(p.governorate || '');
-    setFileNumber(p.fileNumber || 1);
-    setChronicSelected(p.chronicConditions || []);
-    setToastMessage(`تم استرجاع ملف المريض: ${p.name || ''} (ملف #${p.fileNumber || 1})`);
-    setTimeout(() => setToastMessage(null), 3000);
+  const handleAddSymptomTag = (symptomName: string) => {
+    if (!symptomName) return;
+    if (!selectedSymptoms.includes(symptomName)) {
+      setSelectedSymptoms([...selectedSymptoms, symptomName]);
+    }
+  };
+
+  const handleAddCustomSymptom = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = customSymptomInput.trim();
+    if (!trimmed) return;
+    if (!selectedSymptoms.includes(trimmed)) {
+      setSelectedSymptoms([...selectedSymptoms, trimmed]);
+    }
+    setCustomSymptomInput('');
+  };
+
+  const removeSymptomTag = (tag: string) => {
+    setSelectedSymptoms(selectedSymptoms.filter((s) => s !== tag));
   };
 
   const resetFormFields = () => {
     setName('');
     setPhone('');
-    setAge(30);
-    setComplaint('');
+    setAge('');
+    setGender('');
+    setAddress('');
+    setBloodType('غير محدد');
+    setSelectedSymptoms([]);
+    setComplaintText('');
     setChronicSelected([]);
-    setNotes('');
-    setFileNumber((prev) => (typeof prev === 'number' ? prev + 1 : Number(prev) + 1));
+    setAutoFilledPatientId(null);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -107,33 +167,41 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
       return;
     }
 
+    const compiledComplaint = [
+      ...selectedSymptoms,
+      complaintText.trim() ? `تفاصيل: ${complaintText.trim()}` : '',
+    ]
+      .filter(Boolean)
+      .join(' • ');
+
     const ticketNumber = `#${Math.floor(Math.random() * 20) + 20}`;
     const newQueueItem: QueueItem = {
       id: `q-${Date.now()}`,
       ticketNumber,
-      fileNumber: fileNumber || 1,
+      fileNumber: autoFileNumber,
       patientName: name.trim(),
       medicalCode: `EG-${Math.floor(Math.random() * 90000) + 10000}`,
       phone: phone.trim(),
       age: Number(age) || 30,
-      visitType,
+      gender: gender || 'male',
+      visitType: selectedVisitType.name,
       arrivalTime: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
       elapsedMinutes: 1,
-      paidAmount: tariff,
+      paidAmount: selectedVisitType.fee,
       paymentMethod: payMethod,
-      complaint: complaint || 'كشف روتيني بالعيادة',
+      complaint: compiledComplaint || 'كشف روتيني بالعيادة',
+      chronicConditions: chronicSelected,
       status: 'waiting',
+      address: address.trim(),
+      bloodType: bloodType,
     };
 
     onAddPatientToQueue(newQueueItem);
-    setToastMessage(`تم تسجيل الزيارة بنجاح! رقم الدور (${ticketNumber}) - ملف رقم (${fileNumber || 1})`);
+    setToastMessage(`تم تسجيل الزيارة بنجاح! رقم الدور (${ticketNumber}) - ملف رقم (${autoFileNumber})`);
     setTimeout(() => setToastMessage(null), 4500);
 
-    // Reset form so old name doesn't repeat for next registration
     resetFormFields();
   };
-
-  const changeDue = tendered - tariff;
 
   return (
     <div className="flex flex-col w-full pb-16 space-y-6 text-slate-800 dark:text-[#dde2f5] min-w-0 max-w-full overflow-x-hidden">
@@ -240,8 +308,43 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
                 <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb] text-xl">badge</span>
                 <span className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">1. البيانات الشخصية والتعريفية</span>
               </div>
-              <span className="text-xs text-slate-500 dark:text-[#859394]">الملف الطبي الإكلينيكي</span>
+              <span className="text-xs bg-teal-50 dark:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#45dee7] font-bold px-3 py-1 rounded-full border border-[#00c2cb]/30">
+                رقم الملف الطبي التلقائي: #{autoFileNumber}
+              </span>
             </div>
+
+            {/* Requirement 3: Auto-suggest matching registered patient */}
+            {matchingPatients.length > 0 && !autoFilledPatientId && (
+              <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 p-3.5 rounded-2xl space-y-2 animate-in fade-in">
+                <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 text-xs font-bold">
+                  <span className="material-symbols-outlined text-base">person_search</span>
+                  <span>وجدنا مريض مسجل سابقاً يطابق الاسم أو رقم الهاتف المدخل:</span>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  {matchingPatients.slice(0, 3).map((p) => (
+                    <div
+                      key={p.id}
+                      className="flex items-center justify-between bg-white dark:bg-[#080e1b] p-2.5 rounded-xl border border-amber-200 dark:border-amber-900/50"
+                    >
+                      <div className="text-xs font-medium text-slate-800 dark:text-[#dde2f5]">
+                        <span className="font-bold text-slate-900 dark:text-white">{p.name}</span>
+                        <span className="text-slate-500 mx-2">•</span>
+                        <span>هاتف: {p.phone || 'غير مدخل'}</span>
+                        <span className="text-slate-500 mx-2">•</span>
+                        <span>ملف #{p.fileNumber || 1}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectExisting(p)}
+                        className="px-3 py-1.5 rounded-lg bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs font-bold transition-all cursor-pointer shadow-xs"
+                      >
+                        تعبئة بيانات الملف تلقائياً ✓
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Full Name */}
@@ -254,7 +357,7 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="أدخل اسم المريض ثلاثياً أو رباعياً..."
+                  placeholder="أدخل اسم المريض..."
                   className="bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] placeholder:text-slate-400 dark:placeholder:text-[#859394] text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
                 />
               </div>
@@ -271,18 +374,19 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
                 />
               </div>
 
-              {/* Age */}
+              {/* Age - Requirement 4: Empty by default */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">السن (بالسنوات)</label>
                 <input
                   type="number"
                   value={age}
                   onChange={(e) => setAge(e.target.value)}
-                  className="bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 font-mono focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
+                  placeholder="أدخل السن..."
+                  className="bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] placeholder:text-slate-400 text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 font-mono focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
                 />
               </div>
 
-              {/* Gender */}
+              {/* Gender - Requirement 5: Unselected by default */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">النوع / الجنس</label>
                 <div className="grid grid-cols-2 gap-2">
@@ -291,7 +395,7 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
                     onClick={() => setGender('male')}
                     className={`py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
                       gender === 'male'
-                        ? 'bg-teal-50 dark:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#45dee7] border-[#00c2cb]'
+                        ? 'bg-teal-50 dark:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#45dee7] border-[#00c2cb] ring-1 ring-[#00c2cb]'
                         : 'bg-slate-50 dark:bg-[#080e1b] text-slate-600 dark:text-[#859394] border-slate-200 dark:border-white/5'
                     }`}
                   >
@@ -302,7 +406,7 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
                     onClick={() => setGender('female')}
                     className={`py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
                       gender === 'female'
-                        ? 'bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-[#d0bcff] border-purple-500'
+                        ? 'bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-[#d0bcff] border-purple-500 ring-1 ring-purple-500'
                         : 'bg-slate-50 dark:bg-[#080e1b] text-slate-600 dark:text-[#859394] border-slate-200 dark:border-white/5'
                     }`}
                   >
@@ -311,44 +415,65 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
                 </div>
               </div>
 
-              {/* File Number */}
+              {/* Address Field */}
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">رقم الملف الطبي</label>
+                <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">العنوان / محل الإقامة</label>
                 <input
-                  type="number"
-                  value={fileNumber}
-                  onChange={(e) => setFileNumber(e.target.value)}
-                  className="bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 font-mono focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
+                  type="text"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="أدخل العنوان بالتفصيل..."
+                  className="bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] placeholder:text-slate-400 dark:placeholder:text-[#859394] text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
                 />
+              </div>
+
+              {/* Blood Type Selector */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">فصيلة الدم</label>
+                <select
+                  value={bloodType}
+                  onChange={(e) => setBloodType(e.target.value)}
+                  className="bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-[#00c2cb] cursor-pointer"
+                >
+                  <option value="غير محدد">غير محدد</option>
+                  <option value="O+">O+</option>
+                  <option value="O-">O-</option>
+                  <option value="A+">A+</option>
+                  <option value="A-">A-</option>
+                  <option value="B+">B+</option>
+                  <option value="B-">B-</option>
+                  <option value="AB+">AB+</option>
+                  <option value="AB-">AB-</option>
+                </select>
               </div>
             </div>
           </div>
 
-          {/* Section 3: Preliminary Symptoms & Chief Complaint Card */}
+          {/* Section 3: Preliminary Symptoms & Chief Complaint Card - Requirement 7 */}
           <div className="bg-white dark:bg-[#111A2E] p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-white/5 flex flex-col gap-4">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-100 dark:border-white/5 pb-3 gap-1">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb] text-xl">pulse_alert</span>
                 <span className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">2. الأعراض والشكوى الرئيسية للمريض</span>
               </div>
-              <span className="text-xs text-slate-500 dark:text-[#859394]">لإرشاد الطبيب قبل النداء</span>
+              <span className="text-xs text-slate-500 dark:text-[#859394]">تظهر شارات منفصلة للطبيب</span>
             </div>
 
-            {/* Dropdown for Preconfigured Chief Complaints / Symptoms */}
+            {/* Dropdown for Preconfigured Symptoms */}
             <div className="flex flex-col gap-1.5 bg-teal-50/60 dark:bg-[#18233C]/60 p-3 rounded-xl border border-[#00c2cb]/20">
-              <label className="text-xs font-bold text-[#008f97] dark:text-[#45dee7] flex items-center justify-between">
-                <span>اختر من قائمة الأعراض والشكاوى المعدة مسبقاً في الإعدادات:</span>
+              <label className="text-xs font-bold text-[#008f97] dark:text-[#45dee7]">
+                اختر عرضاً من قائمة الشكاوى المعدة مسبقاً لإضافته كشارة منفصلة:
               </label>
               <select
                 onChange={(e) => {
                   const val = e.target.value;
                   if (!val) return;
-                  setComplaint((prev) => (prev ? `${prev}، مع ${val}` : val));
+                  handleAddSymptomTag(val);
                   e.target.value = '';
                 }}
                 className="w-full bg-white dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs px-3 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-[#00c2cb] cursor-pointer"
               >
-                <option value="">-- اضغط لاختيار عرض/شكوى من قائمة الإعدادات المسبقة --</option>
+                <option value="">-- اضغط لاختيار عرض/شكوى من القائمة --</option>
                 {(symptomsCatalog || []).filter((s) => Boolean(s && s.name)).map((s) => (
                   <option key={s.id || s.name} value={s.name}>
                     {s.name} ({s.category || 'عرض'})
@@ -357,34 +482,80 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
               </select>
             </div>
 
-            {/* Chief Complaint Textarea */}
-            <div className="flex flex-col gap-2">
+            {/* Selected Symptoms Pills - Requirement 7 */}
+            {selectedSymptoms.length > 0 && (
+              <div className="flex flex-wrap gap-2 p-2 bg-slate-50 dark:bg-[#080e1b] rounded-xl border border-slate-200 dark:border-white/5">
+                {selectedSymptoms.map((sym) => (
+                  <span
+                    key={sym}
+                    className="px-3 py-1.5 rounded-xl bg-teal-100 dark:bg-[#00c2cb]/20 border border-[#00c2cb]/30 text-[#008f97] dark:text-[#45dee7] text-xs font-bold flex items-center gap-2 shadow-2xs"
+                  >
+                    <span>{sym}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeSymptomTag(sym)}
+                      className="hover:text-red-600 dark:hover:text-rose-400 font-extrabold cursor-pointer text-xs"
+                      title="إزالة هذا العرض"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Custom Symptom or Detailed Text */}
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={customSymptomInput}
+                onChange={(e) => setCustomSymptomInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddCustomSymptom(e);
+                  }
+                }}
+                placeholder="أدخل عرض آخر غير موجود بالقائمة..."
+                className="flex-1 bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] placeholder:text-slate-400 text-xs px-3.5 py-2 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={(e) => handleAddCustomSymptom(e)}
+                className="px-3.5 py-2 rounded-xl bg-[#00c2cb] text-slate-950 font-bold text-xs hover:bg-[#45dee7] transition-all cursor-pointer shrink-0"
+              >
+                + إضافة عرض
+              </button>
+            </div>
+
+            {/* Optional Chief Complaint Note */}
+            <div className="flex flex-col gap-1.5 pt-1">
               <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">
-                الشكوى التفصيلية بلسان المريض
+                ملاحظة تفصيلية إضافية (اختياري)
               </label>
               <textarea
-                rows={3}
-                value={complaint}
-                onChange={(e) => setComplaint(e.target.value)}
-                placeholder="اكتب تفاصيل الأعراض أو الشكوى التي يذكرها المريض..."
-                className="bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] placeholder:text-slate-400 dark:placeholder:text-[#859394] text-xs p-3 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
+                rows={2}
+                value={complaintText}
+                onChange={(e) => setComplaintText(e.target.value)}
+                placeholder="اكتب أي معلومات إضافية يذكرها المريض..."
+                className="bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] placeholder:text-slate-400 text-xs p-3 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
               />
             </div>
           </div>
 
-          {/* Section 4: Chronic Diseases Card */}
+          {/* Section 4: Chronic Diseases Card - Requirement 8 */}
           <div className="bg-white dark:bg-[#111A2E] p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-white/5 flex flex-col gap-4">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-100 dark:border-white/5 pb-3 gap-2">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-rose-500 text-xl">medical_services</span>
-                <span className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">3. الأمراض المزمنة</span>
+                <span className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">3. الأمراض المزمنة للمريض</span>
               </div>
             </div>
 
             {/* Dropdown Selector for Chronic Diseases */}
             <div className="flex flex-col gap-1.5 bg-rose-50/60 dark:bg-[#18233C]/60 p-3 rounded-xl border border-rose-500/20">
               <label className="text-xs font-bold text-rose-700 dark:text-rose-300">
-                اختر مرض مزمن من القائمة المنسدلة لإضافته للمريض:
+                اختر مرضاً مزمن من القائمة المنسدلة:
               </label>
               <select
                 onChange={(e) => {
@@ -412,13 +583,13 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
                 {chronicSelected.map((item) => (
                   <span
                     key={item}
-                    className="px-3 py-1 rounded-xl bg-rose-100 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/40 text-rose-700 dark:text-rose-300 text-xs font-bold flex items-center gap-1.5"
+                    className="px-3 py-1.5 rounded-xl bg-rose-100 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/40 text-rose-700 dark:text-rose-300 text-xs font-bold flex items-center gap-2 shadow-2xs"
                   >
                     <span>{item}</span>
                     <button
                       type="button"
                       onClick={() => toggleChronic(item)}
-                      className="hover:text-red-900 dark:hover:text-white cursor-pointer font-bold"
+                      className="hover:text-red-900 dark:hover:text-white cursor-pointer font-bold text-xs"
                     >
                       ✕
                     </button>
@@ -426,10 +597,34 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
                 ))}
               </div>
             )}
+
+            {/* Box for Adding Custom Chronic Condition - Requirement 8 */}
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                type="text"
+                value={newChronicInput}
+                onChange={(e) => setNewChronicInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddNewChronic(e);
+                  }
+                }}
+                placeholder="إضافة مرض مزمن جديد غير موجود بالقائمة..."
+                className="flex-1 bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] placeholder:text-slate-400 text-xs px-3.5 py-2 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={(e) => handleAddNewChronic(e)}
+                className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition-all cursor-pointer shrink-0"
+              >
+                + إضافة مرض مزمن
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Right Column: Billing & Actions (4 Cols) */}
+        {/* Right Column: Billing & Actions (4 Cols) - Requirement 9 */}
         <div className="lg:col-span-4 flex flex-col gap-6">
           <div className="bg-white dark:bg-[#111A2E] p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-white/5 flex flex-col gap-4">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/5 pb-3">
@@ -439,38 +634,27 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
               </div>
             </div>
 
-            {/* Visit Type */}
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">نوع الزيارة / الخدمة</label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setVisitType('كشف جديد');
-                    setTariff(300);
-                  }}
-                  className={`py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                    visitType === 'كشف جديد'
-                      ? 'bg-[#00c2cb] text-slate-950 border-[#00c2cb]'
-                      : 'bg-slate-50 dark:bg-[#080e1b] text-slate-600 dark:text-[#859394] border-slate-200 dark:border-white/5'
-                  }`}
-                >
-                  كشف جديد (300)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setVisitType('استشارة / متابعة');
-                    setTariff(150);
-                  }}
-                  className={`py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                    visitType === 'استشارة / متابعة'
-                      ? 'bg-[#00c2cb] text-slate-950 border-[#00c2cb]'
-                      : 'bg-slate-50 dark:bg-[#080e1b] text-slate-600 dark:text-[#859394] border-slate-200 dark:border-white/5'
-                  }`}
-                >
-                  استشارة (150)
-                </button>
+            {/* Dynamic Visit Types List - Requirement 9 */}
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">نوع الزيارة / الكشف المتاح</label>
+              <div className="flex flex-col gap-2">
+                {visitTypesList.map((vt) => (
+                  <button
+                    key={vt.id || vt.name}
+                    type="button"
+                    onClick={() => setSelectedVisitType(vt)}
+                    className={`py-2.5 px-3.5 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-between ${
+                      selectedVisitType.name === vt.name
+                        ? 'bg-[#00c2cb] text-slate-950 border-[#00c2cb] shadow-xs'
+                        : 'bg-slate-50 dark:bg-[#080e1b] text-slate-700 dark:text-[#dde2f5] border-slate-200 dark:border-white/5 hover:bg-slate-100 dark:hover:bg-white/5'
+                    }`}
+                  >
+                    <span>{vt.name}</span>
+                    <span className="font-mono bg-black/10 dark:bg-white/10 px-2 py-0.5 rounded-md text-[11px]">
+                      {vt.fee} ج.م
+                    </span>
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -491,7 +675,7 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
             {/* Total Price Display */}
             <div className="bg-teal-50 dark:bg-[#18233C] p-4 rounded-xl border border-[#00c2cb]/30 flex items-center justify-between">
               <span className="text-xs font-bold text-slate-700 dark:text-[#dde2f5]">إجمالي المبلغ المستحق:</span>
-              <span className="text-2xl font-black text-[#008f97] dark:text-[#45dee7] font-mono">{tariff} ج.م</span>
+              <span className="text-2xl font-black text-[#008f97] dark:text-[#45dee7] font-mono">{selectedVisitType.fee} ج.م</span>
             </div>
 
             {/* Submit Action Button */}

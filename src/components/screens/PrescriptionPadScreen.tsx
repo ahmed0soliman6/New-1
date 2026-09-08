@@ -4,6 +4,13 @@ import { db } from '../../services/firebase';
 import { saveSettingsDocument } from '../../services/repositories';
 import { usePermissions } from '../../context/AuthContext';
 import { PermissionGate } from '../auth/PermissionGate';
+import { PatientListItem, PrescriptionItem } from '../../types';
+
+interface PrescriptionPadScreenProps {
+  patient?: PatientListItem | null;
+  items?: PrescriptionItem[];
+  onChangeItems?: (items: PrescriptionItem[]) => void;
+}
 
 export interface PrescriptionLayoutSettings {
   doctorName: string;
@@ -93,10 +100,16 @@ const QR_SIZE_PX: Record<string, number> = {
   large: 95, // ~25mm
 };
 
-export const PrescriptionPadScreen: React.FC = () => {
+export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
+  patient,
+  items = [],
+  onChangeItems,
+}) => {
   const { assertPermission } = usePermissions();
   const [config, setConfig] = useState<PrescriptionLayoutSettings>(DEFAULT_LAYOUT);
-  const [activeTab, setActiveTab] = useState<'layout' | 'header' | 'qr' | 'branches'>('layout');
+  const [activeTab, setActiveTab] = useState<'layout' | 'header' | 'qr' | 'branches' | 'printers'>('layout');
+  const [printerPaper, setPrinterPaper] = useState<string>(() => localStorage.getItem('soli_printer_paper') || '80mm');
+  const [autoPrintReceipt, setAutoPrintReceipt] = useState<boolean>(() => localStorage.getItem('soli_auto_print') !== 'false');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -300,6 +313,19 @@ export const PrescriptionPadScreen: React.FC = () => {
           >
             <span className="material-symbols-outlined text-base">apartment</span>
             <span>فروع العيادة بالتذييل</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('printers')}
+            className={`px-3.5 py-2 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'printers'
+                ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xs'
+                : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
+            }`}
+          >
+            <span className="material-symbols-outlined text-base">print</span>
+            <span>طابعات الإيصالات والروشتات</span>
           </button>
         </div>
       </div>
@@ -777,6 +803,57 @@ export const PrescriptionPadScreen: React.FC = () => {
               </div>
             </div>
           )}
+
+          {/* TAB 5: Printers */}
+          {activeTab === 'printers' && (
+            <div className="bg-white dark:bg-[#111A2E] p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm space-y-4 text-xs">
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2 border-b border-slate-100 dark:border-white/5 pb-2.5">
+                <span className="material-symbols-outlined text-teal-600 dark:text-[#00c2cb] text-lg">print</span>
+                <span>إعدادات طابعات الإيصالات والروشتات</span>
+              </h3>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="font-bold text-slate-700 dark:text-[#bbc9ca] block mb-1">
+                    مقاس ورق إيصالات الاستقبال الخزينة:
+                  </label>
+                  <select
+                    value={printerPaper}
+                    onChange={(e) => {
+                      setPrinterPaper(e.target.value);
+                      localStorage.setItem('soli_printer_paper', e.target.value);
+                    }}
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-[#18233C] border border-slate-200 dark:border-white/10 text-slate-800 dark:text-white font-medium focus:outline-none cursor-pointer"
+                  >
+                    <option value="80mm">طابعة حرارية 80mm (Thermal POS)</option>
+                    <option value="58mm">طابعة حرارية 58mm (Mini POS)</option>
+                    <option value="a4">طابعة عادية A4</option>
+                  </select>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#18233C] border border-slate-200 dark:border-white/5 flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="autoPrintRx"
+                    checked={autoPrintReceipt}
+                    onChange={(e) => {
+                      setAutoPrintReceipt(e.target.checked);
+                      localStorage.setItem('soli_auto_print', String(e.target.checked));
+                    }}
+                    className="w-4 h-4 rounded text-[#00c2cb] accent-[#00c2cb] cursor-pointer"
+                  />
+                  <label htmlFor="autoPrintRx" className="font-bold text-slate-800 dark:text-[#dde2f5] cursor-pointer">
+                    طباعة إيصال السداد تلقائياً عند تأكيد حضور المريض بالاستقبال
+                  </label>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-teal-50/50 dark:bg-[#00c2cb]/10 border border-teal-200/50 dark:border-[#00c2cb]/20 text-xs leading-relaxed text-teal-900 dark:text-teal-200">
+                  <span className="font-bold block mb-1">💡 ملحوظة طباعة الروشتة:</span>
+                  يتم طباعة الروشتة الطبية بقياس A5 (أو A4) تلقائياً مع مراعاة كافة الهوامش والشعار وإعدادات رأس وتذييل الصفحة المحددة في مصمم الروشتة.
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Live A5 Canvas Preview Panel (Right 7 Cols) */}
@@ -858,15 +935,15 @@ export const PrescriptionPadScreen: React.FC = () => {
               </div>
             ) : null}
 
-            {/* Patient Meta Strip (Preview Mock for layout inspection) */}
+            {/* Patient Meta Strip */}
             <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 my-2.5 text-[11px] flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <span className="font-bold text-slate-600">اسم المريض:</span>
-                <span className="font-bold text-slate-900">أحمد محمد الشناوي</span>
+                <span className="font-bold text-slate-900">{patient ? patient.name : 'أحمد محمد الشناوي'}</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="font-bold text-slate-600">السن:</span>
-                <span className="font-bold text-slate-900">38 سنة</span>
+                <span className="font-bold text-slate-900">{patient ? `${patient.age} سنة` : '38 سنة'}</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="font-bold text-slate-600">التاريخ:</span>
@@ -874,7 +951,7 @@ export const PrescriptionPadScreen: React.FC = () => {
               </div>
             </div>
 
-            {/* Prescription Body Mock */}
+            {/* Prescription Body */}
             <div
               className={`flex-1 space-y-2.5 py-1 ${
                 config.sectionSpacing === 'compact'
@@ -889,26 +966,53 @@ export const PrescriptionPadScreen: React.FC = () => {
                 <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">العلاج الموصوف</span>
               </div>
 
-              {/* Sample Items for Layout Preview */}
+              {/* Items List */}
               <div className="space-y-2">
-                <div className="p-2 rounded-lg bg-slate-50/80 border border-slate-100 flex items-start justify-between gap-2 text-xs">
-                  <div>
-                    <div className="font-bold text-slate-900">1. Nexium 40 mg Tab. (Esomeprazole)</div>
-                    <div className="text-[11px] text-teal-700 font-medium">قرص واحد قبل الإفطار بنصف ساعة • لمدة 30 يوماً</div>
-                  </div>
-                </div>
+                {items && items.length > 0 ? (
+                  items.map((item, idx) => (
+                    <div key={item.id || idx} className="p-2 rounded-lg bg-slate-50/80 border border-slate-100 flex items-start justify-between gap-2 text-xs">
+                      <div>
+                        <div className="font-bold text-slate-900">
+                          {idx + 1}. {item.drugName} {item.strength || ''} {item.dosageForm || ''} {item.scientificName ? `(${item.scientificName})` : ''}
+                        </div>
+                        <div className="text-[11px] text-teal-700 font-medium">
+                          {item.dosageInstructions || item.dosage || ''} {item.timing ? `• ${item.timing}` : ''} {item.duration ? `• لمدة ${item.duration}` : ''}
+                        </div>
+                        {item.notes && (
+                          <div className="text-[10px] text-slate-500 italic mt-0.5">توجيهات إضافية: {item.notes}</div>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <>
+                    <div className="p-2 rounded-lg bg-slate-50/80 border border-slate-100 flex items-start justify-between gap-2 text-xs">
+                      <div>
+                        <div className="font-bold text-slate-900">1. Nexium 40 mg Tab. (Esomeprazole)</div>
+                        <div className="text-[11px] text-teal-700 font-medium">قرص واحد قبل الإفطار بنصف ساعة • لمدة 30 يوماً</div>
+                      </div>
+                    </div>
 
-                <div className="p-2 rounded-lg bg-slate-50/80 border border-slate-100 flex items-start justify-between gap-2 text-xs">
-                  <div>
-                    <div className="font-bold text-slate-900">2. Concor 5 Plus Tab. (Bisoprolol / HCTZ)</div>
-                    <div className="text-[11px] text-teal-700 font-medium">قرص واحد صباحاً بعد الإفطار • مستمر</div>
-                  </div>
-                </div>
+                    <div className="p-2 rounded-lg bg-slate-50/80 border border-slate-100 flex items-start justify-between gap-2 text-xs">
+                      <div>
+                        <div className="font-bold text-slate-900">2. Concor 5 Plus Tab. (Bisoprolol / HCTZ)</div>
+                        <div className="text-[11px] text-teal-700 font-medium">قرص واحد صباحاً بعد الإفطار • مستمر</div>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
+
+              {/* Chronic conditions info banner in print preview if any */}
+              {patient && patient.chronicConditions && patient.chronicConditions.length > 0 && (
+                <div className="p-2 rounded-lg bg-rose-50/40 border border-rose-100 text-[10px] text-rose-950 leading-relaxed">
+                  <span className="font-bold">التشخيص المزمن:</span> {patient.chronicConditions.join('، ')}
+                </div>
+              )}
 
               {/* Sample Advice */}
               <div className="p-2 rounded-lg bg-teal-50/40 border border-teal-100 text-[10px] text-teal-900 leading-relaxed">
-                <span className="font-bold">تعليمات طبية:</span> تجنب الأطعمة الدسمة والمقليات، وممارسة رياضة المشي 30 دقيقة يومياً.
+                <span className="font-bold">تعليمات طبية:</span> تجنب الأطعمة الدسمة والمقليات، وممارسة رياضة المشي 30 دقيقة يومياً، والمتابعة الدورية.
               </div>
             </div>
 

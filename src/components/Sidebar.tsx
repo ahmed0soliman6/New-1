@@ -3,6 +3,8 @@ import { ScreenType } from '../types';
 import { CLINIC_INFO } from '../data/previewClinicData';
 import { usePermissions } from '../context/AuthContext';
 import { ROLE_LABELS } from '../permissions';
+import { SoliMedicalLogo } from './SoliMedicalLogo';
+import { usePWAInstall } from '../hooks/usePWAInstall';
 
 interface SidebarProps {
   activeScreen: ScreenType;
@@ -27,6 +29,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const { role, userProfile, canAccess } = usePermissions();
   const [doctorStatus, setDoctorStatus] = React.useState<'available' | 'break'>('available');
+  const { isInstallable, isInstalled, installApp } = usePWAInstall();
 
   const allNavItems: { id: ScreenType; label: string; icon: string; badge?: number | string }[] = [
     { id: 'dashboard', label: 'لوحة التحكم', icon: 'space_dashboard' },
@@ -65,40 +68,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       <aside
-        className={`fixed right-0 top-0 h-full w-72 bg-white dark:bg-[#111A2E] text-slate-800 dark:text-[#dde2f5] border-l border-slate-200 dark:border-white/5 z-50 flex flex-col shadow-2xl transition-transform duration-300 ease-in-out ${
+        className={`fixed right-0 top-0 h-full w-72 bg-[#111A2E] text-[#dde2f5] border-l border-white/10 z-50 flex flex-col shadow-2xl transition-transform duration-300 ease-in-out ${
           isOpenMobile ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'
         }`}
       >
         {/* Brand Header */}
-        <div className="h-16 px-4 flex items-center justify-between bg-slate-50 dark:bg-[#080e1b] border-b border-slate-200 dark:border-white/5">
-          <div className="flex items-center gap-2.5">
-            <img
-              alt="Soli Medical Clinic"
-              className="h-8 w-auto object-contain rounded"
-              src={CLINIC_INFO.logoUrl}
-            />
-            <div className="flex flex-col">
-              <span className="text-base text-teal-700 dark:text-[#45dee7] font-bold tracking-tight leading-tight">
-                سولي ميديكال
-              </span>
-              <span className="text-[11px] text-slate-500 dark:text-[#bbc9ca] leading-none">
-                Soli Medical Clinic
-              </span>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
+        <div className="h-16 px-3.5 flex items-center justify-between bg-[#080e1b] border-b border-white/10 shrink-0">
+          <SoliMedicalLogo size="md" showText={true} glow={true} />
+
+          <div className="flex items-center gap-1.5">
             {/* Theme Toggle Button placed in Header of Sidebar */}
             <button
               type="button"
               onClick={onToggleTheme}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white dark:bg-[#18233C] hover:bg-slate-100 dark:hover:bg-[#242a38] text-slate-700 dark:text-[#45dee7] border border-slate-300 dark:border-[#00c2cb]/30 transition-all cursor-pointer text-xs font-semibold shadow-xs active:scale-95"
+              className="flex items-center gap-1 px-2 py-1.5 rounded-xl bg-[#18233C] hover:bg-[#242a38] text-[#45dee7] border border-[#00c2cb]/30 transition-all cursor-pointer text-xs font-semibold shadow-xs active:scale-95"
               title={isDark ? 'تفعيل الوضع النهاري' : 'تفعيل الوضع الليلي'}
             >
-              <span className="material-symbols-outlined text-base text-amber-500 dark:text-[#00c2cb]">
+              <span className="material-symbols-outlined text-base text-amber-400">
                 {isDark ? 'light_mode' : 'dark_mode'}
-              </span>
-              <span className="text-[11px] font-bold">
-                {isDark ? 'نهاري' : 'ليلي'}
               </span>
             </button>
 
@@ -106,7 +93,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               type="button"
               onClick={onCloseMobile}
-              className="lg:hidden p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10"
+              className="lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10"
               aria-label="إغلاق القائمة"
             >
               <span className="material-symbols-outlined text-xl">close</span>
@@ -114,8 +101,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-        {/* Navigation List */}
-        <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
+        {/* Navigation List - Fixed consistent theme in both light & dark modes with enlarged fonts and breathable spacing */}
+        <nav className="flex-1 overflow-y-auto px-4 py-4 space-y-2 bg-[#111A2E]">
           {navItems.map((item) => {
             const isActive = activeScreen === item.id;
             return (
@@ -125,29 +112,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   onNavigate(item.id);
                   if (onCloseMobile) onCloseMobile();
                 }}
-                className={`w-full flex items-center justify-between px-3.5 py-2 rounded-xl text-right transition-all duration-200 cursor-pointer ${
+                className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl text-right transition-all duration-200 cursor-pointer ${
                   isActive
-                    ? 'bg-teal-50 dark:bg-[#18233C] text-[#008f97] dark:text-[#45dee7] font-bold shadow-xs relative before:absolute before:right-0 before:top-1/2 before:-translate-y-1/2 before:w-1.5 before:h-6 before:bg-[#00c2cb] before:rounded-l-full'
-                    : 'text-slate-600 dark:text-[#bbc9ca] hover:bg-slate-100 dark:hover:bg-[#161b29] hover:text-slate-900 dark:hover:text-[#dde2f5]'
+                    ? 'bg-[#18233C] text-[#45dee7] font-bold shadow-md relative before:absolute before:right-0 before:top-1/2 before:-translate-y-1/2 before:w-1.5 before:h-8 before:bg-[#00c2cb] before:rounded-l-full scale-[1.01]'
+                    : 'text-[#cbd5e1] hover:bg-[#161b29] hover:text-white font-medium'
                 }`}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-4">
                   <span
-                    className="material-symbols-outlined text-xl"
+                    className={`material-symbols-outlined text-[22px] ${isActive ? 'text-[#00c2cb]' : 'text-slate-400'}`}
                     style={isActive ? { fontVariationSettings: "'FILL' 1" } : {}}
                   >
                     {item.icon}
                   </span>
-                  <span className="text-sm font-medium">{item.label}</span>
+                  <span className="text-[15px] font-bold tracking-wide leading-relaxed">{item.label}</span>
                 </div>
                 {item.badge !== undefined && (
                   <span
-                    className={`text-xs px-2 py-0.5 rounded-full font-bold font-mono ${
+                    className={`text-xs px-2.5 py-0.5 rounded-full font-bold font-mono ${
                       isActive
                         ? 'bg-[#00c2cb] text-[#08101C]'
                         : typeof item.badge === 'string'
-                        ? 'bg-purple-100 dark:bg-[#571bc1]/40 text-purple-700 dark:text-[#d0bcff]'
-                        : 'bg-slate-200 dark:bg-[#18233C] text-slate-700 dark:text-[#45dee7]'
+                        ? 'bg-[#571bc1]/60 text-[#e9ddff]'
+                        : 'bg-[#18233C] text-[#45dee7] border border-[#00c2cb]/30'
                     }`}
                   >
                     {item.badge}
@@ -158,10 +145,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
         </nav>
 
-        {/* Doctor Availability, User Identity & Logout */}
-        <div className="p-3 bg-slate-50 dark:bg-[#080e1b] border-t border-slate-200 dark:border-white/5 space-y-2.5">
+        {/* Doctor Availability, PWA Install, User Identity & Logout */}
+        <div className="p-3 bg-[#080e1b] border-t border-white/10 space-y-2">
+          {/* PWA Install Quick Button */}
+          <button
+            type="button"
+            onClick={installApp}
+            className="w-full p-2 rounded-xl bg-[#18233C] hover:bg-[#00c2cb]/20 border border-[#00c2cb]/30 text-[#00c2cb] hover:text-[#45dee7] flex items-center justify-between text-xs font-bold transition-all cursor-pointer"
+          >
+            <div className="flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-base">mobile_friendly</span>
+              <span>{isInstalled ? 'التطبيق مثبّت بالجهاز ✓' : 'تثبيت تطبيق العيادة (PWA)'}</span>
+            </div>
+            <span className="material-symbols-outlined text-sm">download</span>
+          </button>
+
           {role !== 'secretary' && (
-            <div className="p-2 rounded-xl bg-white dark:bg-[#111A2E] flex items-center justify-between border border-slate-200 dark:border-white/5 shadow-xs">
+            <div className="p-2 rounded-xl bg-[#111A2E] flex items-center justify-between border border-white/10 shadow-xs">
               <div className="flex items-center gap-2">
                 <span
                   className={`w-2.5 h-2.5 rounded-full ring-2 ${
@@ -170,7 +170,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       : 'bg-amber-400 ring-amber-400/30'
                   }`}
                 ></span>
-                <span className="text-xs font-semibold text-slate-800 dark:text-[#dde2f5]">
+                <span className="text-xs font-semibold text-[#f1f5f9]">
                   {doctorStatus === 'available' ? 'متاح للكشف' : 'في استراحة'}
                 </span>
               </div>
@@ -178,7 +178,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onClick={() =>
                   setDoctorStatus((prev) => (prev === 'available' ? 'break' : 'available'))
                 }
-                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-[#18233C] dark:hover:bg-[#242a38] text-slate-600 dark:text-[#bbc9ca] hover:text-slate-900 dark:hover:text-[#dde2f5] rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                className="px-2.5 py-1 bg-[#18233C] hover:bg-[#242a38] text-[#cbd5e1] hover:text-white rounded-lg text-xs font-medium transition-colors cursor-pointer border border-white/5"
               >
                 {doctorStatus === 'available' ? 'استراحة' : 'تفعيل'}
               </button>
@@ -186,13 +186,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
 
           {/* User Identity (Clean, No Image) + Logout */}
-          <div className="p-2.5 rounded-xl bg-white dark:bg-[#111A2E] border border-slate-200 dark:border-white/5 shadow-xs flex items-center justify-between gap-2">
+          <div className="p-2.5 rounded-xl bg-[#111A2E] border border-white/10 shadow-xs flex items-center justify-between gap-2">
             <div className="min-w-0 text-right">
-              <div className="text-xs font-bold text-slate-900 dark:text-[#dde2f5] truncate">
+              <div className="text-xs font-bold text-[#f1f5f9] truncate">
                 {userProfile?.displayName || userProfile?.username || 'المستخدم'}
               </div>
               <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="text-[10px] text-slate-400 dark:text-[#859394] font-mono truncate" dir="ltr">
+                <span className="text-[10px] text-slate-400 font-mono truncate" dir="ltr">
                   @{userProfile?.username || 'user'}
                 </span>
                 <span
@@ -206,7 +206,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               type="button"
               onClick={onLogout}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-200 dark:border-red-400/30 bg-red-50 dark:bg-red-400/10 text-xs font-bold text-red-600 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-400/20 transition-colors cursor-pointer shrink-0"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-400/40 bg-red-500/15 text-xs font-bold text-red-300 hover:bg-red-500/25 transition-colors cursor-pointer shrink-0"
               title="تسجيل الخروج من الحساب"
             >
               <span className="material-symbols-outlined text-sm">logout</span>

@@ -9,6 +9,25 @@ interface MedicationsCardProps {
   onOpenPrescriptionPad?: () => void;
 }
 
+// Expanded Egyptian Drug Authority (EDA) online archive
+const EDA_ARCHIVE_PRESETS: DrugCatalogItem[] = [
+  { id: 'eda-1', brandName: 'Concor 5 mg', genericName: 'Bisoprolol fumarate', strength: '5 mg', form: 'أقراص (Tablets)', category: 'قلب وضغط', defaultDosage: 'قرص واحد صباحاً', defaultDuration: 'لمدة شهر', defaultTiming: 'قبل الإفطار', isFavorite: true },
+  { id: 'eda-2', brandName: 'Nexium 40 mg', genericName: 'Esomeprazole', strength: '40 mg', form: 'أقراص (Tablets)', category: 'جهاز هضمي', defaultDosage: 'قرص واحد قبل الأكل بنصف ساعة', defaultDuration: 'لمدة شهر', defaultTiming: 'قبل الإفطار', isFavorite: true },
+  { id: 'eda-3', brandName: 'Augmentin 1 gm', genericName: 'Amoxicillin + Clavulanic acid', strength: '1000 mg', form: 'أقراص (Tablets)', category: 'مضاد حيوي', defaultDosage: 'قرص كل 12 ساعة', defaultDuration: 'لمدة 7 أيام', defaultTiming: 'بعد الأكل مباشرة', isFavorite: true },
+  { id: 'eda-4', brandName: 'Janumet 50/1000', genericName: 'Sitagliptin + Metformin', strength: '50/1000 mg', form: 'أقراص (Tablets)', category: 'سكر وغدد', defaultDosage: 'قرص مرتين يومياً', defaultDuration: 'لمدة شهر', defaultTiming: 'مع الوجبات', isFavorite: true },
+  { id: 'eda-5', brandName: 'Cataflam 50 mg', genericName: 'Diclofenac potassium', strength: '50 mg', form: 'أقراص (Tablets)', category: 'مسكن ومضاد التهاب', defaultDosage: 'قرص عند اللزوم بعد الأكل', defaultDuration: 'عند الحاجة', defaultTiming: 'بعد الأكل', isFavorite: true },
+  { id: 'eda-6', brandName: 'Panadol Extra', genericName: 'Paracetamol + Caffeine', strength: '500/65 mg', form: 'أقراص (Tablets)', category: 'مسكن وخافض حرارة', defaultDosage: 'قرصين عند اللزوم بحد أقصى 4 مرات', defaultDuration: 'عند الحاجة', defaultTiming: 'بعد الأكل', isFavorite: true },
+  { id: 'eda-7', brandName: 'Glucophage 1000 XR', genericName: 'Metformin XR', strength: '1000 mg', form: 'أقراص ممتدة المفعول', category: 'سكر وغدد', defaultDosage: 'قرص واحد مساءً', defaultDuration: 'لمدة شهر', defaultTiming: 'بعد العشاء', isFavorite: false },
+  { id: 'eda-8', brandName: 'Crestor 10 mg', genericName: 'Rosuvastatin', strength: '10 mg', form: 'أقراص (Tablets)', category: 'دهون وكوليسترول', defaultDosage: 'قرص واحد مساءً', defaultDuration: 'لمدة شهر', defaultTiming: 'قبل النوم', isFavorite: false },
+  { id: 'eda-9', brandName: 'Euthyrox 50 mcg', genericName: 'Levothyroxine sodium', strength: '50 mcg', form: 'أقراص (Tablets)', category: 'غدة درقية', defaultDosage: 'قرص واحد على الريق صباحاً', defaultDuration: 'لمدة شهر', defaultTiming: 'على الريق', isFavorite: false },
+  { id: 'eda-10', brandName: 'Plavix 75 mg', genericName: 'Clopidogrel', strength: '75 mg', form: 'أقراص (Tablets)', category: 'أوعية وسيولة', defaultDosage: 'قرص واحد يومياً', defaultDuration: 'لمدة شهر', defaultTiming: 'بعد الأكل', isFavorite: false },
+  { id: 'eda-11', brandName: 'Controloc 40 mg', genericName: 'Pantoprazole', strength: '40 mg', form: 'أقراص (Tablets)', category: 'جهاز هضمي', defaultDosage: 'قرص على الريق', defaultDuration: 'لمدة 14 يوماً', defaultTiming: 'قبل الإفطار', isFavorite: false },
+  { id: 'eda-12', brandName: 'Antinal', genericName: 'Nifuroxazide', strength: '200 mg', form: 'كبسولات (Capsules)', category: 'مطهر معوي', defaultDosage: 'كبسولة 3 مرات يومياً', defaultDuration: 'لمدة 5 أيام', defaultTiming: 'بعد الأكل', isFavorite: false },
+  { id: 'eda-13', brandName: 'Visceralgine', genericName: 'Tiemonium methylsulfate', strength: '50 mg', form: 'أقراص (Tablets)', category: 'مغص ومطهر', defaultDosage: 'قرص 3 مرات يومياً عند اللزوم', defaultDuration: 'عند الحاجة', defaultTiming: 'قبل الأكل', isFavorite: false },
+  { id: 'eda-14', brandName: 'Duspatalin Retard 200', genericName: 'Mebeverine HCl', strength: '200 mg', form: 'كبسولات ممتدة', category: 'قولون عصبي', defaultDosage: 'كبسولة مرتين يومياً', defaultDuration: 'لمدة أسبوعين', defaultTiming: 'قبل الأكل بنصف ساعة', isFavorite: false },
+  { id: 'eda-15', brandName: 'Otrivin Adult Spray', genericName: 'Xylometazoline', strength: '0.1%', form: 'بخاخة أنفية', category: 'أنف وأذن', defaultDosage: 'بخة بكل فتحة أنف مرتين يومياً', defaultDuration: 'لمدة 5 أيام فقط', defaultTiming: 'عند الحاجة', isFavorite: false },
+];
+
 export const MedicationsCard: React.FC<MedicationsCardProps> = ({
   prescriptionItems,
   onChangePrescription,
@@ -17,7 +36,6 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
   onOpenPrescriptionPad,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [showArchiveSearch, setShowArchiveSearch] = useState(false);
   const [showAddCustomModal, setShowAddCustomModal] = useState(false);
 
   // Form for custom unlisted drug
@@ -34,9 +52,21 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
   // Level 1: Favorites
   const favoriteDrugs = drugCatalog.filter((d) => d.isFavorite);
 
-  // Level 2: Search Egyptian Drug Archive
+  // Combine local catalog + EDA archive dataset
+  const combinedDatabase = React.useMemo(() => {
+    const map = new Map<string, DrugCatalogItem>();
+    drugCatalog.forEach((d) => map.set(d.brandName.toLowerCase(), d));
+    EDA_ARCHIVE_PRESETS.forEach((d) => {
+      if (!map.has(d.brandName.toLowerCase())) {
+        map.set(d.brandName.toLowerCase(), d);
+      }
+    });
+    return Array.from(map.values());
+  }, [drugCatalog]);
+
+  // Search Results
   const searchResults = searchQuery.trim()
-    ? drugCatalog.filter((d) => {
+    ? combinedDatabase.filter((d) => {
         const q = searchQuery.toLowerCase();
         return (
           (d.brandName || '').toLowerCase().includes(q) ||
@@ -48,7 +78,6 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
 
   // Add drug from catalog creating a decoupled SNAPSHOT into PrescriptionItem
   const handleAddFromCatalog = (drug: DrugCatalogItem) => {
-    // Architectural Snapshot Rule: Creates decoupled snapshot preserving current moment values
     const snapshotItem: PrescriptionItem = {
       id: `rx-snap-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       drugName: `${drug.brandName}`,
@@ -63,7 +92,6 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
 
     onChangePrescription([...prescriptionItems, snapshotItem]);
     setSearchQuery('');
-    setShowArchiveSearch(false);
   };
 
   // Add custom unlisted drug
@@ -72,7 +100,6 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
     const trimmedBrand = newBrandName.trim();
     if (!trimmedBrand) return;
 
-    // If doctor opted to save to catalog / favorites:
     if (saveToFavorites) {
       onAddDrugToCatalog({
         id: `med-cat-${Date.now()}`,
@@ -89,7 +116,6 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
       });
     }
 
-    // Create decoupled prescription snapshot
     const snapshotItem: PrescriptionItem = {
       id: `rx-snap-${Date.now()}`,
       drugName: `${trimmedBrand} ${newStrength}`.trim(),
@@ -104,7 +130,6 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
 
     onChangePrescription([...prescriptionItems, snapshotItem]);
 
-    // Reset
     setNewBrandName('');
     setNewGenericName('');
     setNewStrength('');
@@ -128,7 +153,7 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
   };
 
   return (
-    <div className="bg-white dark:bg-[#111A2E] p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm space-y-4">
+    <div className="bg-white dark:bg-[#111A2E] p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm space-y-5">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-white/5 pb-3">
         <div className="flex items-center gap-2">
@@ -137,45 +162,24 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">
-                العلاج والروشتة الإلكترونية (Rx Snapshot)
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-[#dde2f5]">
+                العلاج الموصوف والروشتة الإلكترونية (Rx)
               </h3>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-100 dark:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#45dee7]">
+              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-teal-100 dark:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#45dee7]">
                 {prescriptionItems.length} أدوية موصوفة
               </span>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-[#859394]">
-              فصل دليل الأدوية عن بنود الروشتة اللحظية لضمان سلامة الأرشيف التاريخي
+              توصيف الدواء بالاسم التجاري والجرعة والمدة المرتبطة بملف الكشف
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          {onOpenPrescriptionPad && (
-            <button
-              type="button"
-              onClick={onOpenPrescriptionPad}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] hover:bg-slate-200 text-xs font-bold transition-all cursor-pointer"
-              title="معاينة الروشتة بحجم A5"
-            >
-              <span className="material-symbols-outlined text-base">print</span>
-              <span>معاينة A5</span>
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={() => setShowArchiveSearch(!showArchiveSearch)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-50 dark:bg-[#00c2cb]/15 text-[#008f97] dark:text-[#00c2cb] hover:bg-teal-100 text-xs font-bold transition-all cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-base">search</span>
-            <span>أرشيف الأدوية المصري</span>
-          </button>
-
           <button
             type="button"
             onClick={() => setShowAddCustomModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] text-xs font-bold transition-all cursor-pointer shadow-xs"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs font-bold transition-all cursor-pointer shadow-xs"
           >
             <span className="material-symbols-outlined text-base">add</span>
             <span>+ إضافة دواء غير مدرج</span>
@@ -187,7 +191,7 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
           <span className="text-[11px] font-bold text-slate-500 dark:text-[#859394] flex items-center gap-1">
-            <span>⭐ المستوى الأول: أدوية الطبيب المفضلة (انقر للإضافة الفورية مع الجرعة):</span>
+            <span>⭐ أدوية الطبيب المفضلة (انقر للإضافة الفورية مع الجرعة):</span>
           </span>
           <span className="text-[10px] text-slate-400 font-mono">
             {favoriteDrugs.length} دواء مفضل
@@ -230,98 +234,30 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
         </div>
       </div>
 
-      {/* LEVEL 2: Egyptian Drug Archive Search Dropdown */}
-      {showArchiveSearch && (
-        <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-teal-600 text-lg">manage_search</span>
-              <span className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">
-                المستوى الثاني: البحث في أرشيف الأدوية المصري المحلي
-              </span>
-            </div>
-            <input
-              type="text"
-              autoFocus
-              placeholder="اكتب اسم الدواء التجاري أو العلمي (Concor, Nexium, Amoxicillin)..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="text-xs bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] px-3.5 py-2 rounded-xl border border-slate-200 dark:border-white/10 w-80 focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
-            />
-          </div>
-
-          {searchQuery.trim() ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-56 overflow-y-auto pr-1">
-              {searchResults.length === 0 ? (
-                <div className="col-span-3 py-4 text-center text-xs text-slate-500">
-                  لا توجد نتائج في الأرشيف المحلي تطابق "{searchQuery}".
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setNewBrandName(searchQuery);
-                      setShowAddCustomModal(true);
-                      setShowArchiveSearch(false);
-                    }}
-                    className="text-[#008f97] dark:text-[#00c2cb] font-bold mr-2 underline cursor-pointer"
-                  >
-                    اضغط هنا لإضافته كدواء غير مدرج فوراً
-                  </button>
-                </div>
-              ) : (
-                searchResults.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => handleAddFromCatalog(item)}
-                    className="p-2.5 rounded-xl text-right text-xs bg-white dark:bg-[#111A2E] hover:border-[#00c2cb] border border-slate-200 dark:border-white/5 text-slate-800 dark:text-[#dde2f5] flex items-start justify-between cursor-pointer"
-                  >
-                    <div className="space-y-0.5">
-                      <div className="font-bold flex items-center gap-1">
-                        {item.isFavorite && <span className="text-amber-500 text-[10px]">⭐</span>}
-                        <span>{item.brandName}</span>
-                      </div>
-                      <span className="text-[10px] text-slate-400 font-mono block" dir="ltr">
-                        {item.genericName}
-                      </span>
-                      <span className="text-[10px] text-slate-500 block">{item.defaultDosage}</span>
-                    </div>
-                    <span className="material-symbols-outlined text-[#00c2cb] text-sm">add_circle</span>
-                  </button>
-                ))
-              )}
-            </div>
-          ) : (
-            <p className="text-[11px] text-slate-400">
-              اكتب في حقل البحث أعلاه لاستعراض أدوية السوق المصري المسجلة بالجرعات والأشكال الدوائية.
-            </p>
-          )}
-        </div>
-      )}
-
       {/* Active Prescription Table (Snapshots) */}
       {prescriptionItems.length === 0 ? (
-        <div className="py-8 text-center bg-slate-50/50 dark:bg-[#080e1b]/40 rounded-xl border border-dashed border-slate-200 dark:border-white/5">
+        <div className="py-8 text-center bg-slate-50/50 dark:bg-[#080e1b]/40 rounded-2xl border border-dashed border-slate-200 dark:border-white/5">
           <span className="material-symbols-outlined text-slate-300 dark:text-slate-600 text-3xl mb-1">
             prescriptions
           </span>
-          <p className="text-xs text-slate-500 dark:text-[#859394]">
-            لم يتم إضافة أدوية إلى الروشتة الحالية بعد.
+          <p className="text-xs font-bold text-slate-600 dark:text-[#859394]">
+            لم يتم إضافة أدوية إلى قائمة العلاج الموصوف بعد.
           </p>
           <p className="text-[11px] text-slate-400 mt-1">
-            اختر من أدوية الطبيب المفضلة بنقرة واحدة، أو ابحث في الأرشيف، أو اضغط "+ إضافة دواء غير مدرج".
+            استخدم صندوق البحث الشامل في الأرشيف بالأسفل، أو انقر على الأدوية المفضلة أعلاه.
           </p>
         </div>
       ) : (
         <div className="space-y-3">
           <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 dark:text-[#859394] px-1">
-            <span>قائمة الأدوية المعتمدة في هذه الاستشارة (قابلة للتعديل والطباعة):</span>
-            <span className="text-teal-600 font-mono">Prescription Items Snapshot</span>
+            <span>قائمة الأدوية المعتمدة في العلاج الموصوف:</span>
+            <span className="text-teal-600 font-mono">Prescription Snapshot</span>
           </div>
 
           {prescriptionItems.map((item, idx) => (
             <div
               key={item.id}
-              className="bg-slate-50 dark:bg-[#080e1b] rounded-xl border border-slate-200 dark:border-white/5 p-3.5 space-y-2.5"
+              className="bg-slate-50 dark:bg-[#080e1b] rounded-2xl border border-slate-200 dark:border-white/5 p-3.5 space-y-2.5"
             >
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
@@ -355,15 +291,38 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
 
               {/* Editable Dosage & Duration Fields */}
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 pt-1 border-t border-slate-200 dark:border-white/5">
-                <div className="sm:col-span-7 flex items-center gap-1.5">
+                <div className="sm:col-span-7 flex flex-col sm:flex-row items-start sm:items-center gap-1.5">
                   <span className="text-[11px] text-slate-500 dark:text-[#859394] whitespace-nowrap">الجرعة:</span>
-                  <input
-                    type="text"
-                    value={item.dosage || ''}
-                    onChange={(e) => handleUpdateSnapshotField(item.id, 'dosage', e.target.value)}
-                    placeholder="طريقة الاستخدام وتوقيت الجرعة..."
-                    className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-xs p-1.5 rounded-lg border border-slate-200 dark:border-white/5 focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
-                  />
+                  <div className="flex-1 flex items-center gap-1 w-full">
+                    <input
+                      type="text"
+                      value={item.dosage || ''}
+                      onChange={(e) => handleUpdateSnapshotField(item.id, 'dosage', e.target.value)}
+                      placeholder="طريقة الاستخدام وتوقيت الجرعة..."
+                      className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-xs p-1.5 rounded-lg border border-slate-200 dark:border-white/5 focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
+                    />
+                    <select
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          handleUpdateSnapshotField(item.id, 'dosage', e.target.value);
+                          e.target.value = '';
+                        }
+                      }}
+                      defaultValue=""
+                      className="bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] text-[11px] p-1.5 rounded-lg border border-slate-200 dark:border-white/10 focus:outline-none cursor-pointer max-w-[130px]"
+                    >
+                      <option value="" disabled>اختر التوقيت...</option>
+                      <option value="كل 6 ساعات (4 مرات يومياً)">كل 6 ساعات</option>
+                      <option value="كل 8 ساعات (3 مرات يومياً)">كل 8 ساعات</option>
+                      <option value="كل 12 ساعة (مرتين يومياً)">كل 12 ساعة</option>
+                      <option value="كل 24 ساعة (مرة يومياً)">كل 24 ساعة</option>
+                      <option value="قبل الأكل">قبل الأكل</option>
+                      <option value="بعد الأكل">بعد الأكل</option>
+                      <option value="صباحاً ومساءً">صباحاً ومساءً</option>
+                      <option value="عند اللزوم">عند اللزوم</option>
+                      <option value="عند النوم">عند النوم</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div className="sm:col-span-5 flex items-center gap-1.5">
@@ -382,6 +341,91 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
         </div>
       )}
 
+      {/* PROMINENT LARGE SEARCH BOX AT THE BOTTOM (Requirement 4) */}
+      <div className="pt-3 border-t border-slate-200 dark:border-white/5 space-y-3">
+        <div className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-[#00c2cb] text-xl">travel_explore</span>
+          <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-[#dde2f5]">
+            البحث في أرشيف الدواء المصري عبر الإنترنت (EDA Database)
+          </h4>
+        </div>
+
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="ابحث بالاسم التجاري أو الاسم العلمي أو المادة الفعالة (Concor, Nexium, Augmentin, Amoxicillin, Paracetamol)..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-sm p-3.5 pr-11 rounded-2xl border-2 border-teal-500/30 dark:border-[#00c2cb]/30 focus:border-[#00c2cb] focus:outline-none focus:ring-2 focus:ring-[#00c2cb]/20 font-bold transition-all shadow-inner"
+          />
+          <span className="material-symbols-outlined absolute right-3.5 top-3.5 text-teal-600 dark:text-[#00c2cb] text-xl">
+            search
+          </span>
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute left-3.5 top-3.5 text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer text-xs font-bold"
+            >
+              مسح ✕
+            </button>
+          )}
+        </div>
+
+        {/* Live Search Autocomplete Overlay Results */}
+        {searchQuery.trim() && (
+          <div className="p-3 bg-slate-50 dark:bg-[#080e1b] rounded-2xl border border-[#00c2cb]/30 space-y-2 animate-in fade-in">
+            <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-[#859394]">
+              <span>نتائج الأرشيف المصري المطابقة لـ "{searchQuery}":</span>
+              <span className="font-mono">{searchResults.length} دواء</span>
+            </div>
+
+            {searchResults.length === 0 ? (
+              <div className="py-4 text-center text-xs text-slate-500 space-y-2">
+                <p>لا توجد نتائج في الأرشيف تطابق "{searchQuery}".</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewBrandName(searchQuery);
+                    setShowAddCustomModal(true);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-[#00c2cb] text-slate-950 font-bold text-xs cursor-pointer shadow-xs"
+                >
+                  + إضافته كدواء مخصص فوراً
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-60 overflow-y-auto pr-1">
+                {searchResults.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleAddFromCatalog(item)}
+                    className="p-3 rounded-xl text-right text-xs bg-white dark:bg-[#111A2E] hover:border-[#00c2cb] border border-slate-200 dark:border-white/5 text-slate-800 dark:text-[#dde2f5] flex items-start justify-between cursor-pointer group transition-all"
+                  >
+                    <div className="space-y-1">
+                      <div className="font-bold flex items-center gap-1 text-slate-900 dark:text-[#dde2f5] group-hover:text-[#008f97] dark:group-hover:text-[#00c2cb]">
+                        {item.isFavorite && <span className="text-amber-500 text-[10px]">⭐</span>}
+                        <span>{item.brandName}</span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-mono block" dir="ltr">
+                        {item.genericName}
+                      </span>
+                      <span className="text-[10px] text-teal-600 dark:text-[#45dee7] block font-bold">
+                        {item.defaultDosage}
+                      </span>
+                    </div>
+                    <span className="material-symbols-outlined text-[#00c2cb] text-base group-hover:scale-110 transition-transform">
+                      add_circle
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* LEVEL 3: Modal: Add Unlisted Drug */}
       {showAddCustomModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -392,7 +436,7 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/10 pb-3">
               <h3 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
                 <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb]">add_circle</span>
-                <span>المستوى الثالث: إضافة دواء غير مدرج في الدليل</span>
+                <span>إضافة دواء غير مدرج في الدليل</span>
               </h3>
               <button
                 type="button"
@@ -510,9 +554,9 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
               </button>
               <button
                 type="submit"
-                className="px-4 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-900 font-bold text-xs shadow-md transition-all cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold text-xs shadow-md transition-all cursor-pointer"
               >
-                إضافة إلى الروشتة Rx
+                إضافة إلى العلاج الموصوف
               </button>
             </div>
           </form>

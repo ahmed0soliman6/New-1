@@ -17,13 +17,13 @@ interface VitalsCardProps {
 
 export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onSave }) => {
   const [vitals, setVitals] = useState<VitalsData>({
-    bp: initialVitals?.bp || '135/85',
-    pulse: initialVitals?.pulse || '78',
-    temp: initialVitals?.temp || '37.1',
-    rbs: initialVitals?.rbs || '142',
-    weight: initialVitals?.weight || '84.5',
-    height: initialVitals?.height || '175',
-    spo2: initialVitals?.spo2 || '98',
+    bp: initialVitals?.bp || '',
+    pulse: initialVitals?.pulse || '',
+    temp: initialVitals?.temp || '',
+    rbs: initialVitals?.rbs || '',
+    weight: initialVitals?.weight || '',
+    height: initialVitals?.height || '',
+    spo2: initialVitals?.spo2 || '',
   });
   const [savedFeedback, setSavedFeedback] = useState(false);
 

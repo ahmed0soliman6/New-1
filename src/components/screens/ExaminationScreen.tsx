@@ -10,14 +10,21 @@ import {
   PrescriptionItem,
   DiagnosisCatalogItem,
   SymptomCatalogItem,
+  QueueItem,
 } from '../../types';
 import { VitalsCard } from '../examination/VitalsCard';
-import { SymptomsAndExamCard } from '../examination/SymptomsAndExamCard';
 import { RadiologyCard } from '../examination/RadiologyCard';
 import { LabCard } from '../examination/LabCard';
 import { DiagnosisCard, PatientDiagnosis } from '../examination/DiagnosisCard';
 import { MedicationsCard } from '../examination/MedicationsCard';
 import { FollowupCard } from '../examination/FollowupCard';
+import { PreviousVisitCard } from '../examination/PreviousVisitCard';
+import {
+  Visit,
+  Prescription,
+  LabOrder,
+  RadiologyOrder,
+} from '../../types/database';
 import { usePermissions } from '../../context/AuthContext';
 import { PermissionGate } from '../auth/PermissionGate';
 import {
@@ -35,10 +42,18 @@ interface ChronicItem {
 interface ExaminationScreenProps {
   patient?: PatientListItem | null;
   availablePatients?: PatientListItem[];
-  onSelectPatient?: (patient: PatientListItem) => void;
+  onSelectPatient?: (patient: PatientListItem | null) => void;
+  queue?: QueueItem[];
   presetChronicConditions?: ChronicItem[];
   onNavigate: (screen: ScreenType) => void;
-  onFinishExam: () => void;
+  onFinishExam: (data: {
+    prescriptionItems: PrescriptionItem[];
+    labOrders: LabOrderItem[];
+    radiologyOrders: RadiologyOrderItem[];
+    diagnoses: PatientDiagnosis[];
+    followupDate: string;
+    lifestyleAdvice: string;
+  }) => void;
 
   // Catalogs and handlers
   radiologyCatalog: RadiologyCatalogItem[];
@@ -55,12 +70,20 @@ interface ExaminationScreenProps {
   // Prescription syncing
   activePrescription: PrescriptionItem[];
   onChangeActivePrescription: (items: PrescriptionItem[]) => void;
+
+  // Visit history and records
+  visits?: Visit[];
+  prescriptions?: Prescription[];
+  allLabOrders?: LabOrder[];
+  allRadiologyOrders?: RadiologyOrder[];
+  currentVisitId?: string;
 }
 
 export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
   patient = null,
   availablePatients = [],
-  onSelectPatient = (_patient: PatientListItem) => {},
+  onSelectPatient = (_patient: PatientListItem | null) => {},
+  queue = [],
   presetChronicConditions = [],
   onNavigate,
   onFinishExam,
@@ -76,6 +99,11 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
   onAddSymptomToCatalog,
   activePrescription,
   onChangeActivePrescription,
+  visits = [],
+  prescriptions = [],
+  allLabOrders = [],
+  allRadiologyOrders = [],
+  currentVisitId,
 }) => {
   // Navigation tabs / quick section jump
   const [activeTab, setActiveTab] = useState<'all' | 'vitals' | 'symptoms' | 'lab' | 'rad' | 'diag' | 'rx' | 'followup'>('all');
@@ -94,12 +122,290 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
   const [patientChronicConditions, setPatientChronicConditions] = useState<string[]>(patient?.chronicConditions || []);
   const [isAddingChronic, setIsAddingChronic] = useState(false);
   const [newChronicInput, setNewChronicInput] = useState('');
+  const [isEditingIntakeCard, setIsEditingIntakeCard] = useState(false);
+  const [doctorSymptomInput, setDoctorSymptomInput] = useState('');
+
+  // Editable Patient Details
+  const [editablePatientName, setEditablePatientName] = useState(patient?.name || '');
+  const [editablePatientPhone, setEditablePatientPhone] = useState(patient?.phone || '');
+  const [editablePatientAge, setEditablePatientAge] = useState(patient?.age ? String(patient.age) : '');
+  const [editablePatientGender, setEditablePatientGender] = useState<'male' | 'female' | ''>(patient?.gender || 'male');
+  const [editablePatientAddress, setEditablePatientAddress] = useState(patient?.address || '');
+  const [editablePatientBloodType, setEditablePatientBloodType] = useState(patient?.bloodType || 'غير محدد');
+  const [isEditingPatientInfo, setIsEditingPatientInfo] = useState(false);
+  const [customSymptomInput, setCustomSymptomInput] = useState('');
+  const [selectedPatientIdForOpen, setSelectedPatientIdForOpen] = useState<string>('');
+
+  const handleOpenExamForQueuePatient = (item: QueueItem) => {
+    const matched = availablePatients.find((p) => p.id === item.id || p.name === item.patientName);
+    if (matched) {
+      if (onSelectPatient) onSelectPatient(matched);
+    } else {
+      const fallback: PatientListItem = {
+        id: item.id,
+        name: item.patientName,
+        medicalCode: item.medicalCode || 'EG-NEW',
+        fileNumber: item.fileNumber || 1,
+        phone: item.phone || '',
+        age: item.age || 38,
+        gender: 'male',
+        governorate: 'القاهرة',
+        allergies: [],
+        chronicConditions: item.chronicConditions || [],
+        bloodGroup: item.bloodType || 'O+',
+        visitsCount: 1,
+        chiefComplaint: item.complaint || '',
+        intakeSymptoms: item.complaint ? [item.complaint] : [],
+        lastDiagnosis: '',
+      };
+      if (onSelectPatient) onSelectPatient(fallback);
+    }
+  };
 
   // Keep in sync if patient prop changes
   useEffect(() => {
     setComplaint(patient?.chiefComplaint || '');
     setPatientChronicConditions(patient?.chronicConditions || []);
-  }, [patient?.id, patient?.chiefComplaint, patient?.chronicConditions]);
+    setEditablePatientName(patient?.name || '');
+    setEditablePatientPhone(patient?.phone || '');
+    setEditablePatientAge(patient?.age ? String(patient.age) : '');
+    setEditablePatientGender(patient?.gender || 'male');
+    setEditablePatientAddress(patient?.address || '');
+    setEditablePatientBloodType(patient?.bloodType || 'غير محدد');
+  }, [patient?.id, patient?.chiefComplaint, patient?.chronicConditions, patient?.name, patient?.phone, patient?.age, patient?.gender, patient?.address, patient?.bloodType]);
+
+  // Derive previous visit details for the current patient
+  const {
+    hasPreviousVisit,
+    previousVisit,
+    previousPrescription,
+    previousLabOrders,
+    previousRadiologyOrders,
+    totalVisitsCount,
+  } = React.useMemo(() => {
+    if (!patient) {
+      return {
+        hasPreviousVisit: false,
+        previousVisit: null,
+        previousPrescription: null,
+        previousLabOrders: [] as LabOrder[],
+        previousRadiologyOrders: [] as RadiologyOrder[],
+        totalVisitsCount: 0,
+      };
+    }
+
+    const patientVisits = (visits || []).filter((v) => v.patientId === patient.id);
+
+    // Past visits: COMPLETED visits, or visits with different ID than currentVisitId and not in-progress/waiting
+    const pastVisits = patientVisits
+      .filter((v) => {
+        if (currentVisitId && v.visitId === currentVisitId) return false;
+        return (
+          v.status === 'COMPLETED' ||
+          v.visitId.includes('prev') ||
+          (v.status !== 'IN_PROGRESS' && v.status !== 'WAITING')
+        );
+      })
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    // Find the latest past visit that ACTUALLY has a registered prescription
+    let latestVisitWithRx: Visit | null = null;
+    let registeredRx: Prescription | null = null;
+
+    for (const v of pastVisits) {
+      const rx = (prescriptions || []).find((p) => p.visitId === v.visitId);
+      if (rx && rx.items && rx.items.length > 0) {
+        latestVisitWithRx = v;
+        registeredRx = rx;
+        break;
+      }
+    }
+
+    // Special check for mock pat-1 previous visit if present in canonical records
+    if (!latestVisitWithRx && patient.id === 'pat-1') {
+      const rx = (prescriptions || []).find((p) => p.visitId === 'vis-prev-101');
+      if (rx && rx.items && rx.items.length > 0) {
+        const mockPrev = (visits || []).find((v) => v.visitId === 'vis-prev-101');
+        if (mockPrev) {
+          latestVisitWithRx = mockPrev;
+          registeredRx = rx;
+        }
+      }
+    }
+
+    // STRICT RULE: Only show the previous visit card if there is a previous visit AND a registered prescription
+    if (!latestVisitWithRx || !registeredRx) {
+      return {
+        hasPreviousVisit: false,
+        previousVisit: null,
+        previousPrescription: null,
+        previousLabOrders: [] as LabOrder[],
+        previousRadiologyOrders: [] as RadiologyOrder[],
+        totalVisitsCount: pastVisits.length,
+      };
+    }
+
+    const labs = (allLabOrders || []).filter((l) => l.visitId === latestVisitWithRx!.visitId);
+    const rads = (allRadiologyOrders || []).filter((r) => r.visitId === latestVisitWithRx!.visitId);
+
+    const totalCount = Math.max(1, pastVisits.length > 0 ? pastVisits.length : patient.visitsCount || 1);
+
+    return {
+      hasPreviousVisit: true,
+      previousVisit: latestVisitWithRx,
+      previousPrescription: registeredRx,
+      previousLabOrders: labs,
+      previousRadiologyOrders: rads,
+      totalVisitsCount: totalCount,
+    };
+  }, [patient, visits, prescriptions, allLabOrders, allRadiologyOrders, currentVisitId]);
+
+  // Recurring Prescription Templates State
+  const [recurringTemplates, setRecurringTemplates] = useState<Array<{
+    id: string;
+    title: string;
+    diagnoses: PatientDiagnosis[];
+    prescription: PrescriptionItem[];
+    lifestyleAdvice: string;
+  }>>(() => {
+    try {
+      const saved = localStorage.getItem('soli_recurring_rx_templates');
+      return saved ? JSON.parse(saved) : [
+        {
+          id: 'tmpl-1',
+          title: 'روشتة النزلة المعوية الحادة',
+          diagnoses: [
+            {
+              id: 'diag-1',
+              code: 'A09',
+              nameAr: 'التهاب المعدة والأمعاء الحاد (Acute Gastroenteritis)',
+              nameEn: 'Acute Gastroenteritis',
+              isPrimary: true,
+            },
+          ],
+          prescription: [
+            {
+              id: 'rx-1',
+              drugName: 'Antinal 220mg',
+              dosageForm: 'كبسولات',
+              dosage: 'كل 8 ساعات (3 مرات يومياً)',
+              duration: 'لمدة 5 أيام',
+              timing: 'بعد الأكل',
+            },
+            {
+              id: 'rx-2',
+              drugName: 'Visceralgine 50mg',
+              dosageForm: 'أقراص',
+              dosage: 'كل 8 ساعات (3 مرات يومياً)',
+              duration: 'عند اللزوم',
+              timing: 'قبل الأكل',
+            },
+          ],
+          lifestyleAdvice: 'الامتناع التام عن الأطعمة الدسمة، الحارة، المقليات، والمشروبات الغازية.\n• شرب ما لا يقل عن 2.5 إلى 3 لترات ماء يومياً.',
+        },
+        {
+          id: 'tmpl-2',
+          title: 'روشتة ارتفاع ضغط الدم والسكري',
+          diagnoses: [
+            {
+              id: 'diag-2',
+              code: 'I10',
+              nameAr: 'ارتفاع ضغط الدم الأولي (Essential Hypertension)',
+              nameEn: 'Essential Hypertension',
+              isPrimary: true,
+            },
+          ],
+          prescription: [
+            {
+              id: 'rx-3',
+              drugName: 'Concor 5mg',
+              dosageForm: 'أقراص',
+              dosage: 'كل 24 ساعة (مرة يومياً)',
+              duration: 'مستمر',
+              timing: 'صباحاً',
+            },
+            {
+              id: 'rx-4',
+              drugName: 'Cidophage 500mg',
+              dosageForm: 'أقراص',
+              dosage: 'كل 12 ساعة (مرتين يومياً)',
+              duration: 'مستمر',
+              timing: 'وسط الأكل',
+            },
+          ],
+          lifestyleAdvice: 'تقليل استهلاك ملح الطعام والمخللات إلى أقل من 2 جرام صوديوم يومياً.\n• الامتناع عن السكريات والحلويات الصريحة.',
+        },
+      ];
+    } catch {
+      return [];
+    }
+  });
+
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Sync templates list if updated elsewhere (e.g. settings screen template deletion)
+  useEffect(() => {
+    const handleSyncTemplates = () => {
+      try {
+        const saved = localStorage.getItem('soli_recurring_rx_templates');
+        if (saved) {
+          setRecurringTemplates(JSON.parse(saved));
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    window.addEventListener('soli_templates_updated', handleSyncTemplates);
+    return () => {
+      window.removeEventListener('soli_templates_updated', handleSyncTemplates);
+    };
+  }, []);
+
+  const handleApplyRecurringTemplate = (templateId: string) => {
+    const tmpl = recurringTemplates.find((t) => t.id === templateId);
+    if (!tmpl) return;
+    if (tmpl.diagnoses && tmpl.diagnoses.length > 0) {
+      setPatientDiagnoses(tmpl.diagnoses);
+    }
+    if (tmpl.prescription && tmpl.prescription.length > 0) {
+      onChangeActivePrescription(tmpl.prescription);
+    }
+    if (tmpl.lifestyleAdvice) {
+      setLifestyleAdvice(tmpl.lifestyleAdvice);
+    }
+    setSelectedTemplateId(templateId);
+  };
+
+  const handleSaveCurrentAsRecurringTemplate = () => {
+    if (patientDiagnoses.length === 0 && activePrescription.length === 0) {
+      alert('يرجى إضافة تشخيص أو أدوية على الأقل قبل حفظ القائمة المتكررة.');
+      return;
+    }
+    const title = prompt('أدخل اسم القائمة المتكررة للروشتة (مثال: روشتة قولون عصبي، روشتة ضغط وسكر...):');
+    if (!title || !title.trim()) return;
+
+    const newTemplate = {
+      id: `tmpl-${Date.now()}`,
+      title: title.trim(),
+      diagnoses: [...patientDiagnoses],
+      prescription: [...activePrescription],
+      lifestyleAdvice: lifestyleAdvice || '',
+    };
+
+    const updated = [newTemplate, ...recurringTemplates];
+    setRecurringTemplates(updated);
+    try {
+      localStorage.setItem('soli_recurring_rx_templates', JSON.stringify(updated));
+      // Dispatch custom event to notify SettingsScreen and other components
+      window.dispatchEvent(new Event('soli_templates_updated'));
+    } catch (e) {
+      console.error(e);
+    }
+    setSelectedTemplateId(newTemplate.id);
+    setToastMessage(`تم حفظ القائمة المتكررة "${title.trim()}" بنجاح! يمكنك استدعاؤها في أي كشف قادم.`);
+    setTimeout(() => setToastMessage(null), 4500);
+  };
 
   // Dynamic Radiology Orders - starts empty
   const [radiologyOrders, setRadiologyOrders] = useState<RadiologyOrderItem[]>([]);
@@ -218,6 +524,82 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
     setTimeout(() => setCopiedWhatsAppText(false), 3000);
   };
 
+  const handleSavePatientInfo = async () => {
+    if (!patient) return;
+    try {
+      const birthYear = new Date().getFullYear() - (parseInt(editablePatientAge, 10) || 30);
+      const dob = `${birthYear}-01-01`;
+      
+      const updatedData = {
+        fullName: editablePatientName.trim(),
+        phone: editablePatientPhone.trim(),
+        dateOfBirth: dob,
+        gender: editablePatientGender === 'female' ? 'female' : 'male',
+        address: editablePatientAddress.trim(),
+        bloodType: editablePatientBloodType,
+        updatedAt: new Date().toISOString(),
+      };
+
+      // 1. Update Firestore
+      const { db } = await import('../../services/firebase');
+      const { doc, updateDoc } = await import('firebase/firestore');
+      if (db) {
+        const patientRef = doc(db, 'patients', patient.id);
+        await updateDoc(patientRef, updatedData);
+        console.log('Patient basic details successfully updated in Firestore!');
+      }
+
+      // 2. Propagate to App state
+      onSelectPatient({
+        ...patient,
+        name: editablePatientName.trim(),
+        phone: editablePatientPhone.trim(),
+        age: parseInt(editablePatientAge, 10) || 30,
+        gender: editablePatientGender === 'female' ? 'female' : 'male',
+        address: editablePatientAddress.trim(),
+        bloodType: editablePatientBloodType,
+        bloodGroup: editablePatientBloodType,
+      });
+
+      setIsEditingPatientInfo(false);
+    } catch (err) {
+      console.error('Error updating patient basic details:', err);
+      alert('حدث خطأ أثناء حفظ التعديلات.');
+    }
+  };
+
+  const handleSaveIntakeAndChronic = async () => {
+    if (!patient) return;
+    try {
+      const updatedData = {
+        chiefComplaint: complaint.trim(),
+        chronicDiseases: patientChronicConditions,
+        updatedAt: new Date().toISOString(),
+      };
+
+      // 1. Update Firestore
+      const { db } = await import('../../services/firebase');
+      const { doc, updateDoc } = await import('firebase/firestore');
+      if (db) {
+        const patientRef = doc(db, 'patients', patient.id);
+        await updateDoc(patientRef, updatedData);
+        console.log('Patient chief complaint and chronic conditions updated in Firestore!');
+      }
+
+      // 2. Propagate to App state
+      onSelectPatient({
+        ...patient,
+        chiefComplaint: complaint.trim(),
+        chronicConditions: patientChronicConditions,
+      });
+
+      setIsEditingIntakeCard(false);
+    } catch (err) {
+      console.error('Error updating patient intake/chronic:', err);
+      alert('حدث خطأ أثناء حفظ التعديلات.');
+    }
+  };
+
   const { assertPermission, canAccess, role, userProfile } = usePermissions();
   const isAllowed = canAccess('clinical-exam');
   const [isExamFinished, setIsExamFinished] = useState(false);
@@ -230,7 +612,14 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
     try {
       assertPermission('clinical.complete', 'إنهاء الكشف وحفظ الزيارة');
       setIsExamFinished(true);
-      onFinishExam();
+      onFinishExam({
+        prescriptionItems: activePrescription,
+        labOrders,
+        radiologyOrders,
+        diagnoses: patientDiagnoses,
+        followupDate,
+        lifestyleAdvice,
+      });
       setShowSuccessModal(true);
       setTimeout(() => {
         setShowSuccessModal(false);
@@ -268,36 +657,326 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
     );
   }
 
+  // 1. If no patient exam is opened yet, display the dedicated waiting / browse view
+  if (!patient) {
+    return (
+      <div className="flex flex-col w-full max-w-full overflow-x-hidden pb-28 space-y-6 text-slate-800 dark:text-[#dde2f5]">
+        {/* Top Header */}
+        <div className="bg-white dark:bg-[#111A2E] p-6 sm:p-8 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-teal-50 dark:bg-[#00c2cb]/15 text-[#008f97] dark:text-[#00c2cb] flex items-center justify-center shrink-0 shadow-xs">
+              <span className="material-symbols-outlined text-3xl">stethoscope</span>
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
+                  غرفة الكشف الطبي
+                </h1>
+                <span className="px-3 py-1 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 text-xs font-bold">
+                  بانتظار فتح الكشف
+                </span>
+              </div>
+              <p className="text-xs sm:text-sm text-slate-500 dark:text-[#859394] mt-1.5 leading-relaxed">
+                لا تظهر بيانات المريض أو تفاصيل الزيارات السابقة إلا عند الضغط على «فتح الكشف». اختر مريضاً لبدء الجلسة.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 shrink-0 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={() => onNavigate('new-visit')}
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-teal-50 dark:bg-teal-950/40 hover:bg-teal-100 text-[#008f97] dark:text-[#45dee7] text-xs sm:text-sm font-bold border border-teal-200 dark:border-teal-800/40 cursor-pointer transition-all"
+            >
+              <span className="material-symbols-outlined text-lg">person_add</span>
+              <span>+ تسجيل مريض جديد</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate('waiting-queue')}
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs sm:text-sm font-bold shadow-md cursor-pointer transition-all"
+            >
+              <span className="material-symbols-outlined text-lg">groups</span>
+              <span>قائمة الانتظار ({queue?.length || 0})</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Patients in Waiting Queue (Ready for Exam) */}
+        {queue && queue.length > 0 && (
+          <div className="bg-white dark:bg-[#111A2E] p-5 sm:p-6 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb] text-xl">timer</span>
+                <h2 className="text-base font-bold text-slate-900 dark:text-[#dde2f5]">
+                  مرضى في صالة الانتظار (جاهزون للكشف)
+                </h2>
+                <span className="px-2.5 py-0.5 rounded-full bg-teal-100 dark:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#45dee7] text-xs font-bold font-mono">
+                  {queue.length}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {queue.map((item) => (
+                <div
+                  key={item.id}
+                  className="p-4 rounded-xl border border-slate-200 dark:border-white/10 hover:border-[#00c2cb] dark:hover:border-[#00c2cb] bg-slate-50/60 dark:bg-white/5 transition-all flex flex-col justify-between gap-3 group"
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-teal-50 dark:bg-[#00c2cb]/15 text-[#008f97] dark:text-[#45dee7]">
+                        تذكرة #{item.ticketNumber}
+                      </span>
+                      <span className="text-[11px] text-slate-400 dark:text-slate-500 font-mono">
+                        {item.arrivalTime}
+                      </span>
+                    </div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white mt-2">
+                      {item.patientName}
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-[#859394] line-clamp-1 mt-1">
+                      {item.complaint || 'كشف عيادة'}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleOpenExamForQueuePatient(item)}
+                    className="w-full py-2.5 px-3 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold text-xs shadow-sm flex items-center justify-center gap-1.5 cursor-pointer transition-all active:scale-95"
+                  >
+                    <span className="material-symbols-outlined text-base">stethoscope</span>
+                    <span>فتح الكشف</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Select registered patient to open exam */}
+        <div className="bg-white dark:bg-[#111A2E] p-5 sm:p-6 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs space-y-4">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb] text-xl">person_search</span>
+            <h2 className="text-base font-bold text-slate-900 dark:text-[#dde2f5]">
+              اختيار مريض من السجلات الطبية لفتح الكشف
+            </h2>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center gap-3">
+            <select
+              value={selectedPatientIdForOpen}
+              onChange={(e) => setSelectedPatientIdForOpen(e.target.value)}
+              className="w-full sm:flex-1 bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs sm:text-sm px-4 py-3 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-[#00c2cb] cursor-pointer"
+            >
+              <option value="">-- اختر مريضاً لفتح كشفه الطبي --</option>
+              {availablePatients.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.phone ? `${p.phone} • ` : ''}ملف #{p.fileNumber || p.medicalCode})
+                </option>
+              ))}
+            </select>
+
+            <button
+              type="button"
+              disabled={!selectedPatientIdForOpen}
+              onClick={() => {
+                const matched = availablePatients.find((p) => p.id === selectedPatientIdForOpen);
+                if (matched && onSelectPatient) {
+                  onSelectPatient(matched);
+                }
+              }}
+              className="w-full sm:w-auto px-6 py-3 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 font-bold text-xs sm:text-sm shadow-md cursor-pointer transition-all flex items-center justify-center gap-2 shrink-0"
+            >
+              <span className="material-symbols-outlined text-lg">stethoscope</span>
+              <span>فتح الكشف</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Privacy Note */}
+        <div className="p-4 rounded-2xl bg-teal-500/10 border border-teal-500/20 text-teal-800 dark:text-teal-300 text-xs flex items-center gap-3">
+          <span className="material-symbols-outlined text-lg shrink-0">info</span>
+          <span>
+            تنبيه خصوصية: لا يتم عرض بيانات المريض أو بطاقة الزيارة السابقة إلا بعد الضغط على «فتح الكشف» رسمياً.
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Patient Exam is Open: Render Patient Details + Standalone Previous Visit Card + Clinical Examination
   return (
     <div className="flex flex-col w-full max-w-full overflow-x-hidden pb-28 space-y-6 text-slate-800 dark:text-[#dde2f5]">
-      {/* Top Banner: Active Consultation Session & Patient Meta */}
+      {/* 1. Basic Patient Details Card (Completely separate from previous visit) */}
       <div className="bg-white dark:bg-[#111A2E] p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs space-y-4">
-        {patient ? (
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            {/* Patient Details */}
-            <div className="flex items-start gap-3.5 min-w-0">
+        <div className="flex flex-col gap-4">
+          {/* Patient Details Header */}
+          <div className="flex items-start justify-between gap-3 min-w-0">
+            <div className="flex items-start gap-3.5 min-w-0 flex-1">
               <div className="w-12 h-12 rounded-2xl bg-teal-50 dark:bg-[#00c2cb]/15 text-[#008f97] dark:text-[#00c2cb] flex items-center justify-center font-bold text-lg shadow-xs shrink-0">
-                {(patient.name || 'م').charAt(0)}
+                {(editablePatientName || patient.name || 'م').charAt(0)}
               </div>
 
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-[#dde2f5] truncate">
-                    {patient.name}
-                  </h1>
-                  <span className="px-2 py-0.5 rounded-full bg-teal-100 dark:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#45dee7] text-[11px] font-bold">
-                    ملف رقم: #{patient.fileNumber || 1}
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-[#bbc9ca] text-[11px] font-mono">
-                    {patient.medicalCode}
-                  </span>
-                  <span className="text-xs text-slate-500 dark:text-[#859394]">
-                    {patient.age} سنة • {patient.gender === 'female' ? 'أنثى' : 'ذكر'}
-                  </span>
-                </div>
+              <div className="min-w-0 flex-1">
+                {!isEditingPatientInfo ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-[#dde2f5] truncate">
+                      {editablePatientName}
+                    </h1>
+                    <span className="px-2 py-0.5 rounded-full bg-teal-100 dark:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#45dee7] text-[11px] font-bold">
+                      ملف رقم: #{patient.fileNumber || 1}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-[#bbc9ca] text-[11px] font-mono">
+                      {patient.medicalCode}
+                    </span>
+                    <span className="text-xs text-slate-500 dark:text-[#859394]">
+                      {editablePatientAge} سنة • {patient.gender === 'female' ? 'أنثى' : 'ذكر'} • فصيلة الدم: <strong className="text-[#008f97] dark:text-[#00c2cb] font-mono font-bold">{patient.bloodType || 'غير محدد'}</strong> • العنوان: <strong className="text-slate-700 dark:text-[#dde2f5]">{patient.address || 'غير محدد'}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingPatientInfo(true)}
+                      className="text-[11px] text-[#008f97] dark:text-[#00c2cb] hover:underline font-bold px-1"
+                      title="تعديل اسم أو سن أو هاتف المريض"
+                    >
+                      [تعديل البيانات الأساسية]
+                    </button>
+                  </div>
+                ) : (
+                  <div className="bg-white dark:bg-[#111A2E] p-4 sm:p-6 rounded-2xl shadow-md border-2 border-[#00c2cb] flex flex-col gap-4 w-full text-right mt-2 animate-in fade-in">
+                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/5 pb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb] text-xl">badge</span>
+                        <span className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">1. البيانات الشخصية والتعريفية</span>
+                      </div>
+                      <span className="text-xs bg-teal-50 dark:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#45dee7] font-bold px-3 py-1 rounded-full border border-[#00c2cb]/30">
+                        تعديل بيانات مريض مسجل
+                      </span>
+                    </div>
 
-                {/* Badges: Allergies & Chronic Diseases with Interactive Addition */}
-                <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Full Name */}
+                      <div className="flex flex-col gap-1.5 sm:col-span-2">
+                        <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">
+                          اسم المريض <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={editablePatientName}
+                          onChange={(e) => setEditablePatientName(e.target.value)}
+                          placeholder="أدخل اسم المريض..."
+                          className="bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] placeholder:text-slate-400 dark:placeholder:text-[#859394] text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
+                        />
+                      </div>
+
+                      {/* Phone */}
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">رقم الهاتف / الواتساب</label>
+                        <input
+                          type="tel"
+                          value={editablePatientPhone}
+                          onChange={(e) => setEditablePatientPhone(e.target.value)}
+                          placeholder="01xxxxxxxxx"
+                          className="bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] placeholder:text-slate-400 dark:placeholder:text-[#859394] text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 font-mono focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
+                        />
+                      </div>
+
+                      {/* Age */}
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">السن (بالسنوات)</label>
+                        <input
+                          type="number"
+                          value={editablePatientAge}
+                          onChange={(e) => setEditablePatientAge(e.target.value)}
+                          placeholder="أدخل السن..."
+                          className="bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] placeholder:text-slate-400 text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 font-mono focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
+                        />
+                      </div>
+
+                      {/* Gender */}
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">النوع / الجنس</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setEditablePatientGender('male')}
+                            className={`py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                              editablePatientGender === 'male'
+                                ? 'bg-teal-50 dark:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#45dee7] border-[#00c2cb] ring-1 ring-[#00c2cb]'
+                                : 'bg-slate-50 dark:bg-[#080e1b] text-slate-600 dark:text-[#859394] border-slate-200 dark:border-white/5'
+                            }`}
+                          >
+                            ذكر
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditablePatientGender('female')}
+                            className={`py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                              editablePatientGender === 'female'
+                                ? 'bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-[#d0bcff] border-purple-500 ring-1 ring-purple-500'
+                                : 'bg-slate-50 dark:bg-[#080e1b] text-slate-600 dark:text-[#859394] border-slate-200 dark:border-white/5'
+                            }`}
+                          >
+                            أنثى
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Address */}
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">العنوان / محل الإقامة</label>
+                        <input
+                          type="text"
+                          value={editablePatientAddress}
+                          onChange={(e) => setEditablePatientAddress(e.target.value)}
+                          placeholder="أدخل العنوان بالتفصيل..."
+                          className="bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] placeholder:text-slate-400 dark:placeholder:text-[#859394] text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
+                        />
+                      </div>
+
+                      {/* Blood Type */}
+                      <div className="flex flex-col gap-1.5 sm:col-span-2">
+                        <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">فصيلة الدم</label>
+                        <select
+                          value={editablePatientBloodType}
+                          onChange={(e) => setEditablePatientBloodType(e.target.value)}
+                          className="bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-[#00c2cb] cursor-pointer"
+                        >
+                          <option value="غير محدد">غير محدد</option>
+                          <option value="O+">O+</option>
+                          <option value="O-">O-</option>
+                          <option value="A+">A+</option>
+                          <option value="A-">A-</option>
+                          <option value="B+">B+</option>
+                          <option value="B-">B-</option>
+                          <option value="AB+">AB+</option>
+                          <option value="AB-">AB-</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 mt-2 justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingPatientInfo(false)}
+                        className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#080e1b] dark:hover:bg-[#111A2E] text-slate-700 dark:text-[#dde2f5] font-bold text-xs cursor-pointer border border-slate-200 dark:border-white/5"
+                      >
+                        إلغاء
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSavePatientInfo}
+                        className="px-5 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold text-xs cursor-pointer shadow-md"
+                      >
+                        حفظ التعديلات ✓
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Badges: Allergies & Chronic Diseases */}
+                <div className="flex flex-wrap items-center gap-2 mt-1.5">
                   {patient.allergies && patient.allergies.length > 0 && (
                     <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/40 text-rose-700 dark:text-rose-400 text-[11px] font-bold">
                       <span className="material-symbols-outlined text-sm">warning</span>
@@ -305,169 +984,55 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                     </div>
                   )}
 
-                  {patientChronicConditions.map((condition) => (
-                    <div
-                      key={condition}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900/40 text-purple-700 dark:text-[#d0bcff] text-[11px] font-medium"
-                    >
-                      <span className="material-symbols-outlined text-sm">monitor_heart</span>
-                      <span>{condition}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleToggleChronicCondition(condition)}
-                        className="text-purple-400 hover:text-purple-600 ml-0.5 text-xs font-bold"
-                        title="إزالة هذا المرض المزمن من الكشف"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-
-                  {/* Add chronic button */}
-                  {!isAddingChronic ? (
-                    <button
-                      type="button"
-                      onClick={() => setIsAddingChronic(true)}
-                      className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-purple-100/60 dark:bg-purple-900/30 text-purple-700 dark:text-[#d0bcff] text-[11px] font-bold hover:bg-purple-200/70 cursor-pointer"
-                    >
-                      <span className="material-symbols-outlined text-xs">add</span>
-                      <span>+ مرض مزمن</span>
-                    </button>
-                  ) : (
-                    <form onSubmit={handleAddCustomChronic} className="flex items-center gap-1">
-                      <input
-                        type="text"
-                        value={newChronicInput}
-                        onChange={(e) => setNewChronicInput(e.target.value)}
-                        placeholder="اسم المرض المزمن..."
-                        className="px-2 py-0.5 text-[11px] rounded-lg border border-purple-300 dark:border-purple-800 bg-white dark:bg-[#080e1b] focus:outline-none"
-                        autoFocus
-                      />
-                      <button
-                        type="submit"
-                        className="px-2 py-0.5 rounded-lg bg-purple-600 text-white text-[11px] font-bold cursor-pointer"
-                      >
-                        إضافة
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setIsAddingChronic(false)}
-                        className="px-1.5 py-0.5 rounded-lg bg-slate-200 text-slate-600 text-[11px] cursor-pointer"
-                      >
-                        إلغاء
-                      </button>
-                    </form>
-                  )}
-
-                  {patient.phone && (
-                    <div className="text-[11px] text-slate-500 dark:text-[#859394] flex items-center gap-1">
+                  {editablePatientPhone && (
+                    <div className="text-[11px] text-slate-500 dark:text-[#859394] flex items-center gap-1 bg-slate-100 dark:bg-white/5 px-2.5 py-1 rounded-lg">
                       <span className="material-symbols-outlined text-xs text-teal-600">call</span>
-                      <span className="font-mono">{patient.phone}</span>
+                      <span className="font-mono">{editablePatientPhone}</span>
                     </div>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex flex-wrap items-center gap-2 self-stretch sm:self-end lg:self-center">
+            {/* Close / Select Another Patient Button */}
+            <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
-                onClick={() => setShowWhatsAppModal(true)}
-                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-xs font-bold transition-all cursor-pointer border border-emerald-200 dark:border-emerald-800/40"
-                title="إرسال الروشتة وملخص الكشف للمريض عبر واتساب"
+                onClick={() => {
+                  if (onSelectPatient) {
+                    onSelectPatient(null as any);
+                  }
+                }}
+                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
+                title="إغلاق هذا الكشف والعودة لاختيار مريض"
               >
-                <span className="material-symbols-outlined text-base">chat</span>
-                <span>واتساب</span>
+                <span className="material-symbols-outlined text-sm">close</span>
+                <span>إغلاق الكشف / مريض آخر</span>
               </button>
-
-              <button
-                type="button"
-                onClick={() => setShowPrintModal(true)}
-                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] hover:bg-slate-200 dark:hover:bg-[#242a38] text-xs font-bold transition-all cursor-pointer border border-slate-200 dark:border-white/5"
-              >
-                <span className="material-symbols-outlined text-base text-[#008f97] dark:text-[#00c2cb]">print</span>
-                <span>طباعة الروشتة</span>
-              </button>
-
-              <PermissionGate permission="clinical.complete">
-                <button
-                  type="button"
-                  onClick={handleFinish}
-                  className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs font-bold shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95"
-                >
-                  <span className="material-symbols-outlined text-base">task_alt</span>
-                  <span>إنهاء الكشف وحفظ الزيارة</span>
-                </button>
-              </PermissionGate>
             </div>
           </div>
-        ) : (
-          /* Empty Patient State (Doctor opened exam screen without prior patient selection) */
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-2">
-            <div className="flex items-center gap-3.5 min-w-0">
-              <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 flex items-center justify-center shrink-0">
-                <span className="material-symbols-outlined text-2xl">stethoscope</span>
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-[#dde2f5]">
-                    جلسة كشف طبي جديدة
-                  </h1>
-                  <span className="px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 text-xs font-bold border border-amber-500/20">
-                    كشف حر فارغ (بدون بيانات مسبقة)
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
-                  يمكنك تحرير التشخيص والروشتة والأعراض والفحوصات مباشرة، أو ربط الكشف بمريض مسجل:
-                </p>
-              </div>
-            </div>
+        </div>
+      </div>
 
-            <div className="flex items-center gap-2.5 flex-wrap">
-              {availablePatients.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <label className="text-xs font-bold text-slate-700 dark:text-[#dde2f5] whitespace-nowrap">
-                    اختيار مريض:
-                  </label>
-                  <select
-                    onChange={(e) => {
-                      const selected = availablePatients.find((p) => p.id === e.target.value);
-                      if (selected) onSelectPatient(selected);
-                    }}
-                    defaultValue=""
-                    className="bg-slate-50 dark:bg-[#080e1b] text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 text-slate-800 dark:text-[#dde2f5] focus:outline-none cursor-pointer"
-                  >
-                    <option value="" disabled>-- اختر مريضاً من القائمة --</option>
-                    {availablePatients.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} (#{p.fileNumber || p.medicalCode})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+      {/* 2. Standalone Previous Visit Card (Separated from patient details, ONLY rendered if previous visit exists AND has prescription) */}
+      {hasPreviousVisit && previousVisit && previousPrescription && (
+        <div className="w-full">
+          <PreviousVisitCard
+            patient={patient}
+            visit={previousVisit}
+            totalVisitsCount={totalVisitsCount}
+            prescription={previousPrescription}
+            labOrders={previousLabOrders}
+            radiologyOrders={previousRadiologyOrders}
+            onCopyMedications={(meds) => {
+              onChangeActivePrescription([...activePrescription, ...meds]);
+            }}
+          />
+        </div>
+      )}
 
-              <button
-                type="button"
-                onClick={() => onNavigate('new-visit')}
-                className="px-3.5 py-2 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-700 dark:bg-teal-950/40 dark:text-[#45dee7] text-xs font-bold border border-teal-200 dark:border-teal-800/40 cursor-pointer"
-              >
-                + تسجيل زيارة مريض جديد
-              </button>
-
-              <PermissionGate permission="clinical.complete">
-                <button
-                  type="button"
-                  onClick={handleFinish}
-                  className="px-5 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs font-bold shadow-md cursor-pointer"
-                >
-                  حفظ الكشف
-                </button>
-              </PermissionGate>
-            </div>
-          </div>
-        )}
+      {/* 3. Responsive Section Jump Tabs & Examination Cards */}
+      <div className="bg-white dark:bg-[#111A2E] p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs space-y-4">
 
         {/* Responsive Section Jump Tabs (Dynamically respects displaySettings) */}
         <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-white/5 overflow-x-auto pb-1 text-xs no-scrollbar">
@@ -508,7 +1073,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                 : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
             }`}
           >
-            الأعراض والفحص
+            الشكوى والأمراض المزمنة
           </button>
 
           {/* Labs Tab */}
@@ -596,22 +1161,337 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
 
       {/* DYNAMIC EXAMINATION CARDS (Modular Responsive Architecture) */}
       <div className="space-y-6">
+        {/* 8. Patient Intake, Complaints & Chronic Conditions Card (Moved to top as requested) */}
+        {patient && (
+          <div className="bg-white dark:bg-[#111A2E] p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200/60 dark:border-white/5 pb-2.5">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb] text-lg">medical_information</span>
+                <span className="text-xs font-bold text-slate-900 dark:text-[#dde2f5]">
+                  الشكوى والأعراض والأمراض المزمنة (Intake & Chronic Conditions)
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditingIntakeCard(!isEditingIntakeCard)}
+                className="flex items-center gap-1 px-3 py-1 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs font-bold transition-all cursor-pointer shadow-xs"
+              >
+                <span className="material-symbols-outlined text-sm">edit</span>
+                <span>{isEditingIntakeCard ? 'إغلاق التعديل' : 'تعديل الشكوى والأمراض'}</span>
+              </button>
+            </div>
+
+            {/* View Mode */}
+            {!isEditingIntakeCard ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                {/* Symptoms & Complaint */}
+                <div className="space-y-1.5">
+                  <span className="font-bold text-slate-700 dark:text-[#859394] block text-[11px]">
+                    الشكوى والأعراض المقدمة:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {complaint ? (
+                      complaint.split('•').map((item, idx) => (
+                        <span
+                          key={idx}
+                          className="px-2.5 py-1 rounded-lg bg-teal-100/70 dark:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#45dee7] font-bold text-[11px] border border-[#00c2cb]/30"
+                        >
+                          {item.trim()}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-slate-400 italic text-[11px]">لا توجد أعراض مسجلة</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Chronic Diseases */}
+                <div className="space-y-1.5">
+                  <span className="font-bold text-slate-700 dark:text-[#859394] block text-[11px]">
+                    الأمراض المزمنة للمريض:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {patientChronicConditions.length > 0 ? (
+                      patientChronicConditions.map((cond) => (
+                        <span
+                          key={cond}
+                          className="px-2.5 py-1 rounded-lg bg-rose-100/70 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 font-bold text-[11px] border border-rose-300 dark:border-rose-900/40"
+                        >
+                          {cond}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-slate-400 italic text-[11px]">لا توجد أمراض مزمنة مسجلة</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Edit Mode: Doctor can edit/add using both preset catalogs and custom inputs */
+              <div className="flex flex-col gap-6 w-full text-right mt-2 animate-in fade-in">
+                {/* Card 2: Symptoms & Complaints */}
+                <div className="bg-white dark:bg-[#111A2E] p-4 sm:p-6 rounded-2xl border-2 border-[#00c2cb] flex flex-col gap-4 shadow-sm">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-100 dark:border-white/5 pb-3 gap-1">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb] text-xl">pulse_alert</span>
+                      <span className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">2. الأعراض والشكوى الرئيسية للمريض</span>
+                    </div>
+                    <span className="text-xs text-slate-500 dark:text-[#859394]">تظهر شارات منفصلة للطبيب</span>
+                  </div>
+
+                  {/* Dropdown for Preconfigured Symptoms */}
+                  <div className="flex flex-col gap-1.5 bg-teal-50/60 dark:bg-[#18233C]/60 p-3 rounded-xl border border-[#00c2cb]/20">
+                    <label className="text-xs font-bold text-[#008f97] dark:text-[#45dee7]">
+                      اختر عرضاً من قائمة الشكاوى المعدة مسبقاً لإضافته كشارة منفصلة:
+                    </label>
+                    <select
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (!val) return;
+                        const current = complaint.split('•').map(s => s.trim()).filter(Boolean);
+                        if (!current.includes(val)) {
+                          const newComplaint = [...current, val].join(' • ');
+                          setComplaint(newComplaint);
+                        }
+                        e.target.value = '';
+                      }}
+                      className="w-full bg-white dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs px-3 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-[#00c2cb] cursor-pointer"
+                    >
+                      <option value="">-- اضغط لاختيار عرض/شكوى من القائمة --</option>
+                      {(symptomsCatalog || []).filter((s) => Boolean(s && s.name)).map((s) => (
+                        <option key={s.id || s.name} value={s.name}>
+                          {s.name} ({s.category || 'عرض'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Selected Symptoms Pills */}
+                  {complaint.split('•').map((s) => s.trim()).filter(Boolean).length > 0 && (
+                    <div className="flex flex-wrap gap-2 p-2 bg-slate-50 dark:bg-[#080e1b] rounded-xl border border-slate-200 dark:border-white/5">
+                      {complaint.split('•').map((s) => s.trim()).filter(Boolean).map((sym, idx) => (
+                        <span
+                          key={idx}
+                          className="px-3 py-1.5 rounded-xl bg-teal-100 dark:bg-[#00c2cb]/20 border border-[#00c2cb]/30 text-[#008f97] dark:text-[#45dee7] text-xs font-bold flex items-center gap-2 shadow-2xs"
+                        >
+                          <span>{sym}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const filtered = complaint
+                                .split('•')
+                                .map((s) => s.trim())
+                                .filter((s, i) => i !== idx && Boolean(s));
+                              setComplaint(filtered.join(' • '));
+                            }}
+                            className="hover:text-red-600 dark:hover:text-rose-400 font-extrabold cursor-pointer text-xs"
+                            title="إزالة هذا العرض"
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Custom Symptom or Detailed Text */}
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={doctorSymptomInput}
+                      onChange={(e) => setDoctorSymptomInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const val = doctorSymptomInput.trim();
+                          if (val) {
+                            const current = complaint.split('•').map(s => s.trim()).filter(Boolean);
+                            if (!current.includes(val)) {
+                              setComplaint([...current, val].join(' • '));
+                            }
+                            setDoctorSymptomInput('');
+                          }
+                        }
+                      }}
+                      placeholder="أدخل عرض آخر غير موجود بالقائمة..."
+                      className="flex-1 bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] placeholder:text-slate-400 text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const val = doctorSymptomInput.trim();
+                        if (val) {
+                          const current = complaint.split('•').map(s => s.trim()).filter(Boolean);
+                          if (!current.includes(val)) {
+                            setComplaint([...current, val].join(' • '));
+                          }
+                          setDoctorSymptomInput('');
+                        }
+                      }}
+                      className="px-3.5 py-2.5 rounded-xl bg-[#00c2cb] text-slate-950 font-bold text-xs hover:bg-[#45dee7] transition-all cursor-pointer shrink-0"
+                    >
+                      + إضافة عرض
+                    </button>
+                  </div>
+                </div>
+
+                {/* Card 3: Chronic Diseases */}
+                <div className="bg-white dark:bg-[#111A2E] p-4 sm:p-6 rounded-2xl border-2 border-rose-500 flex flex-col gap-4 shadow-sm">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-100 dark:border-white/5 pb-3 gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-rose-500 text-xl">medical_services</span>
+                      <span className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">3. الأمراض المزمنة للمريض</span>
+                    </div>
+                  </div>
+
+                  {/* Dropdown Selector for Chronic Diseases */}
+                  <div className="flex flex-col gap-1.5 bg-rose-50/60 dark:bg-[#18233C]/60 p-3 rounded-xl border border-rose-500/20">
+                    <label className="text-xs font-bold text-rose-700 dark:text-rose-300">
+                      اختر مرضاً مزمن من القائمة المنسدلة:
+                    </label>
+                    <select
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (!val) return;
+                        if (!patientChronicConditions.includes(val)) {
+                          setPatientChronicConditions([...patientChronicConditions, val]);
+                        }
+                        e.target.value = '';
+                      }}
+                      className="w-full bg-white dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs px-3 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-[#00c2cb] cursor-pointer"
+                    >
+                      <option value="">-- اضغط لاختيار مرض مزمن من قائمة الإعدادات --</option>
+                      {(presetChronicConditions || []).filter((c) => Boolean(c && c.name)).map((c) => (
+                        <option key={c.id || c.name} value={c.name}>
+                          {c.name} ({c.category || 'مرض'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Selected Chronic Chips */}
+                  {patientChronicConditions.length > 0 && (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {patientChronicConditions.map((item) => (
+                        <span
+                          key={item}
+                          className="px-3 py-1.5 rounded-xl bg-rose-100 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/40 text-rose-700 dark:text-rose-300 text-xs font-bold flex items-center gap-2 shadow-2xs"
+                        >
+                          <span>{item}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPatientChronicConditions(patientChronicConditions.filter(c => c !== item));
+                            }}
+                            className="hover:text-red-900 dark:hover:text-white cursor-pointer font-bold text-xs"
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Box for Adding Custom Chronic Condition */}
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="text"
+                      value={newChronicInput}
+                      onChange={(e) => setNewChronicInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const val = newChronicInput.trim();
+                          if (val) {
+                            if (!patientChronicConditions.includes(val)) {
+                              setPatientChronicConditions([...patientChronicConditions, val]);
+                            }
+                            setNewChronicInput('');
+                          }
+                        }
+                      }}
+                      placeholder="إضافة مرض مزمن جديد غير موجود بالقائمة..."
+                      className="flex-1 bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] placeholder:text-slate-400 text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const val = newChronicInput.trim();
+                        if (val) {
+                          if (!patientChronicConditions.includes(val)) {
+                            setPatientChronicConditions([...patientChronicConditions, val]);
+                          }
+                          setNewChronicInput('');
+                        }
+                      }}
+                      className="px-3.5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition-all cursor-pointer shrink-0"
+                    >
+                      + إضافة مرض مزمن
+                    </button>
+                  </div>
+                </div>
+
+                {/* Submit Actions */}
+                <div className="flex items-center gap-3 mt-2 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setComplaint(patient?.chiefComplaint || '');
+                      setPatientChronicConditions(patient?.chronicConditions || []);
+                      setIsEditingIntakeCard(false);
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#080e1b] dark:hover:bg-[#111A2E] text-slate-700 dark:text-[#dde2f5] font-bold text-xs cursor-pointer border border-slate-200 dark:border-white/5"
+                  >
+                    إلغاء
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveIntakeAndChronic}
+                    className="px-5 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold text-xs cursor-pointer shadow-md"
+                  >
+                    حفظ التعديلات للشكوى والأمراض ✓
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* 1. Vital Signs Card (Conditional on displaySettings.showVitals) */}
         {displaySettings.showVitals && (activeTab === 'all' || activeTab === 'vitals') && (
           <VitalsCard />
         )}
 
-        {/* 2. Symptoms & Physical Exam Card */}
-        {(activeTab === 'all' || activeTab === 'symptoms') && (
-          <SymptomsAndExamCard
-            symptomsCatalog={symptomsCatalog}
-            onAddSymptomToCatalog={onAddSymptomToCatalog}
-            complaint={complaint}
-            onChangeComplaint={setComplaint}
-            physicalExam={physicalExam}
-            onChangePhysicalExam={setPhysicalExam}
-            initialSelectedSymptoms={patient?.intakeSymptoms || (patient?.chiefComplaint ? [patient.chiefComplaint] : [])}
-          />
+        {/* Quick Prescription Template Selector - Placed below Vital Signs */}
+        {patient && (activeTab === 'all' || activeTab === 'vitals' || activeTab === 'rx') && (
+          <div className="bg-gradient-to-r from-teal-50 to-cyan-50 dark:from-[#00c2cb]/10 dark:to-[#00c2cb]/5 p-4 rounded-2xl border border-teal-200 dark:border-[#00c2cb]/20 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-2.5">
+              <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb] text-xl shrink-0">bookmark</span>
+              <div>
+                <span className="text-xs font-bold text-slate-900 dark:text-[#dde2f5] block">
+                  استدعاء سريع من قوالب الروشتة الجاهزة (Quick Template Import):
+                </span>
+                <p className="text-[11px] text-slate-500 dark:text-[#859394]">
+                  اختر قالباً جاهزاً لتعبئة الأدوية والتشخيص والإرشادات بضغطة زر واحدة
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <select
+                value={selectedTemplateId}
+                onChange={(e) => handleApplyRecurringTemplate(e.target.value)}
+                className="w-full sm:w-64 bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/10 font-bold focus:outline-none focus:ring-1 focus:ring-[#00c2cb] cursor-pointer"
+              >
+                <option value="">-- اختر قالب روشتة متكررة لاستدعائه --</option>
+                {recurringTemplates.map((tmpl) => (
+                  <option key={tmpl.id} value={tmpl.id}>
+                    📋 {tmpl.title} ({tmpl.prescription?.length || 0} أدوية)
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
         )}
 
         {/* 3. Laboratory Investigations Card (Conditional on displaySettings.showLabs) */}
@@ -664,6 +1544,33 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
             onChangeLifestyleAdvice={setLifestyleAdvice}
           />
         )}
+
+        {/* Save current Rx as Template Bar (حفظ الروشتة الحالية كقالب متكرر) */}
+        <div className="bg-gradient-to-r from-teal-50 to-cyan-50 dark:from-[#00c2cb]/10 dark:to-[#00c2cb]/5 p-4 rounded-2xl border border-teal-200 dark:border-[#00c2cb]/20 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb] text-xl shrink-0">bookmark_add</span>
+            <div>
+              <span className="text-xs font-bold text-slate-900 dark:text-[#dde2f5] block">
+                حفظ كروشتة متكررة (Save as Recurring Template):
+              </span>
+              <p className="text-[11px] text-slate-500 dark:text-[#859394]">
+                حفظ الأدوية والتشخيص الحالي كقالب جاهز للاستدعاء السريع لاحقاً
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end">
+            <button
+              type="button"
+              onClick={handleSaveCurrentAsRecurringTemplate}
+              className="px-4 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs shrink-0"
+              title="حفظ التشخيص والأدوية والإرشادات الحالية كقائمة متكررة"
+            >
+              <span className="material-symbols-outlined text-base">save</span>
+              <span>حفظ كقائمة متكررة</span>
+            </button>
+          </div>
+        </div>
 
         {/* 8. Completed Examination Summary & Action Card (At the Bottom) */}
         {isExamFinished && (
@@ -752,7 +1659,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowPrintModal(true)}
+                  onClick={() => window.print()}
                   className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 text-white text-xs font-bold transition-all cursor-pointer shadow-xs"
                 >
                   <span className="material-symbols-outlined text-base">print</span>
@@ -805,7 +1712,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
             {/* Print Button on bottom bar */}
             <button
               type="button"
-              onClick={() => setShowPrintModal(true)}
+              onClick={() => window.print()}
               className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 text-white text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
               title="طباعة الروشتة المعتمدة"
             >
@@ -949,6 +1856,13 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 left-6 sm:right-auto sm:left-6 z-50 bg-emerald-600 dark:bg-emerald-500 text-white px-5 py-4 rounded-2xl shadow-xl flex items-center gap-3 animate-in fade-in slide-in-from-bottom-5 duration-300 max-w-md border border-emerald-500/20">
+          <span className="material-symbols-outlined text-xl shrink-0">check_circle</span>
+          <p className="text-xs font-bold leading-relaxed">{toastMessage}</p>
         </div>
       )}
     </div>

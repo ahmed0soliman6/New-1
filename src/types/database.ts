@@ -99,6 +99,7 @@ export interface Patient {
   fileNumber?: number | string;
   medicalCode?: string;
   governorate?: string;
+  address?: string;
   avatarUrl?: string;
   emergencyContact?: {
     name: string;

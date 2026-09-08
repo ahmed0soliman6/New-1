@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { CLINIC_INFO } from '../../data/previewClinicData';
 import {
   RadiologyCatalogItem,
   LabCatalogItem,
@@ -23,6 +22,12 @@ interface ChronicItem {
   name: string;
   category: string;
   color: string;
+}
+
+interface VisitTypeItem {
+  id: string;
+  name: string;
+  fee: number;
 }
 
 interface SettingsScreenProps {
@@ -53,6 +58,11 @@ interface SettingsScreenProps {
   symptomsCatalog?: SymptomCatalogItem[];
   onAddSymptom?: (item: SymptomCatalogItem) => void;
   onRemoveSymptom?: (id: string) => void;
+
+  visitTypesList?: VisitTypeItem[];
+  onAddVisitType?: (item: VisitTypeItem) => void;
+  onRemoveVisitType?: (id: string) => void;
+  onUpdateVisitTypeFee?: (id: string, fee: number) => void;
 }
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
@@ -78,27 +88,105 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   symptomsCatalog = [],
   onAddSymptom = () => {},
   onRemoveSymptom = () => {},
+  visitTypesList = [
+    { id: 'vt-1', name: 'كشف جديد', fee: 300 },
+    { id: 'vt-2', name: 'استشارة / متابعة', fee: 150 },
+    { id: 'vt-3', name: 'كشف طوارئ', fee: 400 },
+  ],
+  onAddVisitType = (_item: VisitTypeItem) => {},
+  onRemoveVisitType = (_id: string) => {},
+  onUpdateVisitTypeFee = (_id: string, _fee: number) => {},
 }) => {
   const { hasPermission, assertPermission } = usePermissions();
-  const [activeSettingsSection, setActiveSettingsSection] = useState<'catalogs' | 'alerts' | 'general' | 'users'>('catalogs');
-  const [clinicName, setClinicName] = useState(CLINIC_INFO.name);
+  const [activeSettingsSection, setActiveSettingsSection] = useState<
+    'general' | 'catalogs' | 'users'
+  >('general');
 
-  // If user cannot view users but tab was somehow selected, fallback to catalogs
+  // Accordion Collapsible Open States
+  const [openCards, setOpenCards] = useState<Record<string, boolean>>({
+    pricing: true,
+    alerts: false,
+    display: false,
+    templates: false,
+    version: false,
+  });
+
+  const toggleCard = (key: string) => {
+    setOpenCards((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const [savedTemplates, setSavedTemplates] = useState<Array<{
+    id: string;
+    title: string;
+    diagnoses: any[];
+    prescription: any[];
+    lifestyleAdvice?: string;
+  }>>([]);
+
+  useEffect(() => {
+    const loadTemplates = () => {
+      try {
+        const stored = localStorage.getItem('soli_recurring_rx_templates');
+        if (stored) {
+          setSavedTemplates(JSON.parse(stored));
+        } else {
+          setSavedTemplates([]);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    loadTemplates();
+    window.addEventListener('soli_templates_updated', loadTemplates);
+    return () => {
+      window.removeEventListener('soli_templates_updated', loadTemplates);
+    };
+  }, []);
+
+  const handleDeleteTemplate = (id: string) => {
+    const updated = savedTemplates.filter((t) => t.id !== id);
+    setSavedTemplates(updated);
+    try {
+      localStorage.setItem('soli_recurring_rx_templates', JSON.stringify(updated));
+      window.dispatchEvent(new Event('soli_templates_updated'));
+    } catch (e) {
+      console.error(e);
+    }
+    setSavedToast('تم حذف القائمة المتكررة بنجاح ✓');
+    setTimeout(() => setSavedToast(null), 3000);
+  };
+
+  // If user cannot view users but tab was selected, fallback to catalogs
   useEffect(() => {
     if (activeSettingsSection === 'users' && !hasPermission('users.view')) {
       setActiveSettingsSection('catalogs');
     }
   }, [activeSettingsSection, hasPermission]);
 
-  const [phone, setPhone] = useState(CLINIC_INFO.branches[0]?.mobile || '01092847162');
-  const [newVisitFee, setNewVisitFee] = useState(300);
-  const [followupFee, setFollowupFee] = useState(150);
   const [freeFollowupDays, setFreeFollowupDays] = useState(14);
-  const [printerPaper, setPrinterPaper] = useState('80mm');
-  const [autoPrintReceipt, setAutoPrintReceipt] = useState(true);
   const [alertConfig, setAlertConfig] = useState<AlertSettings>(loadAlertSettings);
   const [examDisplayConfig, setExamDisplayConfig] = useState<ExamDisplaySettings>(loadExamDisplaySettings);
   const [savedToast, setSavedToast] = useState<string | null>(null);
+
+  // Add Visit Type Modal/Input state
+  const [showAddVisitModal, setShowAddVisitModal] = useState(false);
+  const [newVisitName, setNewVisitName] = useState('');
+  const [newVisitFee, setNewVisitFee] = useState<number>(250);
+
+  const handleAddNewVisitSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newVisitName.trim()) return;
+    onAddVisitType({
+      id: `vt-${Date.now()}`,
+      name: newVisitName.trim(),
+      fee: Number(newVisitFee) || 0,
+    });
+    setSavedToast(`تمت إضافة نوع الزيارة: "${newVisitName.trim()}" بنجاح ✓`);
+    setNewVisitName('');
+    setNewVisitFee(250);
+    setShowAddVisitModal(false);
+    setTimeout(() => setSavedToast(null), 3000);
+  };
 
   const updateExamDisplayConfig = (key: keyof ExamDisplaySettings, value: boolean) => {
     const updated = { ...examDisplayConfig, [key]: value };
@@ -119,21 +207,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     const updated = { ...alertConfig, [key]: value };
     setAlertConfig(updated);
     saveAlertSettings(updated);
-    setSavedToast(
-      `تم تحديث التنبيهات: ${
-        key === 'audioEnabled'
-          ? value
-            ? 'تشغيل الصوت العام ✓'
-            : 'إيقاف الصوت العام ✕'
-          : key === 'visualEnabled'
-          ? value
-            ? 'تشغيل التنبيه المرئي ✓'
-            : 'إيقاف التنبيه المرئي ✕'
-          : value
-          ? 'تم تفعيل التنبيه'
-          : 'تم إيقاف التنبيه'
-      }`
-    );
+    setSavedToast('تم تحديث إعدادات التنبيهات والأصوات بنجاح ✓');
     setTimeout(() => setSavedToast(null), 2500);
   };
 
@@ -150,7 +224,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     try {
       assertPermission('settings.edit', 'حفظ إعدادات العيادة العامة والأسعار');
       saveAlertSettings(alertConfig);
-      setSavedToast('تم حفظ كافة إعدادات عيادات سولي وإعدادات التنبيهات بنجاح وتطبيقها');
+      setSavedToast('تم حفظ كافة إعدادات النظام وتحديث الأسعار والتنبيهات بنجاح ✓');
       setTimeout(() => setSavedToast(null), 3500);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'ليس لديك صلاحية لتعديل الإعدادات العامة.');
@@ -171,42 +245,44 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-[#859394] mb-1">
           <span>الرئيسية</span>
           <span>&gt;</span>
-          <span className="text-[#008f97] dark:text-[#00c2cb]">إعدادات النظام والعيادة</span>
+          <span className="text-[#008f97] dark:text-[#00c2cb]">إعدادات النظام</span>
         </div>
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 min-w-0">
           <h1 className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2.5 flex-wrap min-w-0">
-            <span>إعدادات وأدلة عيادات سولي التخصصية</span>
+            <span>إعدادات النظام</span>
             <span className="text-xs bg-[#00c2cb]/15 text-[#008f97] dark:text-[#45dee7] font-bold px-3 py-1 rounded-full border border-[#00c2cb]/20">
               صلاحية المدير والطبيب
             </span>
           </h1>
 
-          {/* Clean 3 Navigation Tabs (Catalogs, Users, Clinic/Print) */}
+          {/* 3 Main Navigation Tabs: System Settings, Catalogs, Users */}
           <div className="flex flex-wrap items-center gap-1.5 bg-white dark:bg-[#111A2E] p-1 rounded-2xl border border-slate-200 dark:border-white/5 shadow-2xs max-w-full overflow-x-auto min-w-0">
+            <PermissionGate permission="settings.edit">
+              <button
+                type="button"
+                onClick={() => setActiveSettingsSection('general')}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  activeSettingsSection === 'general'
+                    ? 'bg-[#00c2cb] text-slate-950 shadow-xs'
+                    : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
+                }`}
+              >
+                <span className="material-symbols-outlined text-base">tune</span>
+                <span>إعدادات النظام</span>
+              </button>
+            </PermissionGate>
+
             <button
               type="button"
               onClick={() => setActiveSettingsSection('catalogs')}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 activeSettingsSection === 'catalogs'
                   ? 'bg-[#00c2cb] text-slate-950 shadow-xs'
                   : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
               }`}
             >
               <span className="material-symbols-outlined text-base">menu_book</span>
-              <span>الأدلة الطبية (Medical Catalogs)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveSettingsSection('alerts')}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                activeSettingsSection === 'alerts'
-                  ? 'bg-amber-500 text-slate-950 shadow-xs'
-                  : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
-              }`}
-            >
-              <span className="material-symbols-outlined text-base">notifications_active</span>
-              <span>نظام التنبيهات والأصوات</span>
+              <span>الأدلة الطبية</span>
             </button>
 
             <PermissionGate permission="users.view">
@@ -223,21 +299,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 <span>المستخدمون والصلاحيات</span>
               </button>
             </PermissionGate>
-
-            <PermissionGate permission="settings.edit">
-              <button
-                type="button"
-                onClick={() => setActiveSettingsSection('general')}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  activeSettingsSection === 'general'
-                    ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xs'
-                    : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
-                }`}
-              >
-                <span className="material-symbols-outlined text-base">tune</span>
-                <span>بيانات العيادة والطباعة</span>
-              </button>
-            </PermissionGate>
           </div>
         </div>
       </div>
@@ -245,7 +306,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       {/* USER MANAGEMENT TAB */}
       {activeSettingsSection === 'users' && <UserManagementPanel />}
 
-      {/* MEDICAL CATALOGS TAB (STACKED ACCORDIONS) */}
+      {/* MEDICAL CATALOGS TAB */}
       {activeSettingsSection === 'catalogs' && (
         <MedicalCatalogsManager
           radiologyCatalog={radiologyCatalog}
@@ -273,781 +334,670 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         />
       )}
 
-      {/* ALERTS & NOTIFICATIONS TAB */}
-      {activeSettingsSection === 'alerts' && (
-        <div className="bg-white dark:bg-[#111A2E] p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-white/5 shadow-sm space-y-6 max-w-4xl mx-auto w-full">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-white/5 pb-4">
-            <div>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2.5">
-                <span className="material-symbols-outlined text-amber-500 text-2xl">notifications_active</span>
-                <span>إعدادات نظام التنبيهات والأصوات بالعيادة</span>
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-[#859394] mt-1">
-                تخصيص التنبيهات المرئية والصوتية للسكرتارية وغرفة الكشف. الصافرة تعمل مرة واحدة فقط عند كل إجراء.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => handleTestAlertSound('new_visit')}
-              className="px-4 py-2.5 rounded-xl bg-amber-500 text-slate-950 text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shadow-md shadow-amber-500/20 active:scale-95 shrink-0"
-            >
-              <span className="material-symbols-outlined text-base">volume_up</span>
-              <span>تجربة التنبيه والصوت الآن</span>
-            </button>
-          </div>
-
-          {/* Master Toggles: Audio & Visual */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Audio Master */}
-            <div className="p-5 rounded-2xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex flex-col justify-between gap-4">
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                    <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb]">volume_up</span>
-                    التنبيه الصوتي (الصافرة والنغمات)
-                  </span>
-                  <span
-                    className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-                      alertConfig.audioEnabled
-                        ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                        : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20'
-                    }`}
-                  >
-                    {alertConfig.audioEnabled ? 'الصوت مفعّل ✓' : 'الصوت متوقف ✕'}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 dark:text-[#859394] leading-relaxed">
-                  يُصدر نغمة طبية هادئة لمرة واحدة فقط عند حدوث أي إجراء، ولا يتكرر تلقائياً لتفادي أي إزعاج.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2 pt-2 border-t border-slate-200/50 dark:border-white/5">
-                <button
-                  type="button"
-                  onClick={() => updateAlertConfig('audioEnabled', true)}
-                  className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                    alertConfig.audioEnabled
-                      ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-500/30'
-                      : 'bg-white dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] border border-slate-200 dark:border-white/10 hover:bg-slate-100'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-base">check_circle</span>
-                  <span>تشغيل الصوت</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => updateAlertConfig('audioEnabled', false)}
-                  className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                    !alertConfig.audioEnabled
-                      ? 'bg-rose-600 text-white shadow-sm ring-2 ring-rose-500/30'
-                      : 'bg-white dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] border border-slate-200 dark:border-white/10 hover:bg-slate-100'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-base">cancel</span>
-                  <span>إيقاف الصوت</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Visual Master */}
-            <div className="p-5 rounded-2xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex flex-col justify-between gap-4">
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                    <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb]">visibility</span>
-                    التنبيه المرئي (اللافتة المنبثقة)
-                  </span>
-                  <span
-                    className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-                      alertConfig.visualEnabled
-                        ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                        : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20'
-                    }`}
-                  >
-                    {alertConfig.visualEnabled ? 'المرئي مفعّل ✓' : 'المرئي متوقف ✕'}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 dark:text-[#859394] leading-relaxed">
-                  يُظهر لافتة إشعار ملونة ومنبثقة أعلى الشاشة لتنبيه السكرتارية وغرفة الكشف فور حدوث الإجراء.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2 pt-2 border-t border-slate-200/50 dark:border-white/5">
-                <button
-                  type="button"
-                  onClick={() => updateAlertConfig('visualEnabled', true)}
-                  className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                    alertConfig.visualEnabled
-                      ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-500/30'
-                      : 'bg-white dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] border border-slate-200 dark:border-white/10 hover:bg-slate-100'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-base">check_circle</span>
-                  <span>تشغيل التنبيه المرئي</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => updateAlertConfig('visualEnabled', false)}
-                  className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                    !alertConfig.visualEnabled
-                      ? 'bg-rose-600 text-white shadow-sm ring-2 ring-rose-500/30'
-                      : 'bg-white dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] border border-slate-200 dark:border-white/10 hover:bg-slate-100'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-base">cancel</span>
-                  <span>إيقاف التنبيه المرئي</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Granular event controls */}
-          <div className="space-y-4 pt-2">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-              <span className="material-symbols-outlined text-[#00c2cb] text-lg">checklist</span>
-              <span>التحكم في التنبيهات عند كل حدث مستقل:</span>
-            </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Event 1 */}
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 space-y-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-teal-500/15 text-[#008f97] dark:text-[#00c2cb] flex items-center justify-center font-bold text-sm">
-                    1
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-900 dark:text-white">إضافة زيارة جديدة</h4>
-                    <p className="text-[10px] text-slate-500 dark:text-[#859394]">تسجيل مريض جديد بالانتظار</p>
-                  </div>
-                </div>
-
-                <div className="space-y-2 pt-2 border-t border-slate-200/60 dark:border-white/5">
-                  <label className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-[#111A2E] cursor-pointer">
-                    <span className="text-xs text-slate-700 dark:text-[#dde2f5] flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-sm text-teal-600">volume_up</span>
-                      تنبيه صوتي
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={alertConfig.newVisitAudio}
-                      onChange={(e) => updateAlertConfig('newVisitAudio', e.target.checked)}
-                      className="w-4 h-4 rounded text-[#00c2cb] accent-[#00c2cb] cursor-pointer"
-                    />
-                  </label>
-
-                  <label className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-[#111A2E] cursor-pointer">
-                    <span className="text-xs text-slate-700 dark:text-[#dde2f5] flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-sm text-teal-600">visibility</span>
-                      تنبيه مرئي (لافتة)
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={alertConfig.newVisitVisual}
-                      onChange={(e) => updateAlertConfig('newVisitVisual', e.target.checked)}
-                      className="w-4 h-4 rounded text-[#00c2cb] accent-[#00c2cb] cursor-pointer"
-                    />
-                  </label>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleTestAlertSound('new_visit')}
-                  className="w-full py-1.5 text-[11px] font-bold text-teal-700 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/40 rounded-lg hover:bg-teal-100 transition-colors cursor-pointer"
-                >
-                  تجربة الصوت لمرة واحدة
-                </button>
-              </div>
-
-              {/* Event 2 */}
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 space-y-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-500 flex items-center justify-center font-bold text-sm">
-                    2
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-900 dark:text-white">دخول مريض للكشف</h4>
-                    <p className="text-[10px] text-slate-500 dark:text-[#859394]">نداء الدخول لغرفة الطبيب</p>
-                  </div>
-                </div>
-
-                <div className="space-y-2 pt-2 border-t border-slate-200/60 dark:border-white/5">
-                  <label className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-[#111A2E] cursor-pointer">
-                    <span className="text-xs text-slate-700 dark:text-[#dde2f5] flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-sm text-amber-500">volume_up</span>
-                      تنبيه صوتي
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={alertConfig.callPatientAudio}
-                      onChange={(e) => updateAlertConfig('callPatientAudio', e.target.checked)}
-                      className="w-4 h-4 rounded text-[#00c2cb] accent-[#00c2cb] cursor-pointer"
-                    />
-                  </label>
-
-                  <label className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-[#111A2E] cursor-pointer">
-                    <span className="text-xs text-slate-700 dark:text-[#dde2f5] flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-sm text-amber-500">visibility</span>
-                      تنبيه مرئي (لافتة)
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={alertConfig.callPatientVisual}
-                      onChange={(e) => updateAlertConfig('callPatientVisual', e.target.checked)}
-                      className="w-4 h-4 rounded text-[#00c2cb] accent-[#00c2cb] cursor-pointer"
-                    />
-                  </label>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleTestAlertSound('call')}
-                  className="w-full py-1.5 text-[11px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 rounded-lg hover:bg-amber-100 transition-colors cursor-pointer"
-                >
-                  تجربة الصوت لمرة واحدة
-                </button>
-              </div>
-
-              {/* Event 3 */}
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 space-y-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-500 flex items-center justify-center font-bold text-sm">
-                    3
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-900 dark:text-white">انتهاء الكشف الطبي</h4>
-                    <p className="text-[10px] text-slate-500 dark:text-[#859394]">إشعار السكرتارية بانتهاء الزيارة</p>
-                  </div>
-                </div>
-
-                <div className="space-y-2 pt-2 border-t border-slate-200/60 dark:border-white/5">
-                  <label className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-[#111A2E] cursor-pointer">
-                    <span className="text-xs text-slate-700 dark:text-[#dde2f5] flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-sm text-emerald-600">volume_up</span>
-                      تنبيه صوتي
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={alertConfig.finishExamAudio}
-                      onChange={(e) => updateAlertConfig('finishExamAudio', e.target.checked)}
-                      className="w-4 h-4 rounded text-[#00c2cb] accent-[#00c2cb] cursor-pointer"
-                    />
-                  </label>
-
-                  <label className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-[#111A2E] cursor-pointer">
-                    <span className="text-xs text-slate-700 dark:text-[#dde2f5] flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-sm text-emerald-600">visibility</span>
-                      تنبيه مرئي (لافتة)
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={alertConfig.finishExamVisual}
-                      onChange={(e) => updateAlertConfig('finishExamVisual', e.target.checked)}
-                      className="w-4 h-4 rounded text-[#00c2cb] accent-[#00c2cb] cursor-pointer"
-                    />
-                  </label>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleTestAlertSound('finish')}
-                  className="w-full py-1.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 rounded-lg hover:bg-emerald-100 transition-colors cursor-pointer"
-                >
-                  تجربة الصوت لمرة واحدة
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* CLINIC DATA & PRINT SETTINGS TAB */}
+      {/* SYSTEM SETTINGS TAB (COLLAPSIBLE ACCORDION CARDS) */}
       {activeSettingsSection === 'general' && (
         <form onSubmit={handleSave} className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Main Column (8 Cols) */}
-          <div className="lg:col-span-8 flex flex-col gap-6">
-            {/* Clinic Information */}
-            <div className="bg-white dark:bg-[#111A2E] p-5 sm:p-6 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs space-y-4">
-              <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2 border-b border-slate-100 dark:border-white/5 pb-3">
-                <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb] text-lg">domain</span>
-                <span>1. هوية العيادة والبيانات الرسمية</span>
-              </h2>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs text-slate-600 dark:text-[#859394] block mb-1">اسم العيادة (عربي):</label>
-                  <input
-                    type="text"
-                    value={clinicName}
-                    onChange={(e) => setClinicName(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/5 focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
-                  />
+          <div className="lg:col-span-8 flex flex-col gap-4">
+            
+            {/* ACCORDION CARD 1: Visit Pricing & Types (تسعير الكشوفات وأنواع الزيارات) */}
+            <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
+              <button
+                type="button"
+                onClick={() => toggleCard('pricing')}
+                className="w-full p-5 flex items-center justify-between text-right cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-teal-50 dark:bg-[#00c2cb]/15 text-[#008f97] dark:text-[#00c2cb] flex items-center justify-center font-bold">
+                    <span className="material-symbols-outlined text-xl">price_change</span>
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
+                      <span>1. تسعير الكشوفات وأنواع الزيارات</span>
+                      <span className="text-[10px] bg-teal-500/10 text-[#008f97] dark:text-[#00c2cb] px-2 py-0.5 rounded-full border border-teal-500/20 font-bold">
+                        {visitTypesList.length} أنواع زيارات
+                      </span>
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
+                      إضافة وحذف وتعديل أسعار الزيارات وتنعكس فوراً بصفحة تسجيل الحضور بالاستقبال
+                    </p>
+                  </div>
                 </div>
-
-                <div>
-                  <label className="text-xs text-slate-600 dark:text-[#859394] block mb-1">
-                    رقم الهاتف الرسمي والواتساب:
-                  </label>
-                  <input
-                    type="text"
-                    dir="ltr"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/5 font-mono focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="text-xs text-slate-600 dark:text-[#859394] block mb-1">عنوان الفرع الرئيسي:</label>
-                  <input
-                    type="text"
-                    defaultValue="14 شارع جامعة الدول العربية - المهندسين - الجيزة"
-                    className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/5 focus:outline-none"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Tariffs and Follow-up rules */}
-            <div className="bg-white dark:bg-[#111A2E] p-5 sm:p-6 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs space-y-4">
-              <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2 border-b border-slate-100 dark:border-white/5 pb-3">
-                <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb] text-lg">price_change</span>
-                <span>2. تسعيرة الكشوفات ولائحة الاستشارات</span>
-              </h2>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="text-xs text-slate-600 dark:text-[#859394] block mb-1">سعر الكشف الجديد (ج.م):</label>
-                  <input
-                    type="number"
-                    value={newVisitFee}
-                    onChange={(e) => setNewVisitFee(Number(e.target.value))}
-                    className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/5 font-mono focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs text-slate-600 dark:text-[#859394] block mb-1">
-                    سعر الاستشارة بعد المدة (ج.م):
-                  </label>
-                  <input
-                    type="number"
-                    value={followupFee}
-                    onChange={(e) => setFollowupFee(Number(e.target.value))}
-                    className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/5 font-mono focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs text-slate-600 dark:text-[#859394] block mb-1">
-                    مدة الاستشارة المجانية (أيام):
-                  </label>
-                  <input
-                    type="number"
-                    value={freeFollowupDays}
-                    onChange={(e) => setFreeFollowupDays(Number(e.target.value))}
-                    className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/5 font-mono focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
-                  />
-                </div>
-              </div>
-              <p className="text-[11px] text-slate-500 dark:text-[#859394]">
-                طبقاً للائحة، أي زيارة متابعة خلال {freeFollowupDays} يوماً تكون بقيمة 0 ج.م تلقائياً.
-              </p>
-            </div>
-
-            {/* Hardware & Printer Settings */}
-            <div className="bg-white dark:bg-[#111A2E] p-5 sm:p-6 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs space-y-4">
-              <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2 border-b border-slate-100 dark:border-white/5 pb-3">
-                <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb] text-lg">print</span>
-                <span>3. إعدادات طابعات الإيصالات والروشتات</span>
-              </h2>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs text-slate-600 dark:text-[#859394] block mb-1">
-                    مقاس ورق إيصالات الاستقبال:
-                  </label>
-                  <select
-                    value={printerPaper}
-                    onChange={(e) => setPrinterPaper(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/5 focus:outline-none cursor-pointer"
-                  >
-                    <option value="80mm">طابعة حرارية 80mm (Thermal POS)</option>
-                    <option value="58mm">طابعة حرارية 58mm</option>
-                    <option value="a4">طابعة عادية A4</option>
-                  </select>
-                </div>
-
-                <div className="flex items-center gap-2 pt-2 sm:pt-6">
-                  <input
-                    type="checkbox"
-                    id="autoPrint"
-                    checked={autoPrintReceipt}
-                    onChange={(e) => setAutoPrintReceipt(e.target.checked)}
-                    className="w-4 h-4 rounded text-[#00c2cb] accent-[#00c2cb]"
-                  />
-                  <label htmlFor="autoPrint" className="text-xs text-slate-700 dark:text-[#dde2f5] cursor-pointer">
-                    طباعة إيصال السداد تلقائياً عند تأكيد حضور المريض
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            {/* Card 4: Audio & Visual Notification Controls */}
-            <div className="bg-white dark:bg-[#111A2E] p-5 sm:p-6 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs space-y-5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-white/5 pb-3">
-                <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                  <span className="material-symbols-outlined text-amber-500 text-lg">notifications_active</span>
-                  <span>4. نظام التنبيهات والأصوات (إشعار السكرتارية والعيادة)</span>
-                </h2>
-                <button
-                  type="button"
-                  onClick={() => handleTestAlertSound('new_visit')}
-                  className="px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-600 dark:text-amber-400 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 self-start sm:self-auto border border-amber-500/30"
+                <span
+                  className="material-symbols-outlined text-slate-400 text-2xl transition-transform duration-200"
+                  style={{ transform: openCards.pricing ? 'rotate(180deg)' : 'rotate(0deg)' }}
                 >
-                  <span className="material-symbols-outlined text-sm">volume_up</span>
-                  <span>تجربة الصوت والتنبيه الآن</span>
-                </button>
-              </div>
+                  expand_more
+                </span>
+              </button>
 
-              {/* Master Toggles: Audio & Visual */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Audio Master */}
-                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex flex-col justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                        <span className="material-symbols-outlined text-base text-[#008f97] dark:text-[#00c2cb]">volume_up</span>
-                        التنبيه الصوتي (صافرة الكشف)
+              {openCards.pricing && (
+                <div className="p-5 pt-0 border-t border-slate-100 dark:border-white/5 space-y-4 text-xs">
+                  <div className="flex items-center justify-between pt-3">
+                    <span className="font-bold text-slate-800 dark:text-[#dde2f5]">
+                      أنواع الزيارات والتذاكر المتاحة بالنظام:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddVisitModal(true)}
+                      className="px-3 py-1.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95"
+                    >
+                      <span className="material-symbols-outlined text-base">add_circle</span>
+                      <span>إضافة نوع زيارة جديد</span>
+                    </button>
+                  </div>
+
+                  {/* Visit Types Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {visitTypesList.map((vt) => (
+                      <div
+                        key={vt.id || vt.name}
+                        className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex items-center justify-between gap-3 shadow-2xs"
+                      >
+                        <div className="space-y-1.5 min-w-0 flex-1">
+                          <span className="font-bold text-slate-900 dark:text-white block truncate text-xs">
+                            {vt.name}
+                          </span>
+                          <div className="flex items-center gap-1 text-xs text-slate-600 dark:text-[#859394]">
+                            <span>السعر:</span>
+                            <input
+                              type="number"
+                              value={vt.fee}
+                              onChange={(e) => onUpdateVisitTypeFee(vt.id, Number(e.target.value))}
+                              className="w-20 bg-white dark:bg-[#18233C] px-2 py-1 rounded-lg border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white font-mono font-bold text-xs text-center"
+                            />
+                            <span>ج.م</span>
+                          </div>
+                        </div>
+
+                        {visitTypesList.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm(`هل أنت تأكد من حذف نوع الزيارة "${vt.name}"؟`)) {
+                                onRemoveVisitType(vt.id);
+                              }
+                            }}
+                            title="حذف نوع الزيارة"
+                            className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer shrink-0"
+                          >
+                            <span className="material-symbols-outlined text-lg">delete</span>
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Follow-up Days Rule */}
+                  <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex items-center justify-between gap-4">
+                    <div>
+                      <span className="font-bold text-slate-800 dark:text-white block">
+                        مدة المتابعة المسموحة (بالأيام):
                       </span>
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      <p className="text-[11px] text-slate-500 dark:text-[#859394] mt-0.5">
+                        أي زيارة مريض خلال هذه الفترة المحددة تعتبر متابعة.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <input
+                        type="number"
+                        value={freeFollowupDays}
+                        onChange={(e) => setFreeFollowupDays(Number(e.target.value))}
+                        className="w-20 bg-white dark:bg-[#18233C] p-2 rounded-xl border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white font-mono font-bold text-xs text-center"
+                      />
+                      <span className="text-xs font-bold text-slate-600 dark:text-slate-400">يوماً</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ACCORDION CARD 2: Notifications & Sounds (نظام التنبيهات والأصوات المتقدم) */}
+            <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
+              <button
+                type="button"
+                onClick={() => toggleCard('alerts')}
+                className="w-full p-5 flex items-center justify-between text-right cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-500 flex items-center justify-center font-bold">
+                    <span className="material-symbols-outlined text-xl">notifications_active</span>
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
+                      <span>2. نظام التنبيهات والأصوات المتقدم</span>
+                      <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20 font-bold">
+                        {alertConfig.audioEnabled ? 'الصوت يعمل ✓' : 'الصوت صامت'}
+                      </span>
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
+                      تخصيص التنبيهات المرئية والصوتية للسكرتارية وغرفة الكشف فور تسجيل المريض
+                    </p>
+                  </div>
+                </div>
+                <span
+                  className="material-symbols-outlined text-slate-400 text-2xl transition-transform duration-200"
+                  style={{ transform: openCards.alerts ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                >
+                  expand_more
+                </span>
+              </button>
+
+              {openCards.alerts && (
+                <div className="p-5 pt-0 border-t border-slate-100 dark:border-white/5 space-y-4 text-xs">
+                  <div className="flex justify-end pt-3">
+                    <button
+                      type="button"
+                      onClick={() => handleTestAlertSound('new_visit')}
+                      className="px-3.5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-600 dark:text-amber-400 font-bold transition-all cursor-pointer flex items-center gap-1.5 border border-amber-500/30 shadow-2xs"
+                    >
+                      <span className="material-symbols-outlined text-base">volume_up</span>
+                      <span>تجربة التنبيه والصوت الآن</span>
+                    </button>
+                  </div>
+
+                  {/* Master Toggles */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Audio Master */}
+                    <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex flex-col justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                            <span className="material-symbols-outlined text-base text-[#008f97] dark:text-[#00c2cb]">volume_up</span>
+                            التنبيه الصوتي العام
+                          </span>
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              alertConfig.audioEnabled
+                                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                                : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+                            }`}
+                          >
+                            {alertConfig.audioEnabled ? 'الصوت يعمل ✓' : 'الصوت متوقف ✕'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-[#859394]">
+                          إصدار صافرة طبية هادئة لمرة واحدة فقط عند كل حدث.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => updateAlertConfig('audioEnabled', !alertConfig.audioEnabled)}
+                        className={`w-full py-2 rounded-xl font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                           alertConfig.audioEnabled
-                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                            : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+                            ? 'bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200 dark:border-rose-900/30'
+                            : 'bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 shadow-xs'
                         }`}
                       >
-                        {alertConfig.audioEnabled ? 'الصوت يعمل ✓' : 'الصوت متوقف ✕'}
-                      </span>
+                        <span className="material-symbols-outlined text-sm">
+                          {alertConfig.audioEnabled ? 'volume_off' : 'volume_up'}
+                        </span>
+                        <span>{alertConfig.audioEnabled ? 'إيقاف الصوت' : 'تشغيل الصوت'}</span>
+                      </button>
                     </div>
-                    <p className="text-[11px] text-slate-500 dark:text-[#859394]">
-                      يصدر نغمة طبية هادئة لمرة واحدة فقط عند كل حدث ولا يتكرر تلقائياً.
-                    </p>
-                  </div>
 
-                  <button
-                    type="button"
-                    onClick={() => updateAlertConfig('audioEnabled', !alertConfig.audioEnabled)}
-                    className={`w-full py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                      alertConfig.audioEnabled
-                        ? 'bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 dark:text-rose-400 border border-rose-200 dark:border-rose-900/30'
-                        : 'bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 shadow-xs'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-sm">
-                      {alertConfig.audioEnabled ? 'volume_off' : 'volume_up'}
-                    </span>
-                    <span>{alertConfig.audioEnabled ? 'إيقاف الصوت' : 'تشغيل الصوت'}</span>
-                  </button>
-                </div>
+                    {/* Visual Master */}
+                    <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex flex-col justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                            <span className="material-symbols-outlined text-base text-[#008f97] dark:text-[#00c2cb]">visibility</span>
+                            التنبيه المرئي المنبثق
+                          </span>
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              alertConfig.visualEnabled
+                                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                                : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+                            }`}
+                          >
+                            {alertConfig.visualEnabled ? 'المرئي يعمل ✓' : 'المرئي متوقف ✕'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-[#859394]">
+                          إظهار لافتة ملونة أعلى الشاشة فور حدوث أي إجراء.
+                        </p>
+                      </div>
 
-                {/* Visual Master */}
-                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex flex-col justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                        <span className="material-symbols-outlined text-base text-[#008f97] dark:text-[#00c2cb]">visibility</span>
-                        التنبيه المرئي (اللافتة المنبثقة)
-                      </span>
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      <button
+                        type="button"
+                        onClick={() => updateAlertConfig('visualEnabled', !alertConfig.visualEnabled)}
+                        className={`w-full py-2 rounded-xl font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                           alertConfig.visualEnabled
-                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                            : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+                            ? 'bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200 dark:border-rose-900/30'
+                            : 'bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 shadow-xs'
                         }`}
                       >
-                        {alertConfig.visualEnabled ? 'المرئي يعمل ✓' : 'المرئي متوقف ✕'}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 dark:text-[#859394]">
-                      إظهار شريط إشعار ملون أعلى الشاشة لتنبيه السكرتارية بالحدث.
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => updateAlertConfig('visualEnabled', !alertConfig.visualEnabled)}
-                    className={`w-full py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                      alertConfig.visualEnabled
-                        ? 'bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 dark:text-rose-400 border border-rose-200 dark:border-rose-900/30'
-                        : 'bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 shadow-xs'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-sm">
-                      {alertConfig.visualEnabled ? 'visibility_off' : 'visibility'}
-                    </span>
-                    <span>{alertConfig.visualEnabled ? 'إيقاف التنبيه المرئي' : 'تشغيل التنبيه المرئي'}</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Event-by-event Controls */}
-              <div className="space-y-3 pt-2">
-                <h4 className="text-xs font-bold text-slate-700 dark:text-[#bbc9ca]">
-                  التحكم في التنبيهات عند كل حدث:
-                </h4>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {/* Event 1: New Visit */}
-                  <div className="p-3.5 rounded-xl bg-slate-50/80 dark:bg-[#080e1b]/80 border border-slate-200 dark:border-white/5 space-y-2.5">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg bg-teal-500/15 text-[#008f97] dark:text-[#00c2cb] flex items-center justify-center font-bold text-xs">
-                        1
-                      </div>
-                      <span className="text-xs font-bold text-slate-900 dark:text-white">إضافة زيارة جديدة</span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200/60 dark:border-white/5">
-                      <label className="flex items-center gap-1.5 cursor-pointer text-[11px]">
-                        <input
-                          type="checkbox"
-                          checked={alertConfig.newVisitAudio}
-                          onChange={(e) => updateAlertConfig('newVisitAudio', e.target.checked)}
-                          className="rounded text-[#00c2cb] accent-[#00c2cb]"
-                        />
-                        <span>صوت 🔔</span>
-                      </label>
-                      <label className="flex items-center gap-1.5 cursor-pointer text-[11px]">
-                        <input
-                          type="checkbox"
-                          checked={alertConfig.newVisitVisual}
-                          onChange={(e) => updateAlertConfig('newVisitVisual', e.target.checked)}
-                          className="rounded text-[#00c2cb] accent-[#00c2cb]"
-                        />
-                        <span>مرئي 👁️</span>
-                      </label>
+                        <span className="material-symbols-outlined text-sm">
+                          {alertConfig.visualEnabled ? 'visibility_off' : 'visibility'}
+                        </span>
+                        <span>{alertConfig.visualEnabled ? 'إيقاف التنبيه المرئي' : 'تشغيل التنبيه المرئي'}</span>
+                      </button>
                     </div>
                   </div>
 
-                  {/* Event 2: Call patient into exam */}
-                  <div className="p-3.5 rounded-xl bg-slate-50/80 dark:bg-[#080e1b]/80 border border-slate-200 dark:border-white/5 space-y-2.5">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg bg-amber-500/15 text-amber-500 flex items-center justify-center font-bold text-xs">
-                        2
-                      </div>
-                      <span className="text-xs font-bold text-slate-900 dark:text-white">دخول مريض للكشف</span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200/60 dark:border-white/5">
-                      <label className="flex items-center gap-1.5 cursor-pointer text-[11px]">
-                        <input
-                          type="checkbox"
-                          checked={alertConfig.callPatientAudio}
-                          onChange={(e) => updateAlertConfig('callPatientAudio', e.target.checked)}
-                          className="rounded text-[#00c2cb] accent-[#00c2cb]"
-                        />
-                        <span>صوت 🔔</span>
-                      </label>
-                      <label className="flex items-center gap-1.5 cursor-pointer text-[11px]">
-                        <input
-                          type="checkbox"
-                          checked={alertConfig.callPatientVisual}
-                          onChange={(e) => updateAlertConfig('callPatientVisual', e.target.checked)}
-                          className="rounded text-[#00c2cb] accent-[#00c2cb]"
-                        />
-                        <span>مرئي 👁️</span>
-                      </label>
-                    </div>
-                  </div>
+                  {/* Granular event checkboxes */}
+                  <div className="space-y-2 pt-2">
+                    <h4 className="font-bold text-slate-700 dark:text-[#bbc9ca]">
+                      التحكم التفصيلي في الأحداث:
+                    </h4>
 
-                  {/* Event 3: Finish exam */}
-                  <div className="p-3.5 rounded-xl bg-slate-50/80 dark:bg-[#080e1b]/80 border border-slate-200 dark:border-white/5 space-y-2.5">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg bg-emerald-500/15 text-emerald-500 flex items-center justify-center font-bold text-xs">
-                        3
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {/* Event 1 */}
+                      <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-lg bg-teal-500/15 text-[#008f97] dark:text-[#00c2cb] flex items-center justify-center font-bold text-xs">
+                            1
+                          </div>
+                          <span className="font-bold text-slate-900 dark:text-white">إضافة زيارة جديدة</span>
+                        </div>
+                        <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 dark:border-white/5">
+                          <label className="flex items-center gap-1.5 cursor-pointer text-[11px]">
+                            <input
+                              type="checkbox"
+                              checked={alertConfig.newVisitAudio}
+                              onChange={(e) => updateAlertConfig('newVisitAudio', e.target.checked)}
+                              className="rounded text-[#00c2cb] accent-[#00c2cb]"
+                            />
+                            <span>صوت 🔔</span>
+                          </label>
+                          <label className="flex items-center gap-1.5 cursor-pointer text-[11px]">
+                            <input
+                              type="checkbox"
+                              checked={alertConfig.newVisitVisual}
+                              onChange={(e) => updateAlertConfig('newVisitVisual', e.target.checked)}
+                              className="rounded text-[#00c2cb] accent-[#00c2cb]"
+                            />
+                            <span>مرئي 👁️</span>
+                          </label>
+                        </div>
                       </div>
-                      <span className="text-xs font-bold text-slate-900 dark:text-white">انتهاء الكشف الطبي</span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200/60 dark:border-white/5">
-                      <label className="flex items-center gap-1.5 cursor-pointer text-[11px]">
-                        <input
-                          type="checkbox"
-                          checked={alertConfig.finishExamAudio}
-                          onChange={(e) => updateAlertConfig('finishExamAudio', e.target.checked)}
-                          className="rounded text-[#00c2cb] accent-[#00c2cb]"
-                        />
-                        <span>صوت 🔔</span>
-                      </label>
-                      <label className="flex items-center gap-1.5 cursor-pointer text-[11px]">
-                        <input
-                          type="checkbox"
-                          checked={alertConfig.finishExamVisual}
-                          onChange={(e) => updateAlertConfig('finishExamVisual', e.target.checked)}
-                          className="rounded text-[#00c2cb] accent-[#00c2cb]"
-                        />
-                        <span>مرئي 👁️</span>
-                      </label>
+
+                      {/* Event 2 */}
+                      <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-lg bg-amber-500/15 text-amber-500 flex items-center justify-center font-bold text-xs">
+                            2
+                          </div>
+                          <span className="font-bold text-slate-900 dark:text-white">دخول مريض للكشف</span>
+                        </div>
+                        <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 dark:border-white/5">
+                          <label className="flex items-center gap-1.5 cursor-pointer text-[11px]">
+                            <input
+                              type="checkbox"
+                              checked={alertConfig.callPatientAudio}
+                              onChange={(e) => updateAlertConfig('callPatientAudio', e.target.checked)}
+                              className="rounded text-[#00c2cb] accent-[#00c2cb]"
+                            />
+                            <span>صوت 🔔</span>
+                          </label>
+                          <label className="flex items-center gap-1.5 cursor-pointer text-[11px]">
+                            <input
+                              type="checkbox"
+                              checked={alertConfig.callPatientVisual}
+                              onChange={(e) => updateAlertConfig('callPatientVisual', e.target.checked)}
+                              className="rounded text-[#00c2cb] accent-[#00c2cb]"
+                            />
+                            <span>مرئي 👁️</span>
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* Event 3 */}
+                      <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-lg bg-emerald-500/15 text-emerald-500 flex items-center justify-center font-bold text-xs">
+                            3
+                          </div>
+                          <span className="font-bold text-slate-900 dark:text-white">انتهاء الكشف الطبي</span>
+                        </div>
+                        <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 dark:border-white/5">
+                          <label className="flex items-center gap-1.5 cursor-pointer text-[11px]">
+                            <input
+                              type="checkbox"
+                              checked={alertConfig.finishExamAudio}
+                              onChange={(e) => updateAlertConfig('finishExamAudio', e.target.checked)}
+                              className="rounded text-[#00c2cb] accent-[#00c2cb]"
+                            />
+                            <span>صوت 🔔</span>
+                          </label>
+                          <label className="flex items-center gap-1.5 cursor-pointer text-[11px]">
+                            <input
+                              type="checkbox"
+                              checked={alertConfig.finishExamVisual}
+                              onChange={(e) => updateAlertConfig('finishExamVisual', e.target.checked)}
+                              className="rounded text-[#00c2cb] accent-[#00c2cb]"
+                            />
+                            <span>مرئي 👁️</span>
+                          </label>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
 
-            {/* Card 5: Examination Screen Display Customization (Vitals, Labs, Radiology) */}
-            <div className="bg-white dark:bg-[#111A2E] p-5 sm:p-6 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-white/5 pb-3">
-                <div>
-                  <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                    <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb] text-lg">view_carousel</span>
-                    <span>5. تخصيص أقسام شاشة الكشف الطبي (عرض وإخفاء)</span>
-                  </h2>
-                  <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
-                    اختر الأقسام الطبية المطلوب إظهارها أو إخفاؤها داخل غرفة الكشف حسب متطلبات تخصص العيادة
-                  </p>
+            {/* ACCORDION CARD 3: Examination Display Customization (تخصيص أقسام شاشة الكشف الطبي) */}
+            <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
+              <button
+                type="button"
+                onClick={() => toggleCard('display')}
+                className="w-full p-5 flex items-center justify-between text-right cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-sky-500/15 text-sky-500 flex items-center justify-center font-bold">
+                    <span className="material-symbols-outlined text-xl">view_carousel</span>
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">
+                      3. تخصيص أقسام شاشة الكشف الطبي (عرض وإخفاء)
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
+                      إظهار أو إخفاء أقسام العلامات الحيوية والتحاليل والأشعة بغرفة الكشف
+                    </p>
+                  </div>
                 </div>
-              </div>
+                <span
+                  className="material-symbols-outlined text-slate-400 text-2xl transition-transform duration-200"
+                  style={{ transform: openCards.display ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                >
+                  expand_more
+                </span>
+              </button>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-                {/* Toggle 1: Vital Signs */}
-                <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex flex-col justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                        <span className="material-symbols-outlined text-base text-teal-600">vital_signs</span>
-                        العلامات الحيوية
-                      </span>
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+              {openCards.display && (
+                <div className="p-5 pt-0 border-t border-slate-100 dark:border-white/5 text-xs pt-3">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                    {/* Toggle 1: Vitals */}
+                    <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex flex-col justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                            <span className="material-symbols-outlined text-base text-teal-600">vital_signs</span>
+                            العلامات الحيوية
+                          </span>
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              examDisplayConfig.showVitals
+                                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                                : 'bg-slate-200 dark:bg-white/10 text-slate-500'
+                            }`}
+                          >
+                            {examDisplayConfig.showVitals ? 'معروض ✓' : 'مخفي ✕'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-[#859394]">
+                          بطاقة الضغط والنبض والحرارة والوزن
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => updateExamDisplayConfig('showVitals', !examDisplayConfig.showVitals)}
+                        className={`w-full py-2 rounded-xl font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                           examDisplayConfig.showVitals
-                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                            : 'bg-slate-200 dark:bg-white/10 text-slate-500'
+                            ? 'bg-teal-600 hover:bg-teal-500 text-white shadow-xs'
+                            : 'bg-slate-200 dark:bg-[#18233C] text-slate-600 dark:text-slate-400'
                         }`}
                       >
-                        {examDisplayConfig.showVitals ? 'معروض ✓' : 'مخفي ✕'}
-                      </span>
+                        <span className="material-symbols-outlined text-sm">
+                          {examDisplayConfig.showVitals ? 'visibility' : 'visibility_off'}
+                        </span>
+                        <span>{examDisplayConfig.showVitals ? 'إخفاء' : 'إظهار'}</span>
+                      </button>
                     </div>
-                    <p className="text-[11px] text-slate-500 dark:text-[#859394]">
-                      بطاقة قياس الضغط، النبض، الحرارة، والوزن
-                    </p>
-                  </div>
 
-                  <button
-                    type="button"
-                    onClick={() => updateExamDisplayConfig('showVitals', !examDisplayConfig.showVitals)}
-                    className={`w-full py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                      examDisplayConfig.showVitals
-                        ? 'bg-teal-600 hover:bg-teal-500 text-white shadow-xs'
-                        : 'bg-slate-200 dark:bg-[#18233C] text-slate-600 dark:text-slate-400 hover:bg-slate-300'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-sm">
-                      {examDisplayConfig.showVitals ? 'visibility' : 'visibility_off'}
-                    </span>
-                    <span>{examDisplayConfig.showVitals ? 'معروض في الكشف (إخفاء)' : 'مخفي حالياً (إظهار)'}</span>
-                  </button>
-                </div>
+                    {/* Toggle 2: Labs */}
+                    <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex flex-col justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                            <span className="material-symbols-outlined text-base text-emerald-600">biotechnology</span>
+                            التحاليل الطبية
+                          </span>
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              examDisplayConfig.showLabs
+                                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                                : 'bg-slate-200 dark:bg-white/10 text-slate-500'
+                            }`}
+                          >
+                            {examDisplayConfig.showLabs ? 'معروض ✓' : 'مخفي ✕'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-[#859394]">
+                          بطاقة طلب التحاليل وتسجيل النتائج
+                        </p>
+                      </div>
 
-                {/* Toggle 2: Labs */}
-                <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex flex-col justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                        <span className="material-symbols-outlined text-base text-emerald-600">biotechnology</span>
-                        التحاليل الطبية
-                      </span>
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      <button
+                        type="button"
+                        onClick={() => updateExamDisplayConfig('showLabs', !examDisplayConfig.showLabs)}
+                        className={`w-full py-2 rounded-xl font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                           examDisplayConfig.showLabs
-                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                            : 'bg-slate-200 dark:bg-white/10 text-slate-500'
+                            ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs'
+                            : 'bg-slate-200 dark:bg-[#18233C] text-slate-600 dark:text-slate-400'
                         }`}
                       >
-                        {examDisplayConfig.showLabs ? 'معروض ✓' : 'مخفي ✕'}
-                      </span>
+                        <span className="material-symbols-outlined text-sm">
+                          {examDisplayConfig.showLabs ? 'visibility' : 'visibility_off'}
+                        </span>
+                        <span>{examDisplayConfig.showLabs ? 'إخفاء' : 'إظهار'}</span>
+                      </button>
                     </div>
-                    <p className="text-[11px] text-slate-500 dark:text-[#859394]">
-                      بطاقة طلب التحاليل المخبرية وتسجيل نتائج الفحوصات
-                    </p>
-                  </div>
 
-                  <button
-                    type="button"
-                    onClick={() => updateExamDisplayConfig('showLabs', !examDisplayConfig.showLabs)}
-                    className={`w-full py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                      examDisplayConfig.showLabs
-                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs'
-                        : 'bg-slate-200 dark:bg-[#18233C] text-slate-600 dark:text-slate-400 hover:bg-slate-300'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-sm">
-                      {examDisplayConfig.showLabs ? 'visibility' : 'visibility_off'}
-                    </span>
-                    <span>{examDisplayConfig.showLabs ? 'معروض في الكشف (إخفاء)' : 'مخفي حالياً (إظهار)'}</span>
-                  </button>
-                </div>
+                    {/* Toggle 3: Radiology */}
+                    <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex flex-col justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                            <span className="material-symbols-outlined text-base text-sky-600">radiology</span>
+                            الأشعة والتصوير
+                          </span>
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              examDisplayConfig.showRadiology
+                                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                                : 'bg-slate-200 dark:bg-white/10 text-slate-500'
+                            }`}
+                          >
+                            {examDisplayConfig.showRadiology ? 'معروض ✓' : 'مخفي ✕'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-[#859394]">
+                          بطاقة طلب الأشعة والسونار
+                        </p>
+                      </div>
 
-                {/* Toggle 3: Radiology */}
-                <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex flex-col justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                        <span className="material-symbols-outlined text-base text-sky-600">radiology</span>
-                        الأشعة والتصوير
-                      </span>
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      <button
+                        type="button"
+                        onClick={() => updateExamDisplayConfig('showRadiology', !examDisplayConfig.showRadiology)}
+                        className={`w-full py-2 rounded-xl font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                           examDisplayConfig.showRadiology
-                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                            : 'bg-slate-200 dark:bg-white/10 text-slate-500'
+                            ? 'bg-sky-600 hover:bg-sky-500 text-white shadow-xs'
+                            : 'bg-slate-200 dark:bg-[#18233C] text-slate-600 dark:text-slate-400'
                         }`}
                       >
-                        {examDisplayConfig.showRadiology ? 'معروض ✓' : 'مخفي ✕'}
-                      </span>
+                        <span className="material-symbols-outlined text-sm">
+                          {examDisplayConfig.showRadiology ? 'visibility' : 'visibility_off'}
+                        </span>
+                        <span>{examDisplayConfig.showRadiology ? 'إخفاء' : 'إظهار'}</span>
+                      </button>
                     </div>
-                    <p className="text-[11px] text-slate-500 dark:text-[#859394]">
-                      بطاقة طلب الأشعة السينية، السونار، والرنين
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ACCORDION CARD 4: Recurring Prescription Templates (القوائم المتكررة من الروشتة) */}
+            <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
+              <button
+                type="button"
+                onClick={() => toggleCard('templates')}
+                className="w-full p-5 flex items-center justify-between text-right cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-950/30 text-purple-600 dark:text-[#d0bcff] flex items-center justify-center font-bold">
+                    <span className="material-symbols-outlined text-xl">clinical_notes</span>
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
+                      <span>4. القوائم المتكررة من الروشتة</span>
+                      <span className="px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-bold text-[10px]">
+                        {savedTemplates.length} قائمة محفوظة
+                      </span>
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
+                      تُحفظ من زر «حفظ عناصر الروشتة كقائمة متكررة» بجوار حفظ الزيارة، ثم تظهر أعلى الروشتة للاستخدام السريع.
+                    </p>
+                  </div>
+                </div>
+                <span
+                  className="material-symbols-outlined text-slate-400 text-2xl transition-transform duration-200"
+                  style={{ transform: openCards.templates ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                >
+                  expand_more
+                </span>
+              </button>
+
+              {openCards.templates && (
+                <div className="p-5 pt-0 border-t border-slate-100 dark:border-white/5 text-xs pt-3 space-y-4">
+                  <div className="bg-slate-50 dark:bg-[#080e1b] p-3.5 rounded-xl border border-slate-100 dark:border-white/5">
+                    <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-xs">
+                      تُحفظ من زر <strong className="text-[#008f97] dark:text-[#00c2cb]">«حفظ عناصر الروشتة كقائمة متكررة»</strong> بجوار حفظ الزيارة، ثم تظهر أعلى الروشتة للاستخدام السريع.
                     </p>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => updateExamDisplayConfig('showRadiology', !examDisplayConfig.showRadiology)}
-                    className={`w-full py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                      examDisplayConfig.showRadiology
-                        ? 'bg-sky-600 hover:bg-sky-500 text-white shadow-xs'
-                        : 'bg-slate-200 dark:bg-[#18233C] text-slate-600 dark:text-slate-400 hover:bg-slate-300'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-sm">
-                      {examDisplayConfig.showRadiology ? 'visibility' : 'visibility_off'}
-                    </span>
-                    <span>{examDisplayConfig.showRadiology ? 'معروض في الكشف (إخفاء)' : 'مخفي حالياً (إظهار)'}</span>
-                  </button>
+                  <div className="space-y-3">
+                    <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5 border-b border-slate-100 dark:border-white/5 pb-2">
+                      <span className="material-symbols-outlined text-sm text-[#008f97] dark:text-[#00c2cb]">folder_open</span>
+                      <span>القوائم المحفوظة</span>
+                      <span className="bg-slate-100 dark:bg-white/5 px-2 py-0.5 rounded-md text-[10px] font-mono">
+                        {savedTemplates.length} قائمة
+                      </span>
+                    </h3>
+
+                    {savedTemplates.length === 0 ? (
+                      <div className="p-8 text-center text-slate-400 dark:text-slate-500 bg-slate-50/50 dark:bg-[#080e1b]/30 rounded-xl border border-dashed border-slate-200 dark:border-white/5">
+                        <span className="material-symbols-outlined text-3xl text-slate-300 dark:text-slate-700 mb-1 block">receipt_long</span>
+                        <p className="font-bold text-xs text-slate-600 dark:text-slate-400">لا توجد قوائم محفوظة بعد.</p>
+                        <p className="text-[11px] text-slate-400 dark:text-[#859394] mt-1">أنشئ واحدة من زر الحفظ بجوار «حفظ الزيارة» لتظهر أدوات التعديل هنا.</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {savedTemplates.map((tmpl) => (
+                          <div
+                            key={tmpl.id}
+                            className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex items-start justify-between gap-3"
+                          >
+                            <div className="space-y-1 min-w-0">
+                              <h4 className="font-bold text-slate-900 dark:text-[#dde2f5] truncate">{tmpl.title}</h4>
+                              {tmpl.diagnoses && tmpl.diagnoses.length > 0 && (
+                                <p className="text-[11px] text-slate-500 dark:text-[#859394] truncate">
+                                  <strong>التشخيص:</strong> {tmpl.diagnoses.map((d: any) => d.nameAr || d.nameEn || d.name).join('، ')}
+                                </p>
+                              )}
+                              {tmpl.prescription && tmpl.prescription.length > 0 && (
+                                <p className="text-[11px] text-slate-500 dark:text-[#859394] truncate">
+                                  <strong>الأدوية ({tmpl.prescription.length}):</strong>{' '}
+                                  {tmpl.prescription.map((p: any) => p.drugName || p.name).join(' + ')}
+                                </p>
+                              )}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteTemplate(tmpl.id)}
+                              className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 transition-colors border border-rose-100 dark:border-rose-900/30 cursor-pointer"
+                              title="حذف القائمة"
+                            >
+                              <span className="material-symbols-outlined text-sm">delete</span>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
+
+            {/* ACCORDION CARD 5: Version & Updates Info (معلومات وإصدار النظام) */}
+            <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
+              <button
+                type="button"
+                onClick={() => toggleCard('version')}
+                className="w-full p-5 flex items-center justify-between text-right cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-[#00c2cb]/15 text-[#008f97] dark:text-[#00c2cb] flex items-center justify-center font-bold">
+                    <span className="material-symbols-outlined text-xl">verified</span>
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
+                      <span>5. رقم الإصدار والتحديثات الحالية</span>
+                      <span className="px-2.5 py-0.5 rounded-full bg-[#00c2cb]/20 text-[#008f97] dark:text-[#00c2cb] font-black text-[11px] border border-[#00c2cb]/30">
+                        v2.6.0 Stable
+                      </span>
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
+                      بطاقة معلومات الإصدار المستقر وأبرز التحديثات المضافة للنظام
+                    </p>
+                  </div>
+                </div>
+                <span
+                  className="material-symbols-outlined text-slate-400 text-2xl transition-transform duration-200"
+                  style={{ transform: openCards.version ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                >
+                  expand_more
+                </span>
+              </button>
+
+              {openCards.version && (
+                <div className="p-5 pt-0 border-t border-slate-100 dark:border-white/5 text-xs pt-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-900 dark:text-white">Soli Medical Clinic System</span>
+                    <span className="text-[10px] text-slate-400 font-mono">2026.09 Release</span>
+                  </div>
+                  <ul className="list-disc list-inside space-y-1 text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
+                    <li>اعتماد الشعار الرسمي وتوحيد الهوية البصرية (Soli Medical Clinic).</li>
+                    <li>إدارة وتسعيرة ديناميكية متغيرة لجميع أنواع الزيارات وإضافة/حذف الكشوفات.</li>
+                    <li>نقل إعدادات طابعات الإيصالات والروشتات إلى صفحة الروشتة.</li>
+                    <li>تحويل كافة بطاقات وقوائم الإعدادات إلى قوائم منسدلة أنيقة.</li>
+                  </ul>
+                </div>
+              )}
+            </div>
+
           </div>
 
           {/* Action / Save Sidebar (4 Cols) */}
-          <div className="lg:col-span-4 flex flex-col gap-6">
+          <div className="lg:col-span-4 flex flex-col gap-4">
             <div className="bg-white dark:bg-[#111A2E] p-5 sm:p-6 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs space-y-4">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">حفظ الإعدادات والتطبيق</h3>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
+                <span className="material-symbols-outlined text-[#00c2cb] text-lg">save</span>
+                <span>حفظ وتطبيق إعدادات النظام</span>
+              </h3>
               <p className="text-xs text-slate-500 dark:text-[#bbc9ca] leading-relaxed">
-                سيتم تطبيق أي تعديل في تسعيرة الكشوفات أو أسماء الفروع فوراً على جميع شاشات الاستقبال والدرج وغرفة الكشف.
+                تطبق أي تغييرات في أنواع الزيارات أو الأسعار أو التنبيهات مباشرة على كافة أجهزة العيادة وغرفة الكشف.
               </p>
               <button
                 type="submit"
                 className="w-full py-3.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] font-bold text-xs shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95"
               >
-                حفظ وتطبيق التغييرات
+                حفظ كافة التغييرات
               </button>
             </div>
 
             <div className="bg-white dark:bg-[#111A2E] p-5 sm:p-6 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs space-y-3">
               <h3 className="text-xs font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-1.5">
                 <span className="material-symbols-outlined text-emerald-600 text-base">cloud_sync</span>
-                <span>النسخ الاحتياطي والأمان</span>
+                <span>النسخ الاحتياطي السحابي</span>
               </h3>
               <p className="text-[11px] text-slate-500 dark:text-[#859394]">
-                تطبيق عيادات سولي يعمل بنظام المزامنة السحابية الدورية. آخر نسخة احتياطية تمت اليوم الساعة 08:30 ص.
+                البيانات محفوظة ومزامن مع نظام Firestore السحابي لعيادات سولي الطبية.
               </p>
               <button
                 type="button"
@@ -1059,6 +1009,68 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             </div>
           </div>
         </form>
+      )}
+
+      {/* MODAL: Add New Visit Type */}
+      {showAddVisitModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white dark:bg-[#111A2E] border border-slate-200 dark:border-white/10 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/5 pb-3">
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                <span className="material-symbols-outlined text-[#00c2cb] text-xl">add_circle</span>
+                <span>إضافة نوع زيارة / كشف جديد</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAddVisitModal(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white font-bold text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleAddNewVisitSubmit} className="space-y-4 text-xs">
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-800 dark:text-[#dde2f5]">اسم نوع الزيارة (مثال: كشف استشاري، كشف منزلي)</label>
+                <input
+                  type="text"
+                  required
+                  value={newVisitName}
+                  onChange={(e) => setNewVisitName(e.target.value)}
+                  placeholder="أدخل مسمى الزيارة..."
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-[#18233C] border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white font-medium focus:outline-none"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-800 dark:text-[#dde2f5]">سعر الزيارة (بالجنية المصري)</label>
+                <input
+                  type="number"
+                  required
+                  value={newVisitFee}
+                  onChange={(e) => setNewVisitFee(Number(e.target.value))}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-[#18233C] border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white font-mono font-bold focus:outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-white/5">
+                <button
+                  type="button"
+                  onClick={() => setShowAddVisitModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-200 cursor-pointer"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold shadow-md cursor-pointer"
+                >
+                  إضافة وإدراج
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -36,12 +36,10 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
   followUps = [],
 }) => {
   const { canAccess } = usePermissions();
-  const [selectedPatientId, setSelectedPatientId] = useState<string>(patients[0]?.id || '');
+  const [selectedPatientId, setSelectedPatientId] = useState<string>('');
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<'visits' | 'labs' | 'chronic' | 'billing' | 'prescriptions'>('visits');
   const [patientToDelete, setPatientToDelete] = useState<PatientListItem | null>(null);
-
-  const selectedPatient = patients.find((p) => p.id === selectedPatientId) || patients[0];
 
   const filteredPatients = patients.filter((p) => {
     if (!search.trim()) return true;
@@ -53,38 +51,17 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
     );
   });
 
-  const patientVisits = selectedPatient
-    ? visits
-        .filter((v) => v.patientId === selectedPatient.id)
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    : [];
-
-  const patientInvoices = selectedPatient
-    ? invoices
-        .filter((i) => i.patientId === selectedPatient.id)
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    : [];
-
-  const patientPrescriptions = selectedPatient
-    ? prescriptions
-        .filter((pr) => pr.patientId === selectedPatient.id)
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    : [];
-
-  const patientLabOrders = selectedPatient
-    ? labOrders
-        .filter((l) => l.patientId === selectedPatient.id)
-        .sort((a, b) => new Date(b.orderedAt).getTime() - new Date(a.orderedAt).getTime())
-    : [];
-
-  const patientRadiologyOrders = selectedPatient
-    ? radiologyOrders
-        .filter((r) => r.patientId === selectedPatient.id)
-        .sort((a, b) => new Date(b.orderedAt).getTime() - new Date(a.orderedAt).getTime())
-    : [];
+  const toggleExpandPatient = (patientId: string) => {
+    if (selectedPatientId === patientId) {
+      setSelectedPatientId(''); // Collapse if clicked again
+    } else {
+      setSelectedPatientId(patientId);
+      setActiveTab('visits'); // Reset to visits tab for the newly opened patient
+    }
+  };
 
   return (
-    <div className="flex flex-col w-full pb-16 space-y-6 text-slate-800 dark:text-[#dde2f5]">
+    <div className="flex flex-col w-full pb-16 space-y-6 text-slate-800 dark:text-[#dde2f5]" id="patient-files-screen">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -103,373 +80,487 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
 
         <button
           onClick={() => onNavigate('new-visit')}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] text-xs font-bold shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer self-start sm:self-auto"
+          className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] text-xs font-bold shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer self-start sm:self-auto"
+          id="btn-add-new-patient"
         >
           <span className="material-symbols-outlined text-base">person_add</span>
           <span>+ فتح ملف مريض جديد</span>
         </button>
       </div>
 
-      {/* Main Grid: Patients List (4 Cols) + Dossier Detail (8 Cols) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Patient Selection Column (4 Cols) */}
-        <div className="lg:col-span-4 flex flex-col gap-4">
-          <div className="relative">
-            <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-[#859394] text-base">
-              search
-            </span>
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="بحث بالاسم، رقم الهاتف، أو كود الملف..."
-              className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] placeholder:text-slate-400 dark:placeholder:text-[#859394] pr-9 pl-4 py-2.5 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#00c2cb] border border-slate-200 dark:border-white/5 shadow-xs"
-            />
-          </div>
+      {/* Search Input */}
+      <div className="relative">
+        <span className="material-symbols-outlined absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-[#859394] text-base">
+          search
+        </span>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="بحث بالاسم، رقم الهاتف، أو كود الملف..."
+          className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] placeholder:text-slate-400 dark:placeholder:text-[#859394] pr-10 pl-4 py-3 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#00c2cb] border border-slate-200 dark:border-white/5 shadow-xs transition-all"
+          id="patient-search-input"
+        />
+      </div>
 
-          <div className="space-y-2 max-h-[650px] overflow-y-auto pr-1">
-            {filteredPatients.length === 0 ? (
-              <div className="p-8 text-center bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 text-xs text-slate-400">
-                لا يوجد مرضى مطابقين لنتائج البحث
-              </div>
-            ) : (
-              filteredPatients.map((p) => {
-                const isSelected = p.id === selectedPatient?.id;
-                return (
-                  <div
-                    key={p.id}
-                    onClick={() => setSelectedPatientId(p.id)}
-                    className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
-                      isSelected
-                        ? 'bg-teal-50 dark:bg-[#18233C] border-teal-400 dark:border-[#00c2cb]/60 shadow-xs'
-                        : 'bg-white dark:bg-[#111A2E] border-slate-200 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-[#18233C]/50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div
-                        className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
-                          isSelected
-                            ? 'bg-[#00c2cb] text-[#08101C]'
-                            : 'bg-slate-100 dark:bg-[#080e1b] text-[#008f97] dark:text-[#00c2cb] border border-slate-200 dark:border-white/5'
-                        }`}
-                      >
-                        {p.gender === 'male' ? 'ذكر' : 'أنثى'}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] truncate">{p.name}</div>
-                        <div className="text-[11px] text-slate-500 dark:text-[#859394] font-mono mt-0.5">
-                          <span dir="ltr">{p.phone}</span> • #{p.medicalCode}
-                        </div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] text-[#008f97] dark:text-[#45dee7] font-mono shrink-0 font-bold">
-                      {p.age} سنة
-                    </span>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-
-        {/* Selected Patient Dossier (8 Cols) */}
-        {selectedPatient ? (
-          <div className="lg:col-span-8 flex flex-col gap-5">
-            {/* Patient Demographic Banner */}
-            <div className="bg-white dark:bg-[#111A2E] p-6 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs flex flex-col gap-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-white/5 pb-4">
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 rounded-2xl bg-teal-50 dark:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#00c2cb] border border-teal-200 dark:border-[#00c2cb]/40 flex items-center justify-center text-2xl font-bold shrink-0">
-                    <span className="material-symbols-outlined text-3xl">account_circle</span>
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h2 className="text-xl font-bold text-slate-900 dark:text-[#dde2f5]">{selectedPatient.name}</h2>
-                      <span className="bg-teal-50 dark:bg-[#00c2cb]/15 text-[#008f97] dark:text-[#45dee7] text-xs font-mono font-bold px-2.5 py-0.5 rounded-full border border-teal-200 dark:border-[#00c2cb]/20">
-                        #{selectedPatient.medicalCode}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-500 dark:text-[#bbc9ca] mt-1">
-                      {selectedPatient.age} سنة • {selectedPatient.gender === 'male' ? 'ذكر' : 'أنثى'} • فصيلة الدم:{' '}
-                      <strong className="text-[#008f97] dark:text-[#00c2cb] font-mono">{selectedPatient.bloodGroup || 'O+'}</strong> • {selectedPatient.governorate || 'القاهرة'}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 flex-wrap">
-                  {canAccess('clinical-exam') && (
-                    <button
-                      onClick={() => {
-                        onSelectPatientForExam(selectedPatient);
-                        onNavigate('clinical-exam');
-                      }}
-                      className="px-3.5 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] text-xs font-bold shadow-sm shadow-[#00c2cb]/20 transition-all cursor-pointer"
-                    >
-                      بدء كشف إكلينيكي
-                    </button>
-                  )}
-                  {canAccess('prescription-pad') && (
-                    <button
-                      onClick={() => onNavigate('prescription-pad')}
-                      className="px-3 py-2 rounded-xl bg-purple-50 dark:bg-[#571bc1]/60 hover:bg-purple-100 dark:hover:bg-[#571bc1] text-purple-700 dark:text-[#e9ddff] text-xs font-bold transition-all cursor-pointer border border-purple-200 dark:border-transparent"
-                    >
-                      إصدار روشتة
-                    </button>
-                  )}
-                  {onDeletePatient && (
-                    <button
-                      type="button"
-                      onClick={() => setPatientToDelete(selectedPatient)}
-                      className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 text-xs font-bold transition-all cursor-pointer border border-rose-200 dark:border-rose-900/30 flex items-center gap-1"
-                      title="حذف ملف المريض بالكامل"
-                    >
-                      <span className="material-symbols-outlined text-sm">delete</span>
-                      <span>حذف الملف</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Patient Key Indicators */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                <div className="p-3 bg-slate-50 dark:bg-[#080e1b] rounded-xl border border-slate-200 dark:border-white/5">
-                  <span className="text-slate-500 dark:text-[#859394] block text-[11px]">تاريخ التسجيل بالعيادة:</span>
-                  <strong className="text-slate-900 dark:text-[#dde2f5] font-mono">{selectedPatient.registrationDate || 'اليوم'}</strong>
-                </div>
-                <div className="p-3 bg-slate-50 dark:bg-[#080e1b] rounded-xl border border-slate-200 dark:border-white/5">
-                  <span className="text-slate-500 dark:text-[#859394] block text-[11px]">عدد الزيارات المثبتة:</span>
-                  <strong className="text-[#008f97] dark:text-[#45dee7] font-mono">{patientVisits.length} زيارات</strong>
-                </div>
-                <div className="p-3 bg-slate-50 dark:bg-[#080e1b] rounded-xl border border-slate-200 dark:border-white/5">
-                  <span className="text-slate-500 dark:text-[#859394] block text-[11px]">إجمالي المدفوعات:</span>
-                  <strong className="text-emerald-600 dark:text-[#10B981] font-mono">{selectedPatient.totalPaid || 0} ج.م</strong>
-                </div>
-                <div className="p-3 bg-slate-50 dark:bg-[#080e1b] rounded-xl border border-slate-200 dark:border-white/5">
-                  <span className="text-slate-500 dark:text-[#859394] block text-[11px]">آخر تشخيص إكلينيكي:</span>
-                  <strong className="text-purple-700 dark:text-[#d0bcff] truncate block">{selectedPatient.lastDiagnosis || 'كشف عيادة'}</strong>
-                </div>
-              </div>
-
-              {/* Allergy Banner if any */}
-              {selectedPatient.allergies && selectedPatient.allergies.length > 0 && (
-                <div className="bg-red-50 dark:bg-[#ef4444]/15 border border-red-200 dark:border-[#ef4444]/30 text-red-700 dark:text-[#ef4444] p-3 rounded-xl flex items-center gap-2 text-xs font-bold">
-                  <span className="material-symbols-outlined text-base">warning</span>
-                  <span>تنبيه حساسية دوائية: {selectedPatient.allergies.join('، ')}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Dossier Tabs */}
-            <div className="flex items-center gap-2 border-b border-slate-200 dark:border-white/5 pb-1 overflow-x-auto">
-              {[
-                { id: 'visits', label: `الزيارات والكشوفات (${patientVisits.length})`, icon: 'history' },
-                { id: 'prescriptions', label: `الروشتات (${patientPrescriptions.length})`, icon: 'prescriptions' },
-                { id: 'labs', label: `التحاليل والأشعة (${patientLabOrders.length + patientRadiologyOrders.length})`, icon: 'science' },
-                { id: 'chronic', label: 'الأمراض المزمنة والتاريخ', icon: 'healing' },
-                { id: 'billing', label: `سجل الفواتير (${patientInvoices.length})`, icon: 'receipt_long' },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
-                  className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                    activeTab === tab.id
-                      ? 'bg-[#00c2cb] text-[#08101C] shadow-xs'
-                      : 'bg-white dark:bg-[#111A2E] text-slate-600 dark:text-[#bbc9ca] hover:bg-slate-50 dark:hover:bg-[#18233C] border border-slate-200 dark:border-white/5'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-base">{tab.icon}</span>
-                  <span>{tab.label}</span>
-                </button>
-              ))}
-            </div>
-
-            {/* Tab Contents */}
-            <div className="bg-white dark:bg-[#111A2E] p-6 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs">
-              {activeTab === 'visits' && (
-                <div className="space-y-4">
-                  <h3 className="text-xs font-bold text-slate-900 dark:text-[#dde2f5] mb-2">تاريخ الزيارات والكشوفات بالعيادة</h3>
-                  {patientVisits.length === 0 ? (
-                    <div className="p-8 text-center text-xs text-slate-400 bg-slate-50 dark:bg-[#080e1b] rounded-xl border border-slate-200 dark:border-white/5">
-                      لا توجد زيارات مسجلة لهذا المريض حتى الآن
-                    </div>
-                  ) : (
-                    <div className="border-r-2 border-teal-300 dark:border-[#00c2cb]/40 pr-4 space-y-4">
-                      {patientVisits.map((v) => (
-                        <div key={v.visitId} className="relative">
-                          <span className={`w-2.5 h-2.5 rounded-full absolute -right-[21px] top-1.5 ${v.status === 'COMPLETED' ? 'bg-[#00c2cb]' : 'bg-amber-400'}`}></span>
-                          <div className="text-xs font-mono text-[#008f97] dark:text-[#00c2cb] font-bold">
-                            {new Date(v.createdAt).toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                          </div>
-                          <div className="font-bold text-sm text-slate-900 dark:text-[#dde2f5] mt-0.5">
-                            {v.visitType === 'NEW' ? 'كشف جديد' : 'استشارة / متابعة'} — {v.clinicalData?.chiefComplaint || v.receptionistData?.symptoms || 'كشف عيادة'}
-                          </div>
-                          {v.clinicalData?.diagnosis && v.clinicalData.diagnosis.length > 0 && (
-                            <p className="text-xs text-slate-600 dark:text-[#bbc9ca] mt-1">
-                              التشخيص: {v.clinicalData.diagnosis.join('، ')}
-                            </p>
-                          )}
-                          {v.clinicalData?.treatment && (
-                            <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
-                              العلاج الموصوف: {v.clinicalData.treatment}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {activeTab === 'prescriptions' && (
-                <div className="space-y-3">
-                  <h3 className="text-xs font-bold text-slate-900 dark:text-[#dde2f5]">الروشتات الطبية المعتمدة للمريض</h3>
-                  {patientPrescriptions.length === 0 ? (
-                    <div className="p-8 text-center text-xs text-slate-400 bg-slate-50 dark:bg-[#080e1b] rounded-xl border border-slate-200 dark:border-white/5">
-                      لا توجد روشتات مسجلة لهذا المريض
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {patientPrescriptions.map((pr) => (
-                        <div key={pr.prescriptionId} className="p-4 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 space-y-2">
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="font-bold text-[#008f97] dark:text-[#00c2cb]">
-                              روشتة بتاريخ {new Date(pr.createdAt).toLocaleDateString('ar-EG')}
-                            </span>
-                            <span className="text-slate-400 text-[11px] font-mono">{pr.items.length} أصناف</span>
-                          </div>
-                          <div className="space-y-1.5 pt-1">
-                            {pr.items.map((it, idx) => (
-                              <div key={idx} className="text-xs flex items-center justify-between bg-white dark:bg-[#111A2E] p-2.5 rounded-lg border border-slate-100 dark:border-white/5">
-                                <span className="font-bold text-slate-900 dark:text-[#dde2f5]">{it.name} {it.strength}</span>
-                                <span className="text-slate-500 dark:text-[#bbc9ca]">{it.dose} • {it.duration}</span>
-                              </div>
-                            ))}
-                          </div>
-                          {pr.notes && (
-                            <p className="text-[11px] text-slate-500 italic mt-1">ملاحظات: {pr.notes}</p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {activeTab === 'labs' && (
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="text-xs font-bold text-slate-900 dark:text-[#dde2f5] mb-3">تقارير التحاليل المعملية</h3>
-                    {patientLabOrders.length === 0 ? (
-                      <div className="p-4 text-center text-xs text-slate-400 bg-slate-50 dark:bg-[#080e1b] rounded-xl border border-slate-200 dark:border-white/5">
-                        لا توجد تحاليل معملية مسجلة
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {patientLabOrders.map((l) => (
-                          <div key={l.labOrderId} className="p-3 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <span className="material-symbols-outlined text-2xl text-[#008f97] dark:text-[#00c2cb]">biotech</span>
-                              <div>
-                                <div className="text-xs font-bold text-slate-900 dark:text-[#dde2f5]">{l.testName}</div>
-                                <div className="text-[10px] text-slate-400 dark:text-[#859394]">
-                                  {new Date(l.orderedAt).toLocaleDateString('ar-EG')} • {l.notes || 'طلب معملي'}
-                                </div>
-                              </div>
-                            </div>
-                            <span className="px-2.5 py-1 rounded bg-teal-50 dark:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#45dee7] text-xs font-bold">
-                              {l.status === 'RESULT' ? (l.result || 'تم الفحص') : 'مطلوب'}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div>
-                    <h3 className="text-xs font-bold text-slate-900 dark:text-[#dde2f5] mb-3">تقارير الأشعة والتصوير الطبي</h3>
-                    {patientRadiologyOrders.length === 0 ? (
-                      <div className="p-4 text-center text-xs text-slate-400 bg-slate-50 dark:bg-[#080e1b] rounded-xl border border-slate-200 dark:border-white/5">
-                        لا توجد فحوصات أشعة مسجلة
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {patientRadiologyOrders.map((r) => (
-                          <div key={r.radiologyOrderId} className="p-3 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <span className="material-symbols-outlined text-2xl text-purple-600 dark:text-[#d0bcff]">monitor_heart</span>
-                              <div>
-                                <div className="text-xs font-bold text-slate-900 dark:text-[#dde2f5]">{r.radiologyName}</div>
-                                <div className="text-[10px] text-slate-400 dark:text-[#859394]">
-                                  {new Date(r.orderedAt).toLocaleDateString('ar-EG')} • {r.notes || 'طلب أشعة'}
-                                </div>
-                              </div>
-                            </div>
-                            <span className="px-2.5 py-1 rounded bg-purple-50 dark:bg-[#571bc1]/20 text-purple-700 dark:text-[#d0bcff] text-xs font-bold">
-                              {r.status === 'REPORT' ? (r.result || 'تقرير جاهز') : 'مطلوب'}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'chronic' && (
-                <div className="space-y-3">
-                  <h3 className="text-xs font-bold text-slate-900 dark:text-[#dde2f5]">الأمراض المزمنة المثبتة</h3>
-                  {!selectedPatient.chronicConditions || selectedPatient.chronicConditions.length === 0 ? (
-                    <div className="p-4 text-center text-xs text-slate-400 bg-slate-50 dark:bg-[#080e1b] rounded-xl border border-slate-200 dark:border-white/5">
-                      لا توجد أمراض مزمنة مسجلة
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {selectedPatient.chronicConditions.map((cond) => (
-                        <div key={cond} className="p-3 bg-slate-50 dark:bg-[#080e1b] rounded-xl border border-slate-200 dark:border-white/5 flex items-center gap-3">
-                          <span className="material-symbols-outlined text-xl text-[#008f97] dark:text-[#00c2cb]">check_box</span>
-                          <span className="text-xs font-bold text-slate-900 dark:text-[#dde2f5]">{cond}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {activeTab === 'billing' && (
-                <div className="space-y-3">
-                  <h3 className="text-xs font-bold text-slate-900 dark:text-[#dde2f5]">سجل المعاملات والمدفوعات المالية</h3>
-                  {patientInvoices.length === 0 ? (
-                    <div className="p-8 text-center text-xs text-slate-400 bg-slate-50 dark:bg-[#080e1b] rounded-xl border border-slate-200 dark:border-white/5">
-                      لا توجد فواتير أو معاملات مالية مسجلة لهذا المريض
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {patientInvoices.map((inv) => (
-                        <div key={inv.invoiceId} className="p-3 bg-slate-50 dark:bg-[#080e1b] rounded-xl border border-slate-200 dark:border-white/5 flex items-center justify-between text-xs">
-                          <div>
-                            <span className="font-bold text-slate-900 dark:text-[#dde2f5]">فاتورة كشف وزيارة</span>
-                            <span className="text-[11px] text-slate-400 dark:text-[#859394] block font-mono">
-                              {new Date(inv.createdAt).toLocaleDateString('ar-EG')} • #{inv.invoiceId.slice(0, 8)}
-                            </span>
-                          </div>
-                          <div className="text-left">
-                            <span className="font-mono font-bold text-[#008f97] dark:text-[#45dee7]">{inv.total} ج.م</span>
-                            <span className="text-[10px] text-emerald-600 dark:text-[#10B981] block">
-                              {inv.status === 'PAID' ? 'مسدد بالكامل ✓' : 'غير مسدد'}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+      {/* Main Patients List - Expandable Layout */}
+      <div className="space-y-4">
+        {filteredPatients.length === 0 ? (
+          <div className="p-12 text-center bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 text-xs text-slate-400">
+            لا يوجد مرضى مطابقين لنتائج البحث
           </div>
         ) : (
-          <div className="lg:col-span-8 p-12 text-center bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 text-slate-400 text-xs">
-            قم باختيار مريض من القائمة لعرض ملفه الطبي
-          </div>
+          filteredPatients.map((p) => {
+            const isSelected = p.id === selectedPatientId;
+
+            // Fetch patient-specific data dynamically
+            const pVisits = visits
+              .filter((v) => v.patientId === p.id)
+              .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+            const pInvoices = invoices
+              .filter((i) => i.patientId === p.id)
+              .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+            const pPrescriptions = prescriptions
+              .filter((pr) => pr.patientId === p.id)
+              .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+            const pLabOrders = labOrders
+              .filter((l) => l.patientId === p.id)
+              .sort((a, b) => new Date(b.orderedAt).getTime() - new Date(a.orderedAt).getTime());
+
+            const pRadiologyOrders = radiologyOrders
+              .filter((r) => r.patientId === p.id)
+              .sort((a, b) => new Date(b.orderedAt).getTime() - new Date(a.orderedAt).getTime());
+
+            return (
+              <div
+                key={p.id}
+                className={`rounded-2xl border transition-all overflow-hidden ${
+                  isSelected
+                    ? 'bg-white dark:bg-[#111A2E] border-teal-500/60 dark:border-[#00c2cb]/60 shadow-md ring-1 ring-teal-500/10'
+                    : 'bg-white dark:bg-[#111A2E] border-slate-200 dark:border-white/5 hover:border-slate-300 dark:hover:border-white/10 shadow-xs'
+                }`}
+                id={`patient-card-${p.id}`}
+              >
+                {/* Clickable Header for Patient Card */}
+                <div
+                  onClick={() => toggleExpandPatient(p.id)}
+                  className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer select-none"
+                >
+                  {/* Basic Patient Info */}
+                  <div className="flex items-center gap-4 min-w-0">
+                    <div
+                      className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-sm shrink-0 transition-all ${
+                        isSelected
+                          ? 'bg-[#00c2cb] text-[#08101C]'
+                          : 'bg-slate-100 dark:bg-[#080e1b] text-[#008f97] dark:text-[#00c2cb] border border-slate-200 dark:border-white/5'
+                      }`}
+                    >
+                      {p.gender === 'male' ? 'ذكر' : 'أنثى'}
+                    </div>
+
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-base font-bold text-slate-900 dark:text-[#dde2f5]">{p.name}</span>
+                        <span className="bg-teal-50 dark:bg-[#00c2cb]/15 text-[#008f97] dark:text-[#45dee7] text-[10px] font-mono font-bold px-2 py-0.5 rounded-md border border-teal-200/50 dark:border-transparent">
+                          #{p.medicalCode}
+                        </span>
+                        {p.bloodType && p.bloodType !== 'غير محدد' && (
+                          <span className="bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 text-[10px] font-mono font-bold px-2 py-0.5 rounded-md border border-red-100 dark:border-transparent">
+                            {p.bloodType}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-slate-500 dark:text-[#859394] mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <span className="font-mono">{p.phone}</span>
+                        <span>•</span>
+                        <span>{p.age} سنة</span>
+                        {p.address && (
+                          <>
+                            <span>•</span>
+                            <span className="truncate max-w-[200px]">{p.address}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Actions & Expanded Indicator */}
+                  <div className="flex items-center justify-between md:justify-end gap-3 shrink-0 border-t md:border-t-0 pt-3 md:pt-0 border-slate-100 dark:border-white/5">
+                    <div className="flex items-center gap-2">
+                      {canAccess('clinical-exam') && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSelectPatientForExam(p);
+                            onNavigate('clinical-exam');
+                          }}
+                          className="px-3.5 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] text-xs font-bold shadow-xs transition-all cursor-pointer whitespace-nowrap"
+                        >
+                          بدء كشف إكلينيكي
+                        </button>
+                      )}
+                      {canAccess('prescription-pad') && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSelectPatientForExam(p);
+                            onNavigate('prescription-pad');
+                          }}
+                          className="px-3 py-2 rounded-xl bg-purple-50 dark:bg-[#571bc1]/60 hover:bg-purple-100 dark:hover:bg-[#571bc1] text-purple-700 dark:text-[#e9ddff] text-xs font-bold transition-all cursor-pointer border border-purple-200 dark:border-transparent whitespace-nowrap"
+                        >
+                          إصدار روشتة
+                        </button>
+                      )}
+                      {onDeletePatient && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPatientToDelete(p);
+                          }}
+                          className="p-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 transition-all cursor-pointer border border-rose-200 dark:border-rose-900/30 flex items-center justify-center shrink-0"
+                          title="حذف ملف المريض بالكامل"
+                        >
+                          <span className="material-symbols-outlined text-sm">delete</span>
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 transition-all text-slate-400">
+                      <span className="material-symbols-outlined transition-transform duration-300 block select-none" style={{ transform: isSelected ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                        expand_more
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Expanded Dossier Details (Directly under patient name!) */}
+                {isSelected && (
+                  <div className="border-t border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-[#0e1626]/40 p-4 sm:p-6 space-y-6">
+                    {/* Patient Key Indicators Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                      <div className="p-3 bg-white dark:bg-[#111A2E] rounded-xl border border-slate-200/60 dark:border-white/5">
+                        <span className="text-slate-400 dark:text-[#859394] block text-[10px] mb-1">تاريخ التسجيل:</span>
+                        <strong className="text-slate-800 dark:text-[#dde2f5] font-mono">{p.registrationDate || 'اليوم'}</strong>
+                      </div>
+                      <div className="p-3 bg-white dark:bg-[#111A2E] rounded-xl border border-slate-200/60 dark:border-white/5">
+                        <span className="text-slate-400 dark:text-[#859394] block text-[10px] mb-1">عدد الزيارات:</span>
+                        <strong className="text-[#008f97] dark:text-[#45dee7] font-mono">{pVisits.length} زيارة طائرة</strong>
+                      </div>
+                      <div className="p-3 bg-white dark:bg-[#111A2E] rounded-xl border border-slate-200/60 dark:border-white/5">
+                        <span className="text-slate-400 dark:text-[#859394] block text-[10px] mb-1">إجمالي المدفوعات:</span>
+                        <strong className="text-emerald-600 dark:text-[#10B981] font-mono">{p.totalPaid || 0} ج.م</strong>
+                      </div>
+                      <div className="p-3 bg-white dark:bg-[#111A2E] rounded-xl border border-slate-200/60 dark:border-white/5">
+                        <span className="text-slate-400 dark:text-[#859394] block text-[10px] mb-1">آخر تشخيص إكلينيكي:</span>
+                        <strong className="text-purple-700 dark:text-[#d0bcff] truncate block">{p.lastDiagnosis || 'كشف عيادة باطنة'}</strong>
+                      </div>
+                    </div>
+
+                    {/* Allergy Warning if any */}
+                    {p.allergies && p.allergies.length > 0 && (
+                      <div className="bg-red-50 dark:bg-red-950/30 border border-red-200/50 dark:border-red-900/30 text-red-700 dark:text-red-400 p-3 rounded-xl flex items-center gap-2 text-xs font-bold">
+                        <span className="material-symbols-outlined text-base">warning</span>
+                        <span>تنبيه حساسية دوائية: {p.allergies.join('، ')}</span>
+                      </div>
+                    )}
+
+                    {/* Dossier Tabs Container */}
+                    <div className="flex items-center gap-2 border-b border-slate-200 dark:border-white/5 pb-1.5 overflow-x-auto">
+                      {[
+                        { id: 'visits', label: `الزيارات والكشوفات (${pVisits.length})`, icon: 'history' },
+                        { id: 'prescriptions', label: `الروشتات (${pPrescriptions.length})`, icon: 'description' },
+                        { id: 'labs', label: `التحاليل والأشعة (${pLabOrders.length + pRadiologyOrders.length})`, icon: 'biotech' },
+                        { id: 'chronic', label: 'الأمراض المزمنة والتاريخ', icon: 'healing' },
+                        { id: 'billing', label: `سجل الفواتير (${pInvoices.length})`, icon: 'receipt_long' },
+                      ].map((tab) => (
+                        <button
+                          key={tab.id}
+                          onClick={() => setActiveTab(tab.id as any)}
+                          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap border ${
+                            activeTab === tab.id
+                              ? 'bg-[#00c2cb] text-[#08101C] border-[#00c2cb] shadow-xs'
+                              : 'bg-white dark:bg-[#111A2E] text-slate-600 dark:text-[#bbc9ca] hover:bg-slate-50 dark:hover:bg-[#18233C] border-slate-200 dark:border-white/5'
+                          }`}
+                        >
+                          <span className="material-symbols-outlined text-base">{tab.icon}</span>
+                          <span>{tab.label}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Active Tab Panel */}
+                    <div className="bg-white dark:bg-[#111A2E] p-4 sm:p-5 rounded-xl border border-slate-200 dark:border-white/5 shadow-xs">
+                      {activeTab === 'visits' && (
+                        <div className="space-y-4">
+                          <h3 className="text-xs font-bold text-slate-950 dark:text-[#dde2f5] mb-2">تاريخ الزيارات والكشوفات بالعيادة</h3>
+                          {pVisits.length === 0 ? (
+                            <div className="p-8 text-center text-xs text-slate-400 bg-slate-50/50 dark:bg-[#080e1b]/30 rounded-xl border border-slate-200/50 dark:border-white/5">
+                              لا توجد زيارات مسجلة لهذا المريض حتى الآن
+                            </div>
+                          ) : (
+                            <div className="border-r-2 border-teal-300 dark:border-[#00c2cb]/40 pr-4 space-y-6">
+                              {pVisits.map((v) => (
+                                <div key={v.visitId} className="relative">
+                                  <span className={`w-2.5 h-2.5 rounded-full absolute -right-[21px] top-1.5 ${v.status === 'COMPLETED' ? 'bg-[#00c2cb]' : 'bg-amber-400'}`}></span>
+                                  <div className="text-xs font-mono text-[#008f97] dark:text-[#00c2cb] font-bold">
+                                    {new Date(v.createdAt).toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                  </div>
+                                  <div className="font-bold text-sm text-slate-900 dark:text-[#dde2f5] mt-1">
+                                    {v.visitType === 'NEW' ? 'كشف جديد' : 'استشارة / متابعة'} — {v.clinicalData?.chiefComplaint || v.receptionistData?.symptoms || 'كشف عيادة'}
+                                  </div>
+                                  
+                                  {v.clinicalData?.diagnosis && v.clinicalData.diagnosis.length > 0 && (
+                                    <p className="text-xs text-slate-600 dark:text-[#bbc9ca] mt-1.5">
+                                      <strong className="text-slate-800 dark:text-[#dde2f5]">التشخيص:</strong> {v.clinicalData.diagnosis.join('، ')}
+                                    </p>
+                                  )}
+                                  
+                                  {v.clinicalData?.treatment && (
+                                    <p className="text-xs text-slate-500 dark:text-[#859394] mt-1">
+                                      <strong className="text-slate-800 dark:text-[#dde2f5]">العلاج:</strong> {v.clinicalData.treatment}
+                                    </p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {activeTab === 'prescriptions' && (
+                        <div className="space-y-4">
+                          <h3 className="text-xs font-bold text-slate-950 dark:text-[#dde2f5]">الروشتات الطبية المعتمدة للمريض</h3>
+                          {pPrescriptions.length === 0 ? (
+                            <div className="p-8 text-center text-xs text-slate-400 bg-slate-50/50 dark:bg-[#080e1b]/30 rounded-xl border border-slate-200/50 dark:border-white/5">
+                              لا توجد روشتات مسجلة لهذا المريض
+                            </div>
+                          ) : (
+                            <div className="space-y-4">
+                              {pPrescriptions.map((pr) => (
+                                <div key={pr.prescriptionId} className="p-4 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 space-y-2.5">
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="font-bold text-[#008f97] dark:text-[#00c2cb]">
+                                      روشتة بتاريخ {new Date(pr.createdAt).toLocaleDateString('ar-EG')}
+                                    </span>
+                                    <span className="text-slate-400 text-[10px] font-mono">{pr.items.length} صنف</span>
+                                  </div>
+                                  <div className="grid grid-cols-1 gap-2">
+                                    {pr.items.map((it, idx) => (
+                                      <div key={idx} className="text-xs flex items-center justify-between bg-white dark:bg-[#111A2E] p-2.5 rounded-lg border border-slate-200/40 dark:border-white/5">
+                                        <span className="font-bold text-slate-900 dark:text-[#dde2f5]">{it.name} {it.strength}</span>
+                                        <span className="text-slate-500 dark:text-[#bbc9ca] font-mono">{it.dose} • {it.duration}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {pr.notes && (
+                                    <p className="text-[11px] text-slate-500 dark:text-[#859394] italic mt-1 bg-slate-100/50 dark:bg-[#18233C]/40 p-2 rounded-lg">
+                                      ملاحظات وإرشادات: {pr.notes}
+                                    </p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {activeTab === 'labs' && (
+                        <div className="space-y-6">
+                          <div>
+                            <div className="flex items-center justify-between mb-3">
+                              <h3 className="text-xs font-bold text-slate-950 dark:text-[#dde2f5] flex items-center gap-1.5">
+                                <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb] text-base">biotech</span>
+                                <span>الفحوصات والتحاليل المعملية ({pLabOrders.length})</span>
+                              </h3>
+                            </div>
+                            {pLabOrders.length === 0 ? (
+                              <div className="p-4 text-center text-xs text-slate-400 bg-slate-50/50 dark:bg-[#080e1b]/30 rounded-xl border border-slate-200/50 dark:border-white/5">
+                                لا توجد تحاليل معملية مسجلة
+                              </div>
+                            ) : (
+                              <div className="space-y-2.5">
+                                {pLabOrders.map((l) => {
+                                  const hasResult = !!(l.result && l.result.trim());
+                                  const isResult = l.status === 'RESULT' || hasResult;
+                                  const isReport = l.status === 'REPORT';
+                                  return (
+                                    <div key={l.labOrderId} className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200/80 dark:border-white/5 space-y-2">
+                                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                        <div className="flex items-center gap-3">
+                                          <div className="w-8 h-8 rounded-lg bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-[#00c2cb] flex items-center justify-center">
+                                            <span className="material-symbols-outlined text-lg">science</span>
+                                          </div>
+                                          <div>
+                                            <div className="text-xs font-bold text-slate-900 dark:text-[#dde2f5]">{l.testName}</div>
+                                            <div className="text-[10px] text-slate-400 dark:text-[#859394]">
+                                              تاريخ الفحص: {new Date(l.orderedAt).toLocaleDateString('ar-EG')} {l.notes ? `• ${l.notes}` : ''}
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <div>
+                                          {isResult ? (
+                                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-[#10B981] border border-emerald-300 dark:border-emerald-700/50 shadow-xs">
+                                              <span className="material-symbols-outlined text-sm text-emerald-600">check_circle</span>
+                                              <span>النتيجة المسجلة: <strong>{l.result || 'معتمدة'}</strong></span>
+                                            </span>
+                                          ) : isReport ? (
+                                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-indigo-100 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-400 border border-indigo-300 dark:border-indigo-700/50">
+                                              <span className="material-symbols-outlined text-sm">clinical_notes</span>
+                                              <span>تقرير معملي معتمد</span>
+                                            </span>
+                                          ) : (
+                                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-[#FBBF24] border border-amber-300 dark:border-amber-700/50">
+                                              <span className="material-symbols-outlined text-sm">hourglass_top</span>
+                                              <span>مطلوب وبانتظار النتيجة</span>
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      {/* If result is recorded */}
+                                      {isResult && hasResult && (
+                                        <div className="p-2.5 rounded-lg bg-white dark:bg-[#111A2E] border border-emerald-200/60 dark:border-emerald-900/30 text-xs flex items-center justify-between">
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-slate-500 dark:text-[#859394] font-medium">النتيجة المقاسة بالتحليل:</span>
+                                            <span className="font-mono font-extrabold text-emerald-700 dark:text-[#10B981] text-sm bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-0.5 rounded border border-emerald-200/60 dark:border-emerald-800/40">
+                                              {l.result}
+                                            </span>
+                                          </div>
+                                          {l.notes && <span className="text-[11px] text-slate-500 dark:text-[#859394]">{l.notes}</span>}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="border-t border-slate-100 dark:border-white/5 pt-4">
+                            <div className="flex items-center justify-between mb-3">
+                              <h3 className="text-xs font-bold text-slate-950 dark:text-[#dde2f5] flex items-center gap-1.5">
+                                <span className="material-symbols-outlined text-purple-600 dark:text-[#d0bcff] text-base">monitor_heart</span>
+                                <span>تقارير الأشعة والتصوير الطبي ({pRadiologyOrders.length})</span>
+                              </h3>
+                            </div>
+                            {pRadiologyOrders.length === 0 ? (
+                              <div className="p-4 text-center text-xs text-slate-400 bg-slate-50/50 dark:bg-[#080e1b]/30 rounded-xl border border-slate-200/50 dark:border-white/5">
+                                لا توجد فحوصات أشعة مسجلة
+                              </div>
+                            ) : (
+                              <div className="space-y-2.5">
+                                {pRadiologyOrders.map((r) => {
+                                  const hasReport = !!(r.report && r.report.trim());
+                                  const hasResult = !!(r.result && r.result.trim());
+                                  const isRecorded = r.status === 'REPORT' || r.status === 'RESULT' || hasReport || hasResult;
+                                  const reportText = r.report || r.result || '';
+                                  return (
+                                    <div key={r.radiologyOrderId} className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200/80 dark:border-white/5 space-y-2">
+                                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                        <div className="flex items-center gap-3">
+                                          <div className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-[#d0bcff] flex items-center justify-center">
+                                            <span className="material-symbols-outlined text-lg">radiology</span>
+                                          </div>
+                                          <div>
+                                            <div className="text-xs font-bold text-slate-900 dark:text-[#dde2f5]">{r.radiologyName}</div>
+                                            <div className="text-[10px] text-slate-400 dark:text-[#859394]">
+                                              تاريخ الفحص: {new Date(r.orderedAt).toLocaleDateString('ar-EG')} {r.notes ? `• ${r.notes}` : ''}
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <div>
+                                          {isRecorded ? (
+                                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-[#d0bcff] border border-purple-300 dark:border-purple-700/50 shadow-xs">
+                                              <span className="material-symbols-outlined text-sm text-purple-600">check_circle</span>
+                                              <span>تم تسجيل التقرير الإشعاعي ✓</span>
+                                            </span>
+                                          ) : (
+                                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-[#FBBF24] border border-amber-300 dark:border-amber-700/50">
+                                              <span className="material-symbols-outlined text-sm">hourglass_top</span>
+                                              <span>مطلوب وبانتظار التقرير</span>
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      {/* Display report content if recorded */}
+                                      {isRecorded && reportText && (
+                                        <div className="p-3 rounded-lg bg-white dark:bg-[#111A2E] border border-purple-200/60 dark:border-purple-900/30 text-xs text-slate-800 dark:text-[#dde2f5] space-y-1">
+                                          <div className="flex items-center gap-1.5 text-purple-700 dark:text-[#d0bcff] font-bold text-[11px]">
+                                            <span className="material-symbols-outlined text-xs">description</span>
+                                            <span>التقرير السريري للأشعة والتصوير:</span>
+                                          </div>
+                                          <p className="leading-relaxed whitespace-pre-wrap text-slate-700 dark:text-[#c4d0e6]">{reportText}</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {activeTab === 'chronic' && (
+                        <div className="space-y-3">
+                          <h3 className="text-xs font-bold text-slate-950 dark:text-[#dde2f5]">الأمراض المزمنة المثبتة</h3>
+                          {!p.chronicConditions || p.chronicConditions.length === 0 ? (
+                            <div className="p-4 text-center text-xs text-slate-400 bg-slate-50/50 dark:bg-[#080e1b]/30 rounded-xl border border-slate-200/50 dark:border-white/5">
+                              لا توجد أمراض مزمنة مسجلة في ملف المريض
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              {p.chronicConditions.map((cond) => (
+                                <div key={cond} className="p-3 bg-slate-50 dark:bg-[#080e1b] rounded-xl border border-slate-200/60 dark:border-white/5 flex items-center gap-2.5">
+                                  <span className="material-symbols-outlined text-xl text-[#008f97] dark:text-[#00c2cb]">check_box</span>
+                                  <span className="text-xs font-bold text-slate-900 dark:text-[#dde2f5]">{cond}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {activeTab === 'billing' && (
+                        <div className="space-y-3">
+                          <h3 className="text-xs font-bold text-slate-950 dark:text-[#dde2f5]">سجل المعاملات والمدفوعات المالية</h3>
+                          {pInvoices.length === 0 ? (
+                            <div className="p-8 text-center text-xs text-slate-400 bg-slate-50/50 dark:bg-[#080e1b]/30 rounded-xl border border-slate-200/50 dark:border-white/5">
+                              لا توجد فواتير أو معاملات مالية مسجلة لهذا المريض
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              {pInvoices.map((inv) => (
+                                <div key={inv.invoiceId} className="p-3 bg-slate-50 dark:bg-[#080e1b] rounded-xl border border-slate-200 dark:border-white/5 flex items-center justify-between text-xs">
+                                  <div>
+                                    <span className="font-bold text-slate-900 dark:text-[#dde2f5]">فاتورة كشف وزيارة بالعيادة</span>
+                                    <span className="text-[10px] text-slate-400 dark:text-[#859394] block font-mono mt-0.5">
+                                      {new Date(inv.createdAt).toLocaleDateString('ar-EG')} • #{inv.invoiceId.slice(0, 8)}
+                                    </span>
+                                  </div>
+                                  <div className="text-left">
+                                    <span className="font-mono font-bold text-[#008f97] dark:text-[#45dee7]">{inv.total} ج.م</span>
+                                    <span className="text-[10px] text-emerald-600 dark:text-[#10B981] block mt-0.5">
+                                      {inv.status === 'PAID' ? 'مسدد بالكامل ✓' : 'غير مسدد'}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })
         )}
       </div>
 
@@ -505,8 +596,7 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
                   if (onDeletePatient && patientToDelete) {
                     onDeletePatient(patientToDelete.id);
                     if (selectedPatientId === patientToDelete.id) {
-                      const remaining = patients.filter((p) => p.id !== patientToDelete.id);
-                      setSelectedPatientId(remaining[0]?.id || '');
+                      setSelectedPatientId('');
                     }
                     setPatientToDelete(null);
                   }

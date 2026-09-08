@@ -3,6 +3,10 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
+  html {
+    font-size: 17.5px; /* Proportional scaling for clear reading (1 to 2 degrees larger) */
+  }
+
   html, body {
     margin: 0;
     padding: 0;
@@ -11,12 +15,12 @@
 
   html:not(.dark), body:not(.dark) {
     background-color: #f8fafc;
-    color: #1e293b;
+    color: #0f172a;
   }
 
   html.dark, html.dark body {
-    background-color: #080e1b;
-    color: #dde2f5;
+    background-color: #000000;
+    color: #f1f5f9;
   }
 }
 
@@ -59,4 +63,77 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #00c2cb;
+}
+
+/* ==========================================
+   PRESCRIPTION PRINTING STYLES (A5 PORTRAIT)
+   ========================================== */
+@media print {
+  /* 1. Reset base elements & page body */
+  html, body, #root, #root > div, main {
+    background: white !important;
+    color: black !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    direction: rtl !important;
+  }
+
+  /* 2. Hide all interactive app elements (sidebar, headers, buttons, floating action bar) */
+  aside, nav, header, button, select, input, textarea,
+  .no-print, [class*="no-print"],
+  .fixed, [class*="fixed"],
+  .sticky, [class*="sticky"],
+  .modal, [class*="modal"],
+  .toast, [class*="toast"],
+  div[class*="sidebar"],
+  div[class*="header"],
+  div[class*="banner"],
+  #finished-exam-summary,
+  .floating-bar {
+    display: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    width: 0 !important;
+    height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* 3. Style the targeted printable prescription pad */
+  #printable-prescription-pad {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 148mm !important; /* A5 standard width */
+    height: 210mm !important; /* A5 standard height */
+    min-height: 210mm !important;
+    margin: 0 auto !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: white !important;
+    color: black !important;
+    page-break-inside: avoid !important;
+    page-break-after: avoid !important;
+    z-index: 9999 !important;
+  }
+
+  /* 4. Optimize image printing */
+  img {
+    filter: none !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* 5. Set up the A5 portrait page box rules */
+  @page {
+    size: A5 portrait;
+    margin: 0;
+  }
 }

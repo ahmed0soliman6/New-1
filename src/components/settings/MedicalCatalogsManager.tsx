@@ -75,7 +75,56 @@ export const MedicalCatalogsManager: React.FC<MedicalCatalogsManagerProps> = ({
     diagnoses: false,
     symptoms: false,
     chronic: false,
+    lifestyle: false,
   });
+
+  const DEFAULT_LIFESTYLE_PRESETS = [
+    'الامتناع التام عن الأطعمة الدسمة، الحارة، المقليات، والمشروبات الغازية.',
+    'تقليل استهلاك ملح الطعام والمخللات إلى أقل من 2 جرام صوديوم يومياً.',
+    'الامتناع عن السكريات والحلويات الصريحة والعصائر المحلاة والمخبوزات البيضاء.',
+    'عدم الاستلقاء أو النوم مباشرة بعد تناول الطعام لمدة ساعتين على الأقل.',
+    'شرب ما لا يقل عن 2.5 إلى 3 لترات ماء يومياً لحماية الكلى وتحسين التروية.',
+    'ممارسة رياضة المشي المنتظم 30 دقيقة يومياً لمدة 5 أيام أسبوعياً.',
+    'تجنب التوتر والضغط العصبي وأخذ قسط كافٍ من النوم (7-8 ساعات متواصلة).',
+    'تناول وجبات صغيرة متكررة خفيفة بدلاً من الوجبات الكبيرة الثقيلة.',
+  ];
+
+  const [lifestylePresets, setLifestylePresets] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('soli_lifestyle_presets');
+      return saved ? JSON.parse(saved) : DEFAULT_LIFESTYLE_PRESETS;
+    } catch {
+      return DEFAULT_LIFESTYLE_PRESETS;
+    }
+  });
+
+  const [newLifestyleInput, setNewLifestyleInput] = useState('');
+  const [lifestyleSearch, setLifestyleSearch] = useState('');
+
+  const saveLifestyleToStorage = (updated: string[]) => {
+    setLifestylePresets(updated);
+    try {
+      localStorage.setItem('soli_lifestyle_presets', JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Failed to save lifestyle presets', e);
+    }
+  };
+
+  const handleAddLifestylePreset = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = newLifestyleInput.trim();
+    if (!trimmed) return;
+    if (!lifestylePresets.includes(trimmed)) {
+      const updated = [trimmed, ...lifestylePresets];
+      saveLifestyleToStorage(updated);
+    }
+    setNewLifestyleInput('');
+  };
+
+  const handleRemoveLifestylePreset = (presetToRemove: string) => {
+    const updated = lifestylePresets.filter((p) => p !== presetToRemove);
+    saveLifestyleToStorage(updated);
+  };
 
   const toggleSection = (section: string) => {
     setOpenSections((prev) => ({ ...prev, [section]: !prev[section] }));
@@ -1336,6 +1385,122 @@ export const MedicalCatalogsManager: React.FC<MedicalCatalogsManagerProps> = ({
                   لا توجد أمراض مزمنة مطابقة للبحث
                 </div>
               )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* SECTION 7: Lifestyle & Dietary Advice Presets Catalog */}
+      <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 overflow-hidden shadow-xs">
+        <div
+          onClick={() => toggleSection('lifestyle')}
+          className="p-4 sm:p-5 flex items-center justify-between cursor-pointer hover:bg-slate-50/80 dark:hover:bg-white/5 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
+              <span className="material-symbols-outlined text-xl">event_repeat</span>
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-[#dde2f5]">
+                  دليل إرشادات ونمط الحياة المجهزة مسبقاً (Lifestyle & Dietary Advice Presets)
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 text-[10px] font-mono font-bold">
+                  {lifestylePresets.length} إرشاد مجهز
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
+                تأهيل الإرشادات الطبية والنصائح الغذائية الجاهزة للاختيار السريع داخل شاشة الكشف
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                openSectionWithAdd('lifestyle');
+              }}
+              className="hidden sm:flex items-center gap-1 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-xs"
+            >
+              <span className="material-symbols-outlined text-sm">add</span>
+              <span>+ إضافة إرشاد</span>
+            </button>
+            <span className="material-symbols-outlined text-slate-400 text-xl">
+              {openSections.lifestyle ? 'expand_less' : 'expand_more'}
+            </span>
+          </div>
+        </div>
+
+        {openSections.lifestyle && (
+          <div className="p-4 sm:p-5 border-t border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-[#080e1b]/50 space-y-4 animate-in fade-in">
+            {/* Add Form */}
+            <form
+              onSubmit={handleAddLifestylePreset}
+              className="p-3.5 rounded-xl bg-white dark:bg-[#111A2E] border border-indigo-200 dark:border-indigo-900/30 space-y-2"
+            >
+              <span className="text-xs font-bold text-indigo-900 dark:text-indigo-300 block">
+                + إضافة نصيحة أو نمط حياة جديد إلى القائمة المنسدلة:
+              </span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  required
+                  placeholder="اكتب الإرشاد الطبي أو النظام الغذائي المجهز (مثال: شرب 3 لتر ماء يومياً، تقليل الصوديوم)..."
+                  value={newLifestyleInput}
+                  onChange={(e) => setNewLifestyleInput(e.target.value)}
+                  className="flex-1 bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+                <button
+                  type="submit"
+                  className="py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-all cursor-pointer shadow-xs shrink-0"
+                >
+                  حفظ الإرشاد
+                </button>
+              </div>
+            </form>
+
+            {/* Filter Search */}
+            <div className="relative">
+              <span className="material-symbols-outlined absolute right-3 top-2.5 text-slate-400 text-base">
+                search
+              </span>
+              <input
+                type="text"
+                placeholder="تصفية الإرشادات والنصائح..."
+                value={lifestyleSearch}
+                onChange={(e) => setLifestyleSearch(e.target.value)}
+                className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-xs pr-9 pl-3 py-2 rounded-xl border border-slate-200 dark:border-white/5 focus:outline-none"
+              />
+            </div>
+
+            {/* Presets List */}
+            <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+              {lifestylePresets
+                .filter((p) => !lifestyleSearch || p.toLowerCase().includes(lifestyleSearch.toLowerCase()))
+                .map((preset, idx) => (
+                  <div
+                    key={idx}
+                    className="p-3 bg-white dark:bg-[#111A2E] rounded-xl border border-slate-200 dark:border-white/5 flex items-start justify-between gap-3 hover:border-indigo-300 dark:hover:border-indigo-800 transition-all text-xs"
+                  >
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <span className="material-symbols-outlined text-indigo-600 text-base shrink-0 mt-0.5">
+                        check_circle
+                      </span>
+                      <p className="text-slate-800 dark:text-[#dde2f5] leading-relaxed">{preset}</p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveLifestylePreset(preset)}
+                      className="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center justify-center transition-colors cursor-pointer text-xs shrink-0"
+                      title="حذف الإرشاد"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
             </div>
           </div>
         )}

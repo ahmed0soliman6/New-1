@@ -17,6 +17,7 @@ import type {
   Prescription,
   PrescriptionItemSnapshot,
   RadiologyOrder,
+  OrderStatus,
   Visit,
 } from '../types/database';
 
@@ -241,8 +242,21 @@ export async function completeVisitTransaction(params: {
   vitalSigns: Visit['vitalSigns'];
   prescriptionItems?: PrescriptionItemSnapshot[];
   prescriptionNotes?: string;
-  labOrders?: Array<{ testId?: string | null; testName: string; notes?: string }>;
-  radiologyOrders?: Array<{ radiologyTypeId?: string | null; radiologyName: string; notes?: string }>;
+  labOrders?: Array<{
+    testId?: string | null;
+    testName: string;
+    notes?: string;
+    status?: OrderStatus;
+    result?: string;
+  }>;
+  radiologyOrders?: Array<{
+    radiologyTypeId?: string | null;
+    radiologyName: string;
+    notes?: string;
+    status?: OrderStatus;
+    result?: string;
+    report?: string;
+  }>;
   followUp?: { scheduledDate: string; fee: number; isFree: boolean; notes: string } | null;
 }): Promise<void> {
   await runTransaction(params.db, async (tx) => {
@@ -277,19 +291,20 @@ export async function completeVisitTransaction(params: {
       });
     }
 
-    // Save Lab Orders atomically
+    // Save Lab Orders atomically with actual clinical results
     if (params.labOrders && params.labOrders.length > 0) {
       for (const lab of params.labOrders) {
         const labOrderId = id('lab-ord');
         const labRef = doc(params.db, 'labOrders', labOrderId);
+        const resolvedStatus = lab.status || (lab.result ? 'RESULT' : 'ORDERED');
         tx.set(labRef, {
           labOrderId,
           patientId: visitData.patientId,
           visitId: visitData.visitId,
           testId: lab.testId || null,
           testName: lab.testName,
-          status: 'ORDERED',
-          result: '',
+          status: resolvedStatus,
+          result: lab.result || '',
           notes: lab.notes || '',
           orderedAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
@@ -297,20 +312,21 @@ export async function completeVisitTransaction(params: {
       }
     }
 
-    // Save Radiology Orders atomically
+    // Save Radiology Orders atomically with actual clinical reports
     if (params.radiologyOrders && params.radiologyOrders.length > 0) {
       for (const rad of params.radiologyOrders) {
         const radOrderId = id('rad-ord');
         const radRef = doc(params.db, 'radiologyOrders', radOrderId);
+        const resolvedStatus = rad.status || (rad.report ? 'REPORT' : rad.result ? 'RESULT' : 'ORDERED');
         tx.set(radRef, {
           radiologyOrderId: radOrderId,
           patientId: visitData.patientId,
           visitId: visitData.visitId,
           radiologyTypeId: rad.radiologyTypeId || null,
           radiologyName: rad.radiologyName,
-          status: 'ORDERED',
-          result: '',
-          report: '',
+          status: resolvedStatus,
+          result: rad.result || '',
+          report: rad.report || '',
           notes: rad.notes || '',
           orderedAt: serverTimestamp(),
           updatedAt: serverTimestamp(),

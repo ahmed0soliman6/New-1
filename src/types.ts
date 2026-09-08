@@ -24,6 +24,7 @@ export interface PatientListItem {
   gender: 'male' | 'female';
   phone: string;
   governorate: string;
+  address?: string;
   avatarUrl?: string;
   allergies: string[];
   chronicConditions: string[];
@@ -52,6 +53,7 @@ export interface QueueItem {
   medicalCode: string;
   phone: string;
   age: number;
+  gender?: 'male' | 'female' | '';
   visitType: string;
   arrivalTime: string;
   elapsedMinutes: number;
@@ -61,6 +63,7 @@ export interface QueueItem {
   status: 'waiting' | 'in-room' | 'done' | 'delayed';
   isUrgent?: boolean;
   address?: string;
+  bloodType?: string;
   chronicConditions?: string[];
 }
 

@@ -104,7 +104,25 @@ export const LabCard: React.FC<LabCardProps> = ({
 
   const handleUpdateField = (id: string, field: keyof LabOrderItem, val: any) => {
     onChangeOrders(
-      labOrders.map((ord) => (ord.id === id ? { ...ord, [field]: val } : ord))
+      labOrders.map((ord) => {
+        if (ord.id === id) {
+          const updated = { ...ord, [field]: val };
+          // If the user types a resultValue, automatically promote to RESULT so it is never lost or stuck as REQUEST
+          if (field === 'resultValue' && typeof val === 'string' && val.trim().length > 0) {
+            if (ord.status === 'REQUEST') {
+              updated.status = 'RESULT';
+            }
+            if (!updated.resultDate) {
+              updated.resultDate = new Date().toLocaleDateString('ar-EG');
+            }
+          }
+          if (field === 'reportNotes' && typeof val === 'string' && val.trim().length > 0 && ord.status === 'REQUEST') {
+            updated.status = 'REPORT';
+          }
+          return updated;
+        }
+        return ord;
+      })
     );
   };
 
@@ -292,16 +310,27 @@ export const LabCard: React.FC<LabCardProps> = ({
 
               {/* Status details: If REQUEST */}
               {ord.status === 'REQUEST' && (
-                <div className="pt-2 border-t border-slate-200 dark:border-white/5 flex items-center justify-between text-[11px] text-slate-500 dark:text-[#859394]">
+                <div className="pt-2 border-t border-slate-200 dark:border-white/5 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-[#859394]">
                   <div className="flex items-center gap-1.5">
                     <span className="material-symbols-outlined text-xs text-amber-500">pending</span>
-                    <span>تم تسجيل أمر التحليل ({ord.orderedAt}) - المريض متجه للمعمل</span>
+                    <span>تم تسجيل أمر التحليل ({ord.orderedAt}) - بالانتظار</span>
+                    {ord.instructions && (
+                      <span className="text-amber-600 font-bold bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded">
+                        تعليمات: {ord.instructions}
+                      </span>
+                    )}
                   </div>
-                  {ord.instructions && (
-                    <span className="text-amber-600 font-bold bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded">
-                      تعليمات: {ord.instructions}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-slate-700 dark:text-[#dde2f5]">أو أدخل النتيجة الآن:</span>
+                    <input
+                      type="text"
+                      value={ord.resultValue || ''}
+                      onChange={(e) => handleUpdateField(ord.id, 'resultValue', e.target.value)}
+                      placeholder="مثال: 7 أو 7.2%"
+                      className="w-32 bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] font-mono font-bold text-xs px-2.5 py-1 rounded-lg border border-amber-300 dark:border-amber-700/50 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                    {ord.unit && <span className="font-mono text-[10px] text-slate-400">{ord.unit}</span>}
+                  </div>
                 </div>
               )}
 
