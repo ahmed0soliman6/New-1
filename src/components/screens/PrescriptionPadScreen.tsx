@@ -14,6 +14,7 @@ interface PrescriptionPadScreenProps {
 
 export interface PrescriptionLayoutSettings {
   doctorName: string;
+  doctorNameEn: string;
   specialtyAr: string;
   specialtyEn: string;
   degreesAr: string;
@@ -46,6 +47,7 @@ export interface PrescriptionLayoutSettings {
 
 const DEFAULT_LAYOUT: PrescriptionLayoutSettings = {
   doctorName: CLINIC_INFO.doctorName,
+  doctorNameEn: 'Dr. Hazem El-Kady',
   specialtyAr: CLINIC_INFO.doctorTitle,
   specialtyEn: 'Consultant of Internal Medicine & Cardiology',
   degreesAr: CLINIC_INFO.doctorCredentials,
@@ -522,7 +524,7 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
                 <span>بيانات الطبيب وشعار العيادة</span>
               </h3>
 
-              {/* Doctor Name */}
+              {/* Doctor Name AR */}
               <div className="space-y-1">
                 <label className="font-bold text-slate-700 dark:text-[#bbc9ca]">اسم الطبيب (عربي)</label>
                 <input
@@ -531,6 +533,19 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
                   onChange={(e) => setConfig({ ...config, doctorName: e.target.value })}
                   placeholder="د. حازم سمير القاضي"
                   className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-[#18233C] border border-slate-200 dark:border-white/10 text-slate-800 dark:text-white font-medium"
+                />
+              </div>
+
+              {/* Doctor Name EN */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 dark:text-[#bbc9ca]">اسم الطبيب (إنجليزية - English Name)</label>
+                <input
+                  type="text"
+                  value={config.doctorNameEn}
+                  onChange={(e) => setConfig({ ...config, doctorNameEn: e.target.value })}
+                  placeholder="Dr. Hazem El-Kady"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-[#18233C] border border-slate-200 dark:border-white/10 text-slate-800 dark:text-white font-medium text-left"
+                  dir="ltr"
                 />
               </div>
 
@@ -568,6 +583,19 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
                   onChange={(e) => setConfig({ ...config, degreesAr: e.target.value })}
                   placeholder="دكتوراه الباطنة العامة - جامعة القاهرة • زميل الكلية الملكية للأطباء"
                   className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-[#18233C] border border-slate-200 dark:border-white/10 text-slate-800 dark:text-white font-medium"
+                />
+              </div>
+
+              {/* Degrees (EN) */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 dark:text-[#bbc9ca]">المؤهلات والدرجات العلمية بالإنجليزية (English Degrees)</label>
+                <input
+                  type="text"
+                  value={config.degreesEn}
+                  onChange={(e) => setConfig({ ...config, degreesEn: e.target.value })}
+                  placeholder="M.D., MRCP (London) • Cairo University"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-[#18233C] border border-slate-200 dark:border-white/10 text-slate-800 dark:text-white font-medium text-left"
+                  dir="ltr"
                 />
               </div>
 
@@ -918,7 +946,7 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
                   {/* English Info */}
                   <div className="text-left flex-1 hidden sm:block" dir="ltr">
                     <h2 className="text-sm font-bold text-slate-950 leading-tight">
-                      Dr. Hazem El-Kady
+                      {config.doctorNameEn || 'Dr. Hazem El-Kady'}
                     </h2>
                     <div className="text-[11px] font-bold text-[#008f97] mt-0.5">
                       {config.specialtyEn}

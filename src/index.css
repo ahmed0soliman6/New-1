@@ -65,6 +65,39 @@
   background: #00c2cb;
 }
 
+/* Date & Time Picker icon in Dark & Light Modes */
+input[type="date"],
+input[type="time"] {
+  color-scheme: light dark;
+}
+
+.dark input[type="date"]::-webkit-calendar-picker-indicator,
+.dark input[type="time"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  filter: invert(75%) sepia(85%) saturate(1500%) hue-rotate(145deg) brightness(110%) contrast(105%);
+  opacity: 1;
+  padding: 4px;
+  border-radius: 8px;
+  background-color: rgba(0, 194, 203, 0.15);
+  transform: scale(1.15);
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 8px;
+  background-color: rgba(0, 143, 151, 0.08);
+  transform: scale(1.1);
+  transition: all 0.2s ease;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="time"]::-webkit-calendar-picker-indicator:hover {
+  background-color: rgba(0, 194, 203, 0.25);
+  transform: scale(1.25);
+}
+
 /* ==========================================
    PRESCRIPTION PRINTING STYLES (A5 PORTRAIT)
    ========================================== */

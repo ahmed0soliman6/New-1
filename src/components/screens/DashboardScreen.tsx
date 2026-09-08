@@ -342,9 +342,9 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                         className={`text-xs px-2 py-0.5 rounded font-bold ${
                           (app.visitType || '').includes('جديد')
                             ? 'bg-teal-100 dark:bg-[#00c2cb]/20 text-teal-800 dark:text-[#45dee7]'
-                            : (app.visitType || '').includes('مجانية')
-                            ? 'bg-emerald-100 dark:bg-[#10B981]/25 text-emerald-800 dark:text-[#10B981]'
-                            : 'bg-purple-100 dark:bg-[#8B5CF6]/30 text-purple-800 dark:text-[#d0bcff]'
+                            : (app.visitType || '').includes('متابعة') || (app.visitType || '').includes('استشارة')
+                            ? 'bg-purple-100 dark:bg-[#8B5CF6]/30 text-purple-800 dark:text-[#d0bcff]'
+                            : 'bg-slate-100 dark:bg-white/10 text-slate-800 dark:text-slate-200'
                         }`}
                       >
                         {app.visitType}

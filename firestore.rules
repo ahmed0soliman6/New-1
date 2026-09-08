@@ -212,6 +212,18 @@ service cloud.firestore {
       allow delete: if hasPermission('billing-payments', 'delete') || hasPermission('finance', 'delete') || hasPermission('expenses', 'delete');
     }
 
+    match /expenses/{expenseId} {
+      allow read: if hasPermission('billing-payments', 'view') || hasPermission('finance', 'view') || hasPermission('expenses', 'view');
+      allow create: if hasPermission('billing-payments', 'create') || hasPermission('finance', 'create') || hasPermission('expenses', 'create');
+      allow update: if hasPermission('billing-payments', 'update') || hasPermission('finance', 'update') || hasPermission('expenses', 'update');
+      allow delete: if hasPermission('billing-payments', 'delete') || hasPermission('finance', 'delete') || hasPermission('expenses', 'delete');
+    }
+
+    match /expenseCategories/{categoryId} {
+      allow read: if isUserActive();
+      allow create, update, delete: if isAdmin() || hasPermission('system-settings', 'update') || hasPermission('billing-payments', 'create');
+    }
+
     // =============================================================
     // 10. PRESCRIPTIONS & MEDICATION ORDERS
     // =============================================================

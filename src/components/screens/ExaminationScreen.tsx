@@ -31,6 +31,12 @@ import {
   loadExamDisplaySettings,
   ExamDisplaySettings,
 } from '../../utils/examDisplaySettings';
+import {
+  RecurringRxTemplate,
+  loadRecurringTemplates,
+  addOrUpdateRecurringTemplate,
+  INITIAL_CLINICAL_GUIDES_TEMPLATES,
+} from '../../utils/recurringTemplatesManager';
 
 interface ChronicItem {
   id: string;
@@ -261,100 +267,20 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
   }, [patient, visits, prescriptions, allLabOrders, allRadiologyOrders, currentVisitId]);
 
   // Recurring Prescription Templates State
-  const [recurringTemplates, setRecurringTemplates] = useState<Array<{
-    id: string;
-    title: string;
-    diagnoses: PatientDiagnosis[];
-    prescription: PrescriptionItem[];
-    lifestyleAdvice: string;
-  }>>(() => {
-    try {
-      const saved = localStorage.getItem('soli_recurring_rx_templates');
-      return saved ? JSON.parse(saved) : [
-        {
-          id: 'tmpl-1',
-          title: 'روشتة النزلة المعوية الحادة',
-          diagnoses: [
-            {
-              id: 'diag-1',
-              code: 'A09',
-              nameAr: 'التهاب المعدة والأمعاء الحاد (Acute Gastroenteritis)',
-              nameEn: 'Acute Gastroenteritis',
-              isPrimary: true,
-            },
-          ],
-          prescription: [
-            {
-              id: 'rx-1',
-              drugName: 'Antinal 220mg',
-              dosageForm: 'كبسولات',
-              dosage: 'كل 8 ساعات (3 مرات يومياً)',
-              duration: 'لمدة 5 أيام',
-              timing: 'بعد الأكل',
-            },
-            {
-              id: 'rx-2',
-              drugName: 'Visceralgine 50mg',
-              dosageForm: 'أقراص',
-              dosage: 'كل 8 ساعات (3 مرات يومياً)',
-              duration: 'عند اللزوم',
-              timing: 'قبل الأكل',
-            },
-          ],
-          lifestyleAdvice: 'الامتناع التام عن الأطعمة الدسمة، الحارة، المقليات، والمشروبات الغازية.\n• شرب ما لا يقل عن 2.5 إلى 3 لترات ماء يومياً.',
-        },
-        {
-          id: 'tmpl-2',
-          title: 'روشتة ارتفاع ضغط الدم والسكري',
-          diagnoses: [
-            {
-              id: 'diag-2',
-              code: 'I10',
-              nameAr: 'ارتفاع ضغط الدم الأولي (Essential Hypertension)',
-              nameEn: 'Essential Hypertension',
-              isPrimary: true,
-            },
-          ],
-          prescription: [
-            {
-              id: 'rx-3',
-              drugName: 'Concor 5mg',
-              dosageForm: 'أقراص',
-              dosage: 'كل 24 ساعة (مرة يومياً)',
-              duration: 'مستمر',
-              timing: 'صباحاً',
-            },
-            {
-              id: 'rx-4',
-              drugName: 'Cidophage 500mg',
-              dosageForm: 'أقراص',
-              dosage: 'كل 12 ساعة (مرتين يومياً)',
-              duration: 'مستمر',
-              timing: 'وسط الأكل',
-            },
-          ],
-          lifestyleAdvice: 'تقليل استهلاك ملح الطعام والمخللات إلى أقل من 2 جرام صوديوم يومياً.\n• الامتناع عن السكريات والحلويات الصريحة.',
-        },
-      ];
-    } catch {
-      return [];
-    }
-  });
-
+  const [recurringTemplates, setRecurringTemplates] = useState<RecurringRxTemplate[]>(loadRecurringTemplates);
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Save as recurring template modal state
+  const [showSaveTemplateModal, setShowSaveTemplateModal] = useState(false);
+  const [templateTitleInput, setTemplateTitleInput] = useState('');
+  const [templateCategoryInput, setTemplateCategoryInput] = useState('باطنة عامة');
+  const [showClinicalGuidesPicker, setShowClinicalGuidesPicker] = useState(false);
 
   // Sync templates list if updated elsewhere (e.g. settings screen template deletion)
   useEffect(() => {
     const handleSyncTemplates = () => {
-      try {
-        const saved = localStorage.getItem('soli_recurring_rx_templates');
-        if (saved) {
-          setRecurringTemplates(JSON.parse(saved));
-        }
-      } catch (e) {
-        console.error(e);
-      }
+      setRecurringTemplates(loadRecurringTemplates());
     };
     window.addEventListener('soli_templates_updated', handleSyncTemplates);
     return () => {
@@ -366,7 +292,13 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
     const tmpl = recurringTemplates.find((t) => t.id === templateId);
     if (!tmpl) return;
     if (tmpl.diagnoses && tmpl.diagnoses.length > 0) {
-      setPatientDiagnoses(tmpl.diagnoses);
+      setPatientDiagnoses(tmpl.diagnoses.map((d) => ({
+        id: d.id || `diag-${Date.now()}`,
+        code: d.code,
+        nameAr: d.nameAr,
+        nameEn: d.nameEn,
+        isPrimary: d.isPrimary ?? true,
+      })));
     }
     if (tmpl.prescription && tmpl.prescription.length > 0) {
       onChangeActivePrescription(tmpl.prescription);
@@ -375,36 +307,64 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
       setLifestyleAdvice(tmpl.lifestyleAdvice);
     }
     setSelectedTemplateId(templateId);
+    setToastMessage(`تم استدعاء القالب "${tmpl.title}" وتعبئة الأدوية والتشخيص بنجاح ✓`);
+    setTimeout(() => setToastMessage(null), 3500);
   };
 
   const handleSaveCurrentAsRecurringTemplate = () => {
     if (patientDiagnoses.length === 0 && activePrescription.length === 0) {
-      alert('يرجى إضافة تشخيص أو أدوية على الأقل قبل حفظ القائمة المتكررة.');
+      setToastMessage('يرجى إضافة تشخيص أو أدوية على الأقل قبل حفظ القائمة المتكررة.');
+      setTimeout(() => setToastMessage(null), 3500);
       return;
     }
-    const title = prompt('أدخل اسم القائمة المتكررة للروشتة (مثال: روشتة قولون عصبي، روشتة ضغط وسكر...):');
-    if (!title || !title.trim()) return;
+    const primaryDiag = patientDiagnoses.find((d) => d.isPrimary)?.nameAr || patientDiagnoses[0]?.nameAr;
+    const defaultName = primaryDiag ? `روشتة ${primaryDiag}` : 'روشتة كشف واستشارة';
+    setTemplateTitleInput(defaultName);
+    setTemplateCategoryInput('باطنة عامة');
+    setShowSaveTemplateModal(true);
+  };
 
-    const newTemplate = {
+  const handleConfirmSaveTemplate = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!templateTitleInput.trim()) return;
+
+    const newTemplate: RecurringRxTemplate = {
       id: `tmpl-${Date.now()}`,
-      title: title.trim(),
+      title: templateTitleInput.trim(),
+      category: templateCategoryInput.trim() || 'باطنة عامة',
       diagnoses: [...patientDiagnoses],
       prescription: [...activePrescription],
       lifestyleAdvice: lifestyleAdvice || '',
+      isFavorite: true,
     };
 
-    const updated = [newTemplate, ...recurringTemplates];
+    const updated = addOrUpdateRecurringTemplate(newTemplate);
     setRecurringTemplates(updated);
-    try {
-      localStorage.setItem('soli_recurring_rx_templates', JSON.stringify(updated));
-      // Dispatch custom event to notify SettingsScreen and other components
-      window.dispatchEvent(new Event('soli_templates_updated'));
-    } catch (e) {
-      console.error(e);
-    }
     setSelectedTemplateId(newTemplate.id);
-    setToastMessage(`تم حفظ القائمة المتكررة "${title.trim()}" بنجاح! يمكنك استدعاؤها في أي كشف قادم.`);
+    setShowSaveTemplateModal(false);
+    setToastMessage(`تم حفظ القائمة المتكررة "${templateTitleInput.trim()}" بنجاح! يمكنك استدعاؤها في أي كشف قادم.`);
     setTimeout(() => setToastMessage(null), 4500);
+  };
+
+  const handleImportClinicalGuideDirectly = (guide: RecurringRxTemplate) => {
+    if (guide.diagnoses && guide.diagnoses.length > 0) {
+      setPatientDiagnoses(guide.diagnoses.map((d) => ({
+        id: d.id || `diag-${Date.now()}`,
+        code: d.code,
+        nameAr: d.nameAr,
+        nameEn: d.nameEn,
+        isPrimary: d.isPrimary ?? true,
+      })));
+    }
+    if (guide.prescription && guide.prescription.length > 0) {
+      onChangeActivePrescription(guide.prescription);
+    }
+    if (guide.lifestyleAdvice) {
+      setLifestyleAdvice(guide.lifestyleAdvice);
+    }
+    setShowClinicalGuidesPicker(false);
+    setToastMessage(`تم استدعاء "${guide.title}" وتطبيقه على الروشتة الحالية بنجاح ✓`);
+    setTimeout(() => setToastMessage(null), 4000);
   };
 
   // Dynamic Radiology Orders - starts empty
@@ -450,59 +410,71 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
 
   // Generate WhatsApp formatted message
   const generateWhatsAppMessage = () => {
-    const primaryDiag = patientDiagnoses.find((d) => d.isPrimary)?.nameAr || patientDiagnoses[0]?.nameAr || 'كشف واستشارة طبية';
-    const lines: string[] = [];
+    const todayStr = new Date().toLocaleDateString('ar-EG', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
 
-    lines.push(`🏥 *عيادات د. حازم سولي التخصصية*`);
-    lines.push(`━━━━━━━━━━━━━━━━━━━━━`);
-    lines.push(`👤 *المريض:* ${patient?.name || 'مريض غير محدد'}`);
-    lines.push(`📄 *ملف طبي رقم:* #${patient?.fileNumber || '-'}`);
-    lines.push(`🩺 *التشخيص المعتمد:* ${primaryDiag}`);
+    const diagnosisList = patientDiagnoses.length > 0
+      ? patientDiagnoses.map((d) => d.nameAr).join('، ')
+      : 'فحص واستشارة باطنة';
 
-    if (patientChronicConditions.length > 0) {
-      lines.push(`⚠️ *أمراض مزمنة:* ${patientChronicConditions.join('، ')}`);
-    }
-
+    let medsSection = '';
     if (activePrescription.length > 0) {
-      lines.push(`---------------------------------`);
-      lines.push(`💊 *الروشتة والعلاج الدوائي:*`);
-      activePrescription.forEach((item, index) => {
-        lines.push(`${index + 1}. *${item.drugName}* (${item.dosageForm || 'علاج'})`);
-        lines.push(`   ▫️ الجرعة: ${item.dosage}`);
-        if (item.timing) lines.push(`   ▫️ التوقيت: ${item.timing}`);
-        if (item.duration) lines.push(`   ▫️ المدة: ${item.duration}`);
-        if (item.notes) lines.push(`   ▫️ ملاحظات: ${item.notes}`);
-      });
+      const medsList = activePrescription
+        .map(
+          (item, idx) =>
+            `  ${idx + 1}. *${item.drugName}* ${item.dosageForm ? `(${item.dosageForm})` : ''}\n     • الجرعة والمدة: ${item.dosage || 'قرص'}${item.timing ? ` — ${item.timing}` : ''}${item.duration ? ` — ${item.duration}` : ''}${item.notes ? ` (${item.notes})` : ''}`
+        )
+        .join('\n');
+      medsSection = `\n\n💊 *الأدوية الموصوفة:*\n${medsList}`;
     }
 
+    let labsSection = '';
     if (labOrders.length > 0) {
-      lines.push(`---------------------------------`);
-      lines.push(`🧪 *التحاليل المطلوبة:*`);
-      labOrders.forEach((l) => lines.push(`- ${l.testName} (${l.status === 'RESULT' ? 'تمت النتيجة' : 'مطلوب'})`));
+      const labsListStr = labOrders
+        .map((l, idx) => `  ${idx + 1}. *${l.testName}*`)
+        .join('\n');
+      labsSection = `\n\n🧪 *الفحوصات والتحاليل المعملية المطلوبة:*\n${labsListStr}`;
     }
 
+    let radsSection = '';
     if (radiologyOrders.length > 0) {
-      lines.push(`---------------------------------`);
-      lines.push(`🩻 *الفحوصات والأشعة المطلوبة:*`);
-      radiologyOrders.forEach((r) => lines.push(`- ${r.name}`));
+      const radsListStr = radiologyOrders
+        .map((r, idx) => `  ${idx + 1}. *${r.name}*`)
+        .join('\n');
+      radsSection = `\n\n🩻 *الأشعة والموجات الصوتية المطلوبة:*\n${radsListStr}`;
     }
 
+    let adviceSection = '';
     if (lifestyleAdvice) {
-      lines.push(`---------------------------------`);
-      lines.push(`🩺 *نصائح وتعليمات طبية:*`);
-      lines.push(lifestyleAdvice);
+      adviceSection = `\n\n📝 *تعليمات وإرشادات الطبيب:*\n${lifestyleAdvice}`;
     }
 
+    let followUpSection = '';
     if (followupDate) {
-      lines.push(`---------------------------------`);
-      lines.push(`🗓️ *موعد الاستشارة القادمة:* ${followupDate}`);
+      try {
+        const formattedFollowUp = new Date(followupDate).toLocaleDateString('ar-EG', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        });
+        followUpSection = `\n\n🗓 *موعد المتابعة الاستشارية القادمة:* ${formattedFollowUp}`;
+      } catch {
+        followUpSection = `\n\n🗓 *موعد المتابعة الاستشارية القادمة:* ${followupDate}`;
+      }
     }
 
-    lines.push(`---------------------------------`);
-    lines.push(`📞 للاستفسارات والطوارئ: 01092847162`);
-    lines.push(`نتمنى لكم دوام الصحة والعافية.`);
+    return `مرحباً بك أستاذ/ة *${patient?.name || 'مريض'}* 🌸
+إليك تفاصيل وتقارير زيارتكم الطبية لدى *عيادة د. حازم القاضي* 🩺
 
-    return lines.join('\n');
+🗓 *تاريخ الزيارة:* ${todayStr}
+📋 *التشخيص الإكلينيكي:* ${diagnosisList}${medsSection}${labsSection}${radsSection}${adviceSection}${followUpSection}
+
+📍 *العنوان:* عيادة الباطنة التخصصية - المهندسين
+📞 *للتأكيد والاستفسار:* 01092847162
+مع تمنياتنا لكم بتمام الشفاء ودوام الصحة والعافية ✨`;
   };
 
   const getCleanPatientWhatsAppUrl = () => {
@@ -1469,15 +1441,15 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
               <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb] text-xl shrink-0">bookmark</span>
               <div>
                 <span className="text-xs font-bold text-slate-900 dark:text-[#dde2f5] block">
-                  استدعاء سريع من قوالب الروشتة الجاهزة (Quick Template Import):
+                  استدعاء سريع من قوالب الروشتة والأدلة الطبية (Quick Template & Clinical Guides):
                 </span>
                 <p className="text-[11px] text-slate-500 dark:text-[#859394]">
-                  اختر قالباً جاهزاً لتعبئة الأدوية والتشخيص والإرشادات بضغطة زر واحدة
+                  اختر قالباً محفوظاً أو استدعِ بروتوكولاً إكلينيكياً معتمداً لتعبئة الروشتة فوراً
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <select
                 value={selectedTemplateId}
                 onChange={(e) => handleApplyRecurringTemplate(e.target.value)}
@@ -1490,6 +1462,16 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                   </option>
                 ))}
               </select>
+
+              <button
+                type="button"
+                onClick={() => setShowClinicalGuidesPicker(true)}
+                className="px-3 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs whitespace-nowrap"
+                title="استدعاء مباشر من الأدلة والبروتوكولات الطبية القياسية"
+              >
+                <span className="material-symbols-outlined text-base">menu_book</span>
+                <span>الأدلة الطبية</span>
+              </button>
             </div>
           </div>
         )}
@@ -1818,6 +1800,184 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                 <span>فتح الواتساب</span>
                 <span className="material-symbols-outlined text-base">open_in_new</span>
               </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Save Recurring Template */}
+      {showSaveTemplateModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white dark:bg-[#111A2E] border border-slate-200 dark:border-white/10 rounded-2xl p-5 sm:p-6 max-w-lg w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/5 pb-3">
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                <span className="material-symbols-outlined text-[#00c2cb] text-xl">bookmark_add</span>
+                <span>حفظ كقائمة متكررة للروشتة</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowSaveTemplateModal(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white font-bold text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmSaveTemplate} className="space-y-4 text-xs">
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-800 dark:text-[#dde2f5]">
+                  اسم القائمة المتكررة *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={templateTitleInput}
+                  onChange={(e) => setTemplateTitleInput(e.target.value)}
+                  placeholder="مثال: بروتوكول جرثومة المعدة، روشتة قولون عصبي..."
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-[#18233C] border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white font-bold text-xs focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
+                />
+              </div>
+
+              {/* Quick Presets */}
+              <div className="space-y-1">
+                <span className="text-[11px] text-slate-500 dark:text-[#859394]">اقتراحات سريعة للمسمى:</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {['روشتة باطنة عامة', 'روشتة ضغط وسكر', 'بروتوكول جرثومة المعدة', 'روشتة قولون عصبي', 'روشتة نزلة معوية'].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setTemplateTitleInput(preset)}
+                      className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-white/5 hover:bg-slate-200 text-slate-700 dark:text-slate-300 text-[10px] font-bold cursor-pointer"
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-800 dark:text-[#dde2f5]">
+                  التصنيف الطبي
+                </label>
+                <select
+                  value={templateCategoryInput}
+                  onChange={(e) => setTemplateCategoryInput(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-[#18233C] border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white font-bold text-xs focus:outline-none cursor-pointer"
+                >
+                  <option value="باطنة عامة">باطنة عامة</option>
+                  <option value="الجهاز الهضمي والكبد">الجهاز الهضمي والكبد</option>
+                  <option value="القلب والأوعية الدموية">القلب والأوعية الدموية</option>
+                  <option value="الغدد الصماء والسكر">الغدد الصماء والسكر</option>
+                  <option value="الجهاز التنفسي">الجهاز التنفسي</option>
+                  <option value="المسالك البولية">المسالك البولية</option>
+                </select>
+              </div>
+
+              {/* Summary of items being saved */}
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 space-y-1.5 text-[11px]">
+                <div className="flex items-center justify-between text-slate-700 dark:text-slate-300 font-bold">
+                  <span>العناصر التي سيتم حفظها:</span>
+                </div>
+                <div className="text-slate-500 dark:text-[#859394] space-y-0.5">
+                  <p>• التشخيصات: {patientDiagnoses.length > 0 ? patientDiagnoses.map((d) => d.nameAr).join('، ') : 'بدون تشخيص'}</p>
+                  <p>• الأدوية ({activePrescription.length}): {activePrescription.map((p) => p.drugName).join(' + ')}</p>
+                  {lifestyleAdvice && <p>• الإرشادات: {lifestyleAdvice.slice(0, 60)}...</p>}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-white/5">
+                <button
+                  type="button"
+                  onClick={() => setShowSaveTemplateModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-200 cursor-pointer"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold shadow-md cursor-pointer flex items-center gap-1.5"
+                >
+                  <span className="material-symbols-outlined text-base">save</span>
+                  <span>حفظ القائمة</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Direct Clinical Guides Picker in Examination */}
+      {showClinicalGuidesPicker && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in overflow-y-auto">
+          <div className="bg-white dark:bg-[#111A2E] border border-slate-200 dark:border-white/10 rounded-2xl p-5 sm:p-6 max-w-2xl w-full shadow-2xl space-y-4 my-auto max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/5 pb-3">
+              <div>
+                <h3 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white flex items-center gap-2">
+                  <span className="material-symbols-outlined text-purple-600 dark:text-purple-400 text-xl">
+                    menu_book
+                  </span>
+                  <span>الأدلة والبروتوكولات الإكلينيكية القياسية</span>
+                </h3>
+                <p className="text-[11px] text-slate-500 dark:text-[#859394] mt-0.5">
+                  اختر البروتوكول المطلوب لتطبيقه وتعبئة الروشتة الحالية فوراً
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowClinicalGuidesPicker(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white font-bold text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {INITIAL_CLINICAL_GUIDES_TEMPLATES.map((guide) => (
+                <div
+                  key={guide.id}
+                  className="p-3.5 rounded-2xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 hover:border-purple-500/40 transition-all text-xs"
+                >
+                  <div className="space-y-1 min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm truncate">
+                        {guide.title}
+                      </h4>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-700 dark:text-purple-300">
+                        {guide.category}
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                      <strong>التشخيص:</strong>{' '}
+                      {guide.diagnoses.map((d) => d.nameAr).join('، ')}
+                    </p>
+
+                    <p className="text-[11px] text-slate-500 dark:text-[#859394]">
+                      <strong>الأدوية ({guide.prescription.length}):</strong>{' '}
+                      {guide.prescription.map((p) => p.drugName).join(' + ')}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleImportClinicalGuideDirectly(guide)}
+                    className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-xs"
+                  >
+                    <span className="material-symbols-outlined text-sm">assignment_turned_in</span>
+                    <span>تطبيق على الروشتة</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-100 dark:border-white/5">
+              <button
+                type="button"
+                onClick={() => setShowClinicalGuidesPicker(false)}
+                className="px-5 py-2 rounded-xl bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-200 cursor-pointer text-xs"
+              >
+                إغلاق
+              </button>
             </div>
           </div>
         </div>

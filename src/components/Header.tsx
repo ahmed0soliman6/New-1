@@ -48,17 +48,20 @@ export const Header: React.FC<HeaderProps> = ({
   const [activeNotifyTab, setActiveNotifyTab] = useState<'queue' | 'alerts' | 'followups'>('queue');
   const [whatsappToast, setWhatsappToast] = useState<string | null>(null);
 
-  // Send stylized WhatsApp message
+  // Filter urgent follow-ups: Only patients with less than 2 days remaining (0 <= daysRemaining <= 2)
+  const urgentFollowUps = followUpsList.filter((f) => f.daysRemaining >= 0 && f.daysRemaining <= 2);
+
+  // Send stylized WhatsApp message for doctor-scheduled follow-up
   const handleSendWhatsapp = (phone: string, patientName: string, dueDate?: string) => {
     const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
     const formattedPhone = cleanPhone.startsWith('0') ? `2${cleanPhone}` : cleanPhone;
     const dateText = dueDate || 'الأيام القادمة';
 
     const message = `مرحباً بحضرتك أستاذ/ة *${patientName}* 🌸
-نود تذكيركم بموعد المتابعة والاستشارة الطبية الخاص بكم في *عيادة د. حازم القاضي* 🩺
-🗓 الموعد المقترح: *${dateText}* (ضمن فترة الاستشارة المجانية).
+نود تذكيركم بموعد المتابعة والاستشارة الطبية المحدد لكم في *عيادة د. حازم القاضي* 🩺
+🗓 موعد المتابعة: *${dateText}*
 📍 العنوان: عيادة الباطنة التخصصية - المهندسين
-📞 للتأكيد أو تعديل الموعد: 01000000000
+📞 للتأكيد أو الاستفسار: 01092847162
 مع تمنياتنا لكم بدوام الصحة والعافية ✨`;
 
     const whatsappUrl = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`;
@@ -70,12 +73,12 @@ export const Header: React.FC<HeaderProps> = ({
       // Fallback
     }
 
-    setWhatsappToast(`تم فتح محادثة واتساب وتجهيز رسالة التذكير الأنيقة لـ (${patientName})`);
+    setWhatsappToast(`تم فتح محادثة واتساب وتجهيز رسالة تذكير المتابعة لـ (${patientName})`);
     setTimeout(() => setWhatsappToast(null), 4000);
   };
 
-  // Total unread/pending count for notification badge
-  const totalActionCount = waitingQueue.length + (recentAlerts.length > 0 ? 1 : 0);
+  // Total unread/pending count for notification badge: only urgent followups (<= 2 days) trigger alert badge
+  const totalActionCount = waitingQueue.length + (recentAlerts.length > 0 ? 1 : 0) + urgentFollowUps.length;
 
   return (
     <>
@@ -222,8 +225,10 @@ export const Header: React.FC<HeaderProps> = ({
                     }`}
                   >
                     <span>المتابعات</span>
-                    <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-[10px] font-mono">
-                      {followUpsList.length}
+                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                      urgentFollowUps.length > 0 ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 font-bold' : 'bg-emerald-500/20'
+                    }`}>
+                      {urgentFollowUps.length > 0 ? `${urgentFollowUps.length} عاجلة` : followUpsList.length}
                     </span>
                   </button>
                 </div>
@@ -345,37 +350,49 @@ export const Header: React.FC<HeaderProps> = ({
                         <span className="material-symbols-outlined text-2xl mb-1 text-slate-300 dark:text-slate-600 block">
                           event_available
                         </span>
-                        لا توجد متابعات مجدولة لهذا الأسبوع
+                        لا توجد متابعات مسجلة من الطبيب
                       </div>
                     ) : (
-                      followUpsList.slice(0, 8).map((f) => (
-                        <div key={f.id} className="py-2 px-1 flex items-center justify-between gap-2 hover:bg-slate-50 dark:hover:bg-[#111A2E] rounded-lg transition-colors">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-xs text-slate-900 dark:text-[#dde2f5] truncate">
-                                {f.patientName}
-                              </span>
-                              {f.isFreeEligible && (
-                                <span className="bg-emerald-50 dark:bg-[#10B981]/20 text-emerald-700 dark:text-[#10B981] text-[9px] font-bold px-1.5 py-0.2 rounded">
-                                  مجانية
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-[10px] text-slate-400 dark:text-[#859394]">
-                              استحقاق: {f.dueDate} • متبقي {f.daysRemaining} يوم
-                            </p>
-                          </div>
-
-                          <button
-                            onClick={() => handleSendWhatsapp(f.phone, f.patientName, f.dueDate)}
-                            className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-[#10B981] flex items-center gap-1 text-[10px] font-bold cursor-pointer transition-all shrink-0"
-                            title="إرسال رسالة تذكير أنيقة على واتساب"
+                      followUpsList.slice(0, 10).map((f) => {
+                        const isUrgent = f.daysRemaining >= 0 && f.daysRemaining <= 2;
+                        return (
+                          <div
+                            key={f.id}
+                            className={`py-2 px-2 flex items-center justify-between gap-2 rounded-lg transition-colors ${
+                              isUrgent
+                                ? 'bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-900/40'
+                                : 'hover:bg-slate-50 dark:hover:bg-[#111A2E]'
+                            }`}
                           >
-                            <span className="material-symbols-outlined text-sm">chat</span>
-                            <span className="hidden sm:inline">واتساب</span>
-                          </button>
-                        </div>
-                      ))
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-xs text-slate-900 dark:text-[#dde2f5] truncate">
+                                  {f.patientName}
+                                </span>
+                                {isUrgent && (
+                                  <span className="bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300 text-[9px] font-bold px-1.5 py-0.2 rounded border border-amber-200 dark:border-transparent">
+                                    أقل من يومين ⚠️
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[10px] text-slate-400 dark:text-[#859394] mt-0.5">
+                                موعد المتابعة: <strong className="font-mono text-slate-700 dark:text-slate-300">{f.dueDate}</strong>
+                                {f.daysRemaining === 0 ? ' (اليوم)' : f.daysRemaining === 1 ? ' (غداً)' : ` (متبقي ${f.daysRemaining} يوم)`}
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleSendWhatsapp(f.phone, f.patientName, f.dueDate)}
+                              className="p-1.5 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1 text-[10px] font-bold cursor-pointer transition-all shrink-0 shadow-xs"
+                              title="إرسال رسالة تذكير بالموعد عبر واتساب"
+                            >
+                              <span className="material-symbols-outlined text-sm">chat</span>
+                              <span>تذكير</span>
+                            </button>
+                          </div>
+                        );
+                      })
                     )}
                   </div>
                 )}

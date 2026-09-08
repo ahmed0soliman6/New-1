@@ -377,6 +377,16 @@ export interface ChronicDisease {
 }
 
 export interface DoctorSettings {
+  doctorNameAr?: string;
+  doctorNameEn?: string;
+  specialtyAr?: string;
+  specialtyEn?: string;
+  degreesAr?: string;
+  degreesEn?: string;
+  syndicateNumber?: string;
+  licenseYear?: string;
+  phone?: string;
+  logoUrl?: string;
   favoriteMedicationIds: string[];
   favoriteLabTestIds: string[];
   favoriteRadiologyIds: string[];

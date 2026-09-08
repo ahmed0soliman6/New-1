@@ -1,23 +1,45 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { AppointmentListItem } from '../../types';
 
 interface NewAppointmentModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddAppointment: (app: AppointmentListItem) => void;
+  visitTypesList?: { id: string; name: string; fee: number }[];
 }
 
 export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
   isOpen,
   onClose,
   onAddAppointment,
+  visitTypesList = [],
 }) => {
+  const activeVisitTypes = useMemo(() => {
+    if (visitTypesList && visitTypesList.length > 0) {
+      return visitTypesList;
+    }
+    return [
+      { id: 'vt-1', name: 'كشف جديد', fee: 300 },
+      { id: 'vt-2', name: 'استشارة / متابعة', fee: 150 },
+      { id: 'vt-3', name: 'كشف طوارئ', fee: 400 },
+    ];
+  }, [visitTypesList]);
+
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [timeSlot, setTimeSlot] = useState('02:30 م');
+  const [appointmentDate, setAppointmentDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [timeSlot, setTimeSlot] = useState('14:30');
   const [branch, setBranch] = useState('المهندسين');
-  const [visitType, setVisitType] = useState('كشف جديد');
-  const [fee, setFee] = useState(300);
+  const [visitType, setVisitType] = useState(() => activeVisitTypes[0]?.name || 'كشف جديد');
+  const [fee, setFee] = useState(() => activeVisitTypes[0]?.fee ?? 300);
+
+  // Sync if visitTypesList updates
+  React.useEffect(() => {
+    if (activeVisitTypes.length > 0 && !activeVisitTypes.some((vt) => vt.name === visitType)) {
+      setVisitType(activeVisitTypes[0].name);
+      setFee(activeVisitTypes[0].fee);
+    }
+  }, [activeVisitTypes, visitType]);
 
   if (!isOpen) return null;
 
@@ -28,14 +50,30 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
       return;
     }
 
+    // Format time slot nicely
+    let formattedTime = timeSlot;
+    if (timeSlot && timeSlot.includes(':')) {
+      const parts = timeSlot.split(':');
+      const hour = parseInt(parts[0], 10);
+      const minutes = parts[1];
+      const period = hour >= 12 ? 'م' : 'ص';
+      const displayHour = hour % 12 === 0 ? 12 : hour % 12;
+      formattedTime = `${String(displayHour).padStart(2, '0')}:${minutes} ${period}`;
+    }
+
+    const selectedVt = activeVisitTypes.find((vt) => vt.name === visitType);
+    const finalFee = selectedVt ? selectedVt.fee : fee;
+
     const newApp: AppointmentListItem = {
       id: `app-${Date.now()}`,
-      patientName: name,
+      patientName: name.trim(),
       medicalCode: `EG-${Math.floor(Math.random() * 90000) + 10000}`,
-      phone,
-      timeSlot,
+      phone: phone.trim(),
+      timeSlot: formattedTime,
+      time: formattedTime,
+      date: appointmentDate,
       visitType,
-      expectedFee: fee,
+      expectedFee: finalFee,
       branch,
       status: 'مجدول',
     };
@@ -58,25 +96,25 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
         </div>
 
         <p className="text-xs text-[#bbc9ca]">
-          هذا الحجز يدرج المريض في جدول مواعيد اليوم ولا يخصم أو يورد أي مبالغ حتى وصول المريض للاستقبال.
+          هذا الحجز يدرج المريض في جدول مواعيد اليوم بحالة «مجدول» ولا يخصم أو يورد أي مبالغ حتى وصول المريض للاستقبال.
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="text-xs text-[#859394] block mb-1">اسم المريض:</label>
+            <label className="text-xs text-[#dde2f5] font-bold block mb-1">اسم المريض:</label>
             <input
               type="text"
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="مثال: يوسف أحمد عبد الرحمن"
-              className="w-full bg-[#080e1b] text-[#dde2f5] text-xs p-2.5 rounded-xl border border-white/5 focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
+              className="w-full bg-[#080e1b] text-[#dde2f5] text-xs p-2.5 rounded-xl border border-white/10 focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="text-xs text-[#859394] block mb-1">رقم الهاتف:</label>
+              <label className="text-xs text-[#dde2f5] font-bold block mb-1">رقم الهاتف:</label>
               <input
                 type="tel"
                 required
@@ -84,29 +122,84 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="010xxxxxxxx"
-                className="w-full bg-[#080e1b] text-[#dde2f5] text-xs p-2.5 rounded-xl border border-white/5 font-mono focus:outline-none"
+                className="w-full bg-[#080e1b] text-[#dde2f5] text-xs p-2.5 rounded-xl border border-white/10 font-mono focus:outline-none"
               />
             </div>
 
             <div>
-              <label className="text-xs text-[#859394] block mb-1">وقت الموعد:</label>
-              <input
-                type="text"
-                value={timeSlot}
-                onChange={(e) => setTimeSlot(e.target.value)}
-                placeholder="02:30 م"
-                className="w-full bg-[#080e1b] text-[#dde2f5] text-xs p-2.5 rounded-xl border border-white/5 font-mono focus:outline-none"
-              />
+              <label className="text-xs text-[#dde2f5] font-bold block mb-1 flex items-center justify-between">
+                <span>التاريخ:</span>
+                <span className="text-[10px] text-[#00c2cb]">التقويم</span>
+              </label>
+              <div className="relative flex items-center">
+                <input
+                  type="date"
+                  required
+                  value={appointmentDate}
+                  onChange={(e) => setAppointmentDate(e.target.value)}
+                  onClick={(e) => {
+                    try {
+                      (e.currentTarget as any).showPicker?.();
+                    } catch {}
+                  }}
+                  className="w-full bg-[#080e1b] text-[#dde2f5] text-xs p-2.5 pl-9 rounded-xl border border-white/10 font-mono focus:outline-none cursor-pointer font-bold"
+                  title="انقر لفتح التقويم"
+                />
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    const input = e.currentTarget.parentElement?.querySelector('input[type="date"]') as any;
+                    try { input?.showPicker?.(); } catch { input?.focus(); }
+                  }}
+                  className="absolute left-1.5 w-6 h-6 rounded bg-[#00c2cb]/20 text-[#00c2cb] flex items-center justify-center cursor-pointer border border-[#00c2cb]/30"
+                  title="فتح التقويم"
+                >
+                  <span className="material-symbols-outlined text-sm">calendar_month</span>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs text-[#dde2f5] font-bold block mb-1 flex items-center justify-between">
+                <span>الوقت:</span>
+                <span className="text-[10px] text-[#00c2cb]">الساعة</span>
+              </label>
+              <div className="relative flex items-center">
+                <input
+                  type="time"
+                  required
+                  value={timeSlot}
+                  onChange={(e) => setTimeSlot(e.target.value)}
+                  onClick={(e) => {
+                    try {
+                      (e.currentTarget as any).showPicker?.();
+                    } catch {}
+                  }}
+                  className="w-full bg-[#080e1b] text-[#dde2f5] text-xs p-2.5 pl-9 rounded-xl border border-white/10 font-mono focus:outline-none cursor-pointer font-bold"
+                  title="انقر لفتح الساعة"
+                />
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    const input = e.currentTarget.parentElement?.querySelector('input[type="time"]') as any;
+                    try { input?.showPicker?.(); } catch { input?.focus(); }
+                  }}
+                  className="absolute left-1.5 w-6 h-6 rounded bg-[#00c2cb]/20 text-[#00c2cb] flex items-center justify-center cursor-pointer border border-[#00c2cb]/30"
+                  title="فتح الساعة"
+                >
+                  <span className="material-symbols-outlined text-sm">schedule</span>
+                </button>
+              </div>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-[#859394] block mb-1">الفرع:</label>
+              <label className="text-xs text-[#dde2f5] font-bold block mb-1">الفرع:</label>
               <select
                 value={branch}
                 onChange={(e) => setBranch(e.target.value)}
-                className="w-full bg-[#080e1b] text-[#dde2f5] text-xs p-2.5 rounded-xl border border-white/5 focus:outline-none cursor-pointer"
+                className="w-full bg-[#080e1b] text-[#dde2f5] text-xs p-2.5 rounded-xl border border-white/10 focus:outline-none cursor-pointer font-medium"
               >
                 <option value="المهندسين">الفرع الرئيسي - المهندسين</option>
                 <option value="الدقي">فرع الدقي التخصصي</option>
@@ -114,18 +207,25 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
             </div>
 
             <div>
-              <label className="text-xs text-[#859394] block mb-1">نوع الكشف والرسوم:</label>
+              <label className="text-xs text-[#dde2f5] font-bold block mb-1 flex items-center justify-between">
+                <span>نوع الكشف:</span>
+                <span className="text-[10px] text-[#00c2cb]">الإعدادات</span>
+              </label>
               <select
                 value={visitType}
                 onChange={(e) => {
-                  setVisitType(e.target.value);
-                  setFee(e.target.value === 'كشف جديد' ? 300 : e.target.value === 'استشارة' ? 150 : 0);
+                  const val = e.target.value;
+                  setVisitType(val);
+                  const found = activeVisitTypes.find((vt) => vt.name === val);
+                  if (found) setFee(found.fee);
                 }}
-                className="w-full bg-[#080e1b] text-[#dde2f5] text-xs p-2.5 rounded-xl border border-white/5 focus:outline-none cursor-pointer"
+                className="w-full bg-[#080e1b] text-[#dde2f5] text-xs p-2.5 rounded-xl border border-white/10 focus:outline-none cursor-pointer font-bold"
               >
-                <option value="كشف جديد">كشف جديد (300 ج.م)</option>
-                <option value="استشارة">استشارة عادية (150 ج.م)</option>
-                <option value="متابعة مجانية">متابعة مجانية (0 ج.م)</option>
+                {activeVisitTypes.map((vt) => (
+                  <option key={vt.id || vt.name} value={vt.name}>
+                    {vt.name} ({vt.fee} ج.م)
+                  </option>
+                ))}
               </select>
             </div>
           </div>

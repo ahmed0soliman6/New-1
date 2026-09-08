@@ -87,7 +87,7 @@ import { SettingsScreen } from './components/screens/SettingsScreen';
 import { ClinicalReportsScreen } from './components/screens/ClinicalReportsScreen';
 import { NewAppointmentModal } from './components/modals/NewAppointmentModal';
 import { db } from './services/firebase';
-import { doc, deleteDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
+import { doc, deleteDoc, setDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
 import { logoutAccount } from './services/auth';
 import { AuthScreen } from './components/AuthScreen';
 import { AuthProvider, useAuth, usePermissions } from './context/AuthContext';
@@ -440,21 +440,69 @@ function ClinicApp() {
   }, [appointmentsCanonical, patientsCanonical, visitTypesList]);
 
   const transactions: TransactionRecord[] = useMemo(() => {
-    return paymentsCanonical.map((p) => {
+    const list: TransactionRecord[] = [];
+    const seenPaymentIds = new Set<string>();
+
+    paymentsCanonical.forEach((p) => {
+      seenPaymentIds.add(p.paymentId);
       const pat = patientsCanonical.find((pt) => pt.patientId === p.patientId);
-      return {
+      const inv = invoicesCanonical.find((i) => i.invoiceId === p.invoiceId);
+      const serviceName = inv?.items?.[0]?.description || 'كشف واستشارة طبية';
+      const totalAmount = inv?.total || p.amount;
+      const discountAmount = inv?.discount || 0;
+      const paidAmount = p.amount;
+
+      list.push({
         id: p.paymentId,
-        receiptNo: p.receiptNumber,
-        patientName: pat?.fullName || 'مريض مجهول',
-        description: `سداد كشف ومستحقات زيارة - إيصال ${p.receiptNumber}`,
-        amount: p.amount,
+        receiptNo: p.receiptNumber || `REC-${p.paymentId.slice(-5)}`,
+        receiptNumber: p.receiptNumber || `REC-${p.paymentId.slice(-5)}`,
+        patientName: pat?.fullName || 'مريض مسجل',
+        serviceName,
+        description: serviceName,
+        totalAmount,
+        discountAmount,
+        paidAmount,
+        amount: paidAmount,
         type: 'in',
-        paymentMethod: (p.method === 'CARD' ? 'فيزا / كارت' : 'نقدي') as any,
+        paymentMethod: (p.method === 'CARD' ? 'فيزا / كارت' : 'نقدي'),
+        method: (p.method === 'CARD' ? 'فيزا / كارت' : 'نقدي'),
+        status: (inv?.status === 'PAID' || paidAmount >= totalAmount) ? 'مدفوعة' : 'غير مدفوعة',
         time: new Date(p.paidAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
-        category: 'كشوفات',
-      };
+        date: new Date(p.paidAt).toLocaleDateString('ar-EG'),
+        category: 'كشوفات وخدمات طبية',
+      });
     });
-  }, [paymentsCanonical, patientsCanonical]);
+
+    // Also include any unpaid invoices that don't have a payment entry yet
+    invoicesCanonical.forEach((inv) => {
+      const hasPayment = paymentsCanonical.some((p) => p.invoiceId === inv.invoiceId);
+      if (!hasPayment) {
+        const pat = patientsCanonical.find((pt) => pt.patientId === inv.patientId);
+        const serviceName = inv.items?.[0]?.description || 'كشف واستشارة طبية';
+        list.push({
+          id: inv.invoiceId,
+          receiptNo: `INV-${inv.invoiceId.slice(-5)}`,
+          receiptNumber: `INV-${inv.invoiceId.slice(-5)}`,
+          patientName: pat?.fullName || 'مريض مسجل',
+          serviceName,
+          description: serviceName,
+          totalAmount: inv.total,
+          discountAmount: inv.discount || 0,
+          paidAmount: inv.paidAmount || 0,
+          amount: inv.paidAmount || inv.total,
+          type: 'in',
+          paymentMethod: 'نقدي',
+          method: 'نقدي',
+          status: inv.status === 'PAID' ? 'مدفوعة' : 'غير مدفوعة',
+          time: new Date(inv.createdAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+          date: new Date(inv.createdAt).toLocaleDateString('ar-EG'),
+          category: 'فواتير كشوفات',
+        });
+      }
+    });
+
+    return list;
+  }, [paymentsCanonical, invoicesCanonical, patientsCanonical]);
 
   // Catalogs derived
   const presetChronicConditions = useMemo(() => {
@@ -545,6 +593,35 @@ function ClinicApp() {
   const [isNewAppointmentOpen, setIsNewAppointmentOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  // Pre-filled intake data when transitioning from appointment «حضر المريض»
+  const [intakeInitialData, setIntakeInitialData] = useState<{
+    patientName?: string;
+    phone?: string;
+    visitType?: string;
+    notes?: string;
+    appointmentId?: string;
+    fee?: number;
+  } | null>(null);
+
+  const handleStartIntakeFromAppointment = (app: AppointmentListItem) => {
+    setIntakeInitialData({
+      patientName: app.patientName,
+      phone: app.phone,
+      visitType: app.visitType,
+      notes: app.notes,
+      appointmentId: app.id,
+      fee: app.expectedFee,
+    });
+    setAppointmentsCanonical((prev) =>
+      prev.map((a) =>
+        a.appointmentId === app.id || a.patientName === app.patientName
+          ? { ...a, status: 'ARRIVED' }
+          : a
+      )
+    );
+    handleNavigate('new-visit');
+  };
+
   // Sound/Announcement banner (Controlled by Settings)
   const [callingBanner, setCallingBanner] = useState<ClinicAlertPayload | null>(null);
   const [alertHistory, setAlertHistory] = useState<ClinicAlertPayload[]>([]);
@@ -556,36 +633,79 @@ function ClinicApp() {
     setAlertHistory((prev) => [alertItem, ...prev.filter((a) => a.id !== alertItem.id)].slice(0, 15));
   };
 
-  // Derived follow-ups with calculation for upcoming 14 days and WhatsApp messaging
-  const upcomingFollowUpsList = useMemo(() => {
+  // Doctor-determined Follow-ups only (from followUps collection & doctor examination schedules)
+  const doctorFollowUpsList = useMemo(() => {
     const today = new Date();
-    return patientsCanonical
-      .filter((p) => {
-        const pVisits = visitsCanonical.filter((v) => v.patientId === p.patientId);
-        return pVisits.length > 0;
-      })
-      .map((p) => {
-        const pVisits = visitsCanonical.filter((v) => v.patientId === p.patientId);
-        const lastVisit = [...pVisits].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-        const visitDate = lastVisit ? new Date(lastVisit.createdAt) : today;
-        const dueDateObj = new Date(visitDate.getTime() + 14 * 86400000);
-        const diffDays = Math.ceil((dueDateObj.getTime() - today.getTime()) / 86400000);
+    today.setHours(0, 0, 0, 0);
 
-        return {
-          id: `fu-${p.patientId}`,
-          patientName: p.fullName,
-          phone: p.phone,
-          medicalCode: p.medicalCode || `EG-${p.fileNumber || 101}`,
-          lastVisitDate: visitDate.toISOString().split('T')[0],
-          dueDate: dueDateObj.toISOString().split('T')[0],
-          daysRemaining: Math.max(0, diffDays),
-          isFreeEligible: diffDays >= 0 && diffDays <= 14,
-          diagnosis: lastVisit?.clinicalData?.diagnosis?.[0] || 'متابعة استشارة دورية',
-          notes: 'متابعة علاج وفحص سريري',
-        };
-      })
-      .sort((a, b) => a.daysRemaining - b.daysRemaining);
-  }, [patientsCanonical, visitsCanonical]);
+    const list: Array<{
+      id: string;
+      patientName: string;
+      phone: string;
+      medicalCode: string;
+      lastVisitDate: string;
+      dueDate: string;
+      daysRemaining: number;
+      isFreeEligible: boolean;
+      diagnosis: string;
+      notes: string;
+    }> = [];
+
+    // 1. From Canonical FollowUps collection (recorded by doctor during exam)
+    followUpsCanonical.forEach((fu) => {
+      if (fu.status === 'CANCELLED' || fu.status === 'COMPLETED') return;
+      const patient = patientsCanonical.find((p) => p.patientId === fu.patientId);
+      if (!patient) return;
+      
+      const pVisits = visitsCanonical.filter((v) => v.patientId === fu.patientId);
+      const lastVisit = [...pVisits].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+      const dueDateObj = new Date(fu.scheduledDate);
+      dueDateObj.setHours(0, 0, 0, 0);
+      const diffDays = Math.ceil((dueDateObj.getTime() - today.getTime()) / 86400000);
+
+      list.push({
+        id: fu.followUpId,
+        patientName: patient.fullName,
+        phone: patient.phone,
+        medicalCode: patient.medicalCode || `EG-${patient.fileNumber || 101}`,
+        lastVisitDate: lastVisit?.createdAt?.split('T')[0] || fu.createdAt?.split('T')[0] || '',
+        dueDate: fu.scheduledDate,
+        daysRemaining: diffDays,
+        isFreeEligible: fu.isFree || false,
+        diagnosis: lastVisit?.clinicalData?.diagnosis?.[0] || 'متابعة استشارة',
+        notes: fu.notes || 'متابعة حددها الطبيب',
+      });
+    });
+
+    // 2. Also include any doctor-scheduled follow-up appointments
+    appointmentsCanonical.forEach((app) => {
+      if (app.status !== 'SCHEDULED') return;
+      if (!app.visitType.includes('متابعة') && !app.visitType.includes('استشارة')) return;
+      if (list.some((item) => item.id === app.appointmentId || (item.patientName === patientsCanonical.find(p => p.patientId === app.patientId)?.fullName && item.dueDate === app.scheduledDate))) return;
+
+      const patient = patientsCanonical.find((p) => p.patientId === app.patientId);
+      if (!patient) return;
+
+      const dueDateObj = new Date(app.scheduledDate);
+      dueDateObj.setHours(0, 0, 0, 0);
+      const diffDays = Math.ceil((dueDateObj.getTime() - today.getTime()) / 86400000);
+
+      list.push({
+        id: app.appointmentId,
+        patientName: patient.fullName,
+        phone: patient.phone,
+        medicalCode: patient.medicalCode || `EG-${patient.fileNumber || 101}`,
+        lastVisitDate: app.createdAt?.split('T')[0] || '',
+        dueDate: app.scheduledDate,
+        daysRemaining: diffDays,
+        isFreeEligible: false,
+        diagnosis: app.visitType,
+        notes: app.notes || 'موعد متابعة محدد',
+      });
+    });
+
+    return list.sort((a, b) => a.daysRemaining - b.daysRemaining);
+  }, [followUpsCanonical, appointmentsCanonical, patientsCanonical, visitsCanonical]);
 
   // Synchronize Theme class on HTML document root and localStorage
   useEffect(() => {
@@ -890,6 +1010,95 @@ function ClinicApp() {
         await deleteDoc(doc(db, 'patients', patientId));
       } catch (err) {
         console.warn('Error deleting patient from Firestore:', err);
+      }
+    }
+  };
+
+  // Add invoice / transaction safely
+  const handleAddTransaction = async (newTx: TransactionRecord) => {
+    // 1. Find or resolve patient
+    let targetPatientId = patientsCanonical.find(
+      (p) => p.fullName.trim() === newTx.patientName.trim()
+    )?.patientId;
+
+    if (!targetPatientId && newTx.patientName.trim()) {
+      targetPatientId = `pat-${Date.now()}`;
+      const newPat: Patient = {
+        patientId: targetPatientId,
+        fileNumber: `F-${Math.floor(1000 + Math.random() * 9000)}`,
+        fullName: newTx.patientName.trim(),
+        phone: '',
+        gender: 'male',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      setPatientsCanonical((prev) => [newPat, ...prev]);
+      if (db) {
+        setDoc(doc(db, 'patients', targetPatientId), newPat).catch((e) => console.warn('Patient save fallback:', e));
+      }
+    }
+
+    const invoiceId = `inv-${Date.now()}`;
+    const paymentId = `pay-${Date.now()}`;
+    const totalAmount = newTx.totalAmount ?? newTx.amount ?? 0;
+    const discountAmount = newTx.discountAmount ?? 0;
+    const finalTotal = Math.max(0, totalAmount - discountAmount);
+    const paidAmount = newTx.paidAmount ?? (newTx.status === 'مدفوعة' ? finalTotal : (newTx.amount ?? 0));
+
+    const newInvoice: Invoice = {
+      invoiceId,
+      patientId: targetPatientId || 'pat-general',
+      visitId: '',
+      clinicLocationId: 'loc-main',
+      items: [
+        {
+          serviceId: `srv-${Date.now()}`,
+          nameAr: newTx.serviceName || newTx.description || 'كشف واستشارة طبية',
+          quantity: 1,
+          unitPrice: totalAmount,
+          total: totalAmount,
+        },
+      ],
+      subtotal: totalAmount,
+      discount: discountAmount,
+      total: finalTotal,
+      paidAmount: paidAmount > 0 ? paidAmount : (newTx.status === 'مدفوعة' ? finalTotal : 0),
+      remainingAmount: Math.max(0, finalTotal - (paidAmount > 0 ? paidAmount : (newTx.status === 'مدفوعة' ? finalTotal : 0))),
+      status: (newTx.status === 'مدفوعة' || paidAmount >= finalTotal) ? 'PAID' : 'UNPAID',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const newPayment: Payment = {
+      paymentId,
+      patientId: targetPatientId || 'pat-general',
+      visitId: '',
+      invoiceId,
+      clinicLocationId: 'loc-main',
+      amount: newInvoice.paidAmount > 0 ? newInvoice.paidAmount : finalTotal,
+      method: (newTx.paymentMethod || newTx.method) === 'فيزا / كارت' ? 'CARD' : 'CASH',
+      status: 'PAID',
+      receiptNumber: newTx.receiptNo || `REC-${Math.floor(10000 + Math.random() * 90000)}`,
+      paidAt: new Date().toISOString(),
+      receivedBy: 'doc-1',
+    };
+
+    setInvoicesCanonical((prev) => [newInvoice, ...prev]);
+    if (newInvoice.status === 'PAID' || newPayment.amount > 0) {
+      setPaymentsCanonical((prev) => [newPayment, ...prev]);
+    }
+
+    if (db) {
+      try {
+        const tasks: Promise<unknown>[] = [
+          setDoc(doc(db, 'invoices', invoiceId), newInvoice),
+        ];
+        if (newInvoice.status === 'PAID' || newPayment.amount > 0) {
+          tasks.push(setDoc(doc(db, 'payments', paymentId), newPayment));
+        }
+        await Promise.allSettled(tasks);
+      } catch (err) {
+        console.warn('Error saving transaction to Firestore:', err);
       }
     }
   };
@@ -1380,13 +1589,8 @@ function ClinicApp() {
             scheduledDate: examData.followupDate,
             fee: 0,
             isFree: true,
-            notes: examData.lifestyleAdvice || 'متابعة الكشف',
-          } : {
-            scheduledDate: new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
-            fee: 0,
-            isFree: true,
-            notes: 'استشارة مجانية للمتابعة خلال 14 يوماً من تاريخ الكشف',
-          },
+            notes: examData.lifestyleAdvice || 'متابعة حددها الطبيب',
+          } : undefined,
         });
       } catch (error) {
         console.warn('Firestore sync notice:', error);
@@ -1436,7 +1640,7 @@ function ClinicApp() {
           syncErrorDetails={syncErrorDetails}
           waitingQueue={queue}
           recentAlerts={alertHistory}
-          followUpsList={upcomingFollowUpsList}
+          followUpsList={doctorFollowUpsList}
           onNavigate={handleNavigate}
           onCallPatient={handleCallPatient}
           onRetrySync={() => setSyncRetryCounter((c) => c + 1)}
@@ -1557,6 +1761,8 @@ function ClinicApp() {
                   nextFileNumber={nextFileNumber}
                   symptomsCatalog={symptomsCatalog}
                   visitTypesList={visitTypesList}
+                  initialData={intakeInitialData}
+                  onClearInitialData={() => setIntakeInitialData(null)}
                 />
               )}
 
@@ -1573,11 +1779,14 @@ function ClinicApp() {
               {(activeScreen === 'appointments' || activeScreen === 'upcoming-followups') && (
                 <AppointmentsScreen
                   appointments={appointments}
-                  followUps={upcomingFollowUpsList}
+                  followUps={doctorFollowUpsList}
                   onCheckInPatient={(app) => handleConfirmCheckIn(app, app.expectedFee, 'نقدي')}
                   onOpenNewAppointment={() => setIsNewAppointmentOpen(true)}
                   onAddAppointment={handleAddAppointment}
                   onNavigate={handleNavigate}
+                  onStartIntakeFromAppointment={handleStartIntakeFromAppointment}
+                  patients={patients}
+                  visitTypesList={visitTypesList}
                 />
               )}
 
@@ -1689,6 +1898,7 @@ function ClinicApp() {
         isOpen={isNewAppointmentOpen}
         onClose={() => setIsNewAppointmentOpen(false)}
         onAddAppointment={handleAddAppointment}
+        visitTypesList={visitTypesList}
       />
 
       {/* Database Architecture Inspector Modal */}

@@ -10,6 +10,15 @@ interface PatientIntakeScreenProps {
   nextFileNumber?: number;
   symptomsCatalog?: { id: string; name: string; category: string }[];
   visitTypesList?: { id: string; name: string; fee: number }[];
+  initialData?: {
+    patientName?: string;
+    phone?: string;
+    visitType?: string;
+    notes?: string;
+    appointmentId?: string;
+    fee?: number;
+  } | null;
+  onClearInitialData?: () => void;
 }
 
 export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
@@ -34,6 +43,8 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
     { id: '2', name: 'استشارة / متابعة', fee: 150 },
     { id: '3', name: 'كشف طوارئ', fee: 400 },
   ],
+  initialData = null,
+  onClearInitialData,
 }) => {
   const [mode, setMode] = useState<'new' | 'existing'>('new');
   // Form fields start CLEAN for new patients
@@ -82,6 +93,59 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
       return matchName || matchPhone;
     });
   }, [name, phone, patients]);
+
+  // Effect to automatically pre-populate from initialData (e.g. from Appointment Check-in)
+  React.useEffect(() => {
+    if (!initialData) return;
+    const initialName = (initialData.patientName || '').trim();
+    const initialPhone = (initialData.phone || '').trim();
+    if (!initialName && !initialPhone) return;
+
+    // Search if patient already exists in clinic database
+    const cleanDigits = (s: string) => s.replace(/[^0-9]/g, '');
+    const foundPatient = patients.find((p) => {
+      const pPhoneClean = cleanDigits(p.phone || '');
+      const initPhoneClean = cleanDigits(initialPhone);
+      const phoneMatch = initPhoneClean.length >= 7 && pPhoneClean.includes(initPhoneClean);
+      const nameMatch = Boolean(
+        initialName && p.name && p.name.trim().toLowerCase() === initialName.toLowerCase()
+      );
+      return phoneMatch || nameMatch;
+    });
+
+    if (foundPatient) {
+      setName(foundPatient.name || initialName);
+      setPhone(foundPatient.phone || initialPhone);
+      setAge(foundPatient.age ? String(foundPatient.age) : '');
+      setGender(foundPatient.gender || '');
+      setAddress(foundPatient.address || foundPatient.governorate || '');
+      setBloodType(foundPatient.bloodType || foundPatient.bloodGroup || 'غير محدد');
+      if (foundPatient.chronicConditions && Array.isArray(foundPatient.chronicConditions)) {
+        setChronicSelected(foundPatient.chronicConditions);
+      }
+      setAutoFilledPatientId(foundPatient.id);
+      setToastMessage(`تم العثور على ملف المريض المسجل مسبقاً (${foundPatient.name}) واسترجاع كافة بياناته تلقائياً`);
+    } else {
+      setName(initialName);
+      setPhone(initialPhone);
+      setAutoFilledPatientId(null);
+      setToastMessage(`تم تحويل الموعد (${initialName}). يرجى استكمال باقي بيانات المريض مثل السن والعنوان والأمراض`);
+    }
+
+    // Set visit type if matches
+    if (initialData.visitType) {
+      const matchedVisit = visitTypesList.find(
+        (v) => v.name.includes(initialData.visitType!) || initialData.visitType!.includes(v.name)
+      );
+      if (matchedVisit) {
+        setSelectedVisitType(matchedVisit);
+      }
+    }
+
+    if (initialData.notes) {
+      setComplaintText(initialData.notes);
+    }
+  }, [initialData, patients, visitTypesList]);
 
   const handleSelectExisting = (p: PatientListItem) => {
     if (!p) return;
@@ -197,10 +261,16 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
     };
 
     onAddPatientToQueue(newQueueItem);
-    setToastMessage(`تم تسجيل الزيارة بنجاح! رقم الدور (${ticketNumber}) - ملف رقم (${autoFileNumber})`);
-    setTimeout(() => setToastMessage(null), 4500);
-
+    setToastMessage(`تم تسجيل الزيارة بنجاح ودخول صالة الانتظار! تذكرة (${ticketNumber}) - ملف رقم (${autoFileNumber})`);
+    if (onClearInitialData) onClearInitialData();
     resetFormFields();
+
+    // Smoothly redirect to waiting queue screen so secretary immediately sees the patient in "مرضى فى الانتظار"
+    setTimeout(() => {
+      if (onNavigate) {
+        onNavigate('waiting-queue');
+      }
+    }, 900);
   };
 
   return (
@@ -210,6 +280,42 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-white dark:bg-[#18233C] border border-[#00c2cb] text-slate-900 dark:text-[#45dee7] px-6 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-in fade-in">
           <span className="material-symbols-outlined text-2xl text-[#00c2cb]">check_circle</span>
           <span className="text-sm font-bold">{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Appointment Check-in Transfer Banner */}
+      {initialData && (
+        <div className="bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-transparent dark:from-emerald-950/50 dark:via-teal-950/30 border border-emerald-400/40 dark:border-emerald-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500 text-slate-950 flex items-center justify-center font-black shrink-0 shadow-xs">
+              <span className="material-symbols-outlined text-xl">how_to_reg</span>
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black text-emerald-800 dark:text-emerald-300">
+                  تحويل من جدول المواعيد: {initialData.patientName}
+                </span>
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200">
+                  {initialData.visitType || 'كشف'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+                {autoFilledPatientId
+                  ? 'تم العثور على المريض في السجلات واسترجاع بياناته تلقائياً. تأكدي من نوع الزيارة وسجلي التذكرة.'
+                  : 'مريض غير مسجل مسبقاً: يرجى استكمال باقي البيانات (السن، العنوان، والأمراض المزمنة) ثم تسجيل الزيارة.'}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (onClearInitialData) onClearInitialData();
+              resetFormFields();
+            }}
+            className="px-3 py-1.5 rounded-xl bg-white dark:bg-[#111A2E] text-slate-700 dark:text-slate-300 text-xs font-bold border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 cursor-pointer self-end sm:self-auto shrink-0"
+          >
+            إلغاء التحويل
+          </button>
         </div>
       )}
 

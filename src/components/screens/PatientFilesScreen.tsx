@@ -303,29 +303,145 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
                             </div>
                           ) : (
                             <div className="border-r-2 border-teal-300 dark:border-[#00c2cb]/40 pr-4 space-y-6">
-                              {pVisits.map((v) => (
-                                <div key={v.visitId} className="relative">
-                                  <span className={`w-2.5 h-2.5 rounded-full absolute -right-[21px] top-1.5 ${v.status === 'COMPLETED' ? 'bg-[#00c2cb]' : 'bg-amber-400'}`}></span>
-                                  <div className="text-xs font-mono text-[#008f97] dark:text-[#00c2cb] font-bold">
-                                    {new Date(v.createdAt).toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              {pVisits.map((v) => {
+                                const vPrescriptions = pPrescriptions.filter(
+                                  (pr) => pr.visitId === v.visitId || pr.createdAt?.startsWith(v.createdAt?.split('T')[0])
+                                );
+                                const vLabs = pLabOrders.filter(
+                                  (l) => l.visitId === v.visitId || l.orderedAt?.startsWith(v.createdAt?.split('T')[0])
+                                );
+                                const vRads = pRadiologyOrders.filter(
+                                  (r) => r.visitId === v.visitId || r.orderedAt?.startsWith(v.createdAt?.split('T')[0])
+                                );
+                                const vFollowUp = followUps.find(
+                                  (fu) => (fu.sourceVisitId === v.visitId || fu.patientId === p.patientId) && fu.status !== 'CANCELLED'
+                                );
+
+                                const handleSendVisitWhatsapp = () => {
+                                  const cleanPhone = (p.phone || '').replace(/[^0-9]/g, '');
+                                  const formattedPhone = cleanPhone.startsWith('0') ? `2${cleanPhone}` : cleanPhone || '201092847162';
+
+                                  const visitDateStr = new Date(v.createdAt).toLocaleDateString('ar-EG', {
+                                    year: 'numeric',
+                                    month: 'long',
+                                    day: 'numeric',
+                                  });
+
+                                  const diagnosisStr =
+                                    v.clinicalData?.diagnosis && v.clinicalData.diagnosis.length > 0
+                                      ? v.clinicalData.diagnosis.join('، ')
+                                      : 'فحص واستشارة باطنة';
+
+                                  const allMeds = vPrescriptions.flatMap((pr) => pr.items || []);
+
+                                  let medsSection = '';
+                                  if (allMeds.length > 0) {
+                                    const medsList = allMeds
+                                      .map(
+                                        (it, idx) =>
+                                          `  ${idx + 1}. *${it.name}* ${it.strength ? `(${it.strength})` : ''}\n     • الجرعة والمدة: ${it.dose || 'قرص'} — ${it.duration || ''}`
+                                      )
+                                      .join('\n');
+                                    medsSection = `\n\n💊 *الأدوية الموصوفة:*\n${medsList}`;
+                                  } else if (v.clinicalData?.treatment) {
+                                    medsSection = `\n\n💊 *العلاج والخطّة الدوائية:*\n${v.clinicalData.treatment}`;
+                                  }
+
+                                  let labsSection = '';
+                                  if (vLabs.length > 0) {
+                                    const labsListStr = vLabs
+                                      .map((l, idx) => `  ${idx + 1}. *${l.testName}*`)
+                                      .join('\n');
+                                    labsSection = `\n\n🧪 *الفحوصات والتحاليل المعملية:*\n${labsListStr}`;
+                                  }
+
+                                  let radsSection = '';
+                                  if (vRads.length > 0) {
+                                    const radsListStr = vRads
+                                      .map((r, idx) => `  ${idx + 1}. *${r.radiologyName}*`)
+                                      .join('\n');
+                                    radsSection = `\n\n🩻 *الأشعة والموجات الصوتية:*\n${radsListStr}`;
+                                  }
+
+                                  let followUpSection = '';
+                                  if (vFollowUp?.scheduledDate) {
+                                    followUpSection = `\n\n🗓 *موعد المتابعة الاستشارية:* ${vFollowUp.scheduledDate}`;
+                                  }
+
+                                  const message = `مرحباً بك أستاذ/ة *${p.fullName}* 🌸
+إليك تفاصيل وتقارير زيارتكم الطبية لدى *عيادة د. حازم القاضي* 🩺
+
+🗓 *تاريخ الزيارة:* ${visitDateStr}
+📋 *التشخيص الإكلينيكي:* ${diagnosisStr}${medsSection}${labsSection}${radsSection}${followUpSection}
+
+📍 *العنوان:* عيادة الباطنة التخصصية - المهندسين
+📞 *للتأكيد والاستفسار:* 01092847162
+مع تمنياتنا لكم بتمام الشفاء ودوام الصحة والعافية ✨`;
+
+                                  window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`, '_blank');
+                                };
+
+                                return (
+                                  <div key={v.visitId} className="relative bg-slate-50/80 dark:bg-[#080e1b] p-3.5 sm:p-4 rounded-xl border border-slate-200/80 dark:border-white/5 space-y-2.5 shadow-xs">
+                                    <span className={`w-3 h-3 rounded-full absolute -right-[23px] top-4 border-2 border-white dark:border-[#111A2E] ${v.status === 'COMPLETED' ? 'bg-[#00c2cb]' : 'bg-amber-400'}`}></span>
+
+                                    <div className="flex items-center justify-between gap-2 flex-wrap pb-2 border-b border-slate-200/60 dark:border-white/5">
+                                      <div>
+                                        <div className="text-xs font-mono text-[#008f97] dark:text-[#00c2cb] font-bold">
+                                          {new Date(v.createdAt).toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                        </div>
+                                        <div className="font-bold text-sm text-slate-900 dark:text-[#dde2f5] mt-0.5">
+                                          {v.visitType === 'NEW' ? 'كشف جديد' : 'استشارة / متابعة'} — {v.clinicalData?.chiefComplaint || v.receptionistData?.symptoms || 'كشف عيادة'}
+                                        </div>
+                                      </div>
+
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleSendVisitWhatsapp();
+                                        }}
+                                        className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-xs shrink-0"
+                                        title="إرسال بيانات الزيارة بالكامل (تشخيص، تحاليل، أشعة، أدوية، وموعد المتابعة) إلى المريض عبر واتساب"
+                                      >
+                                        <span className="material-symbols-outlined text-sm">chat</span>
+                                        <span>إرسال تقرير الزيارة (واتساب)</span>
+                                      </button>
+                                    </div>
+
+                                    {v.clinicalData?.diagnosis && v.clinicalData.diagnosis.length > 0 && (
+                                      <p className="text-xs text-slate-700 dark:text-[#bbc9ca]">
+                                        <strong className="text-slate-900 dark:text-[#dde2f5]">📋 التشخيص:</strong> {v.clinicalData.diagnosis.join('، ')}
+                                      </p>
+                                    )}
+
+                                    {v.clinicalData?.treatment && (
+                                      <p className="text-xs text-slate-600 dark:text-[#859394]">
+                                        <strong className="text-slate-900 dark:text-[#dde2f5]">💊 العلاج والتعليمات:</strong> {v.clinicalData.treatment}
+                                      </p>
+                                    )}
+
+                                    {vLabs.length > 0 && (
+                                      <div className="text-xs text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 p-2 rounded-lg border border-amber-200/50 dark:border-amber-900/30">
+                                        <strong>🧪 التحاليل المطلوبة:</strong> {vLabs.map((l) => l.testName).join('، ')}
+                                      </div>
+                                    )}
+
+                                    {vRads.length > 0 && (
+                                      <div className="text-xs text-purple-800 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/30 p-2 rounded-lg border border-purple-200/50 dark:border-purple-900/30">
+                                        <strong>🩻 الأشعة المطلوبة:</strong> {vRads.map((r) => r.radiologyName).join('، ')}
+                                      </div>
+                                    )}
+
+                                    {vFollowUp?.scheduledDate && (
+                                      <div className="text-xs text-teal-800 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/30 p-2 rounded-lg border border-teal-200/50 dark:border-teal-900/30 flex items-center justify-between">
+                                        <span><strong>🗓 موعد المتابعة القادم:</strong> {vFollowUp.scheduledDate}</span>
+
+                                      </div>
+                                    )}
                                   </div>
-                                  <div className="font-bold text-sm text-slate-900 dark:text-[#dde2f5] mt-1">
-                                    {v.visitType === 'NEW' ? 'كشف جديد' : 'استشارة / متابعة'} — {v.clinicalData?.chiefComplaint || v.receptionistData?.symptoms || 'كشف عيادة'}
-                                  </div>
-                                  
-                                  {v.clinicalData?.diagnosis && v.clinicalData.diagnosis.length > 0 && (
-                                    <p className="text-xs text-slate-600 dark:text-[#bbc9ca] mt-1.5">
-                                      <strong className="text-slate-800 dark:text-[#dde2f5]">التشخيص:</strong> {v.clinicalData.diagnosis.join('، ')}
-                                    </p>
-                                  )}
-                                  
-                                  {v.clinicalData?.treatment && (
-                                    <p className="text-xs text-slate-500 dark:text-[#859394] mt-1">
-                                      <strong className="text-slate-800 dark:text-[#dde2f5]">العلاج:</strong> {v.clinicalData.treatment}
-                                    </p>
-                                  )}
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           )}
                         </div>
@@ -346,7 +462,25 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
                                     <span className="font-bold text-[#008f97] dark:text-[#00c2cb]">
                                       روشتة بتاريخ {new Date(pr.createdAt).toLocaleDateString('ar-EG')}
                                     </span>
-                                    <span className="text-slate-400 text-[10px] font-mono">{pr.items.length} صنف</span>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-slate-400 text-[10px] font-mono">{pr.items.length} صنف</span>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const cleanPhone = (p.phone || '').replace(/[^0-9]/g, '');
+                                          const formattedPhone = cleanPhone.startsWith('0') ? `2${cleanPhone}` : cleanPhone || '201092847162';
+                                          const medsList = pr.items.map((it, idx) => `${idx + 1}. *${it.name}* (${it.strength || ''})\n   - الجرعة: ${it.dose || 'قرص'}\n   - المدة والتكرار: ${it.duration || ''}`).join('\n');
+                                          const message = `مرحباً بك أستاذ/ة *${p.fullName}* 🌸\nإليك الروشتة الطبية الخاصة بزيارتكم في *عيادة د. حازم القاضي* 🩺\n\n🗓 تاريخ الروشتة: *${new Date(pr.createdAt).toLocaleDateString('ar-EG')}*\n\n💊 *الأدوية الموصوفة:*\n${medsList}\n\n${pr.notes ? `📝 *إرشادات الطبيب:* ${pr.notes}\n\n` : ''}📍 عيادة الباطنة التخصصية - المهندسين\nمع تمنياتنا لكم بالشفاء العاجل ودوام الصحة والعافية ✨`;
+                                          window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`, '_blank');
+                                        }}
+                                        className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all shadow-xs"
+                                        title="إرسال الروشتة للمريض عبر واتساب"
+                                      >
+                                        <span className="material-symbols-outlined text-xs">chat</span>
+                                        <span>إرسال واتساب</span>
+                                      </button>
+                                    </div>
                                   </div>
                                   <div className="grid grid-cols-1 gap-2">
                                     {pr.items.map((it, idx) => (

@@ -1,78 +1,337 @@
-import React, { useState } from 'react';
-import { TransactionRecord } from '../../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { TransactionRecord, PatientListItem } from '../../types';
 import { usePermissions } from '../../context/AuthContext';
 import { PermissionGate } from '../auth/PermissionGate';
+import {
+  loadMedicalServices,
+  loadExpenseCategories,
+  loadClinicExpenses,
+  addClinicExpense,
+  removeClinicExpense,
+  MedicalServiceItem,
+  ExpenseCategoryItem,
+  ClinicExpenseRecord,
+} from '../../utils/financeManager';
+import {
+  generateHistoricalTransactions,
+  BASE_FINANCIAL_METRICS,
+} from '../../utils/historicalFinanceData';
 
 interface FinanceScreenProps {
   transactions: TransactionRecord[];
   onAddTransaction: (tx: TransactionRecord) => void;
   onDeleteTransaction?: (txId: string) => void;
+  patients?: PatientListItem[];
 }
 
-export const FinanceScreen: React.FC<FinanceScreenProps> = ({ transactions, onAddTransaction, onDeleteTransaction }) => {
+type TimeframeOption = 'day' | 'week' | 'month' | 'year' | 'all';
+
+export const FinanceScreen: React.FC<FinanceScreenProps> = ({
+  transactions,
+  onAddTransaction,
+  onDeleteTransaction,
+  patients = [],
+}) => {
   const { assertPermission, userProfile } = usePermissions();
-  const [filter, setFilter] = useState<string>('all');
-  const [showExpenseModal, setShowExpenseModal] = useState(false);
-  const [expenseDesc, setExpenseDesc] = useState('');
-  const [expenseAmount, setExpenseAmount] = useState(150);
+
+  // Dynamic Medical Services & Expense Categories loaded from Settings
+  const [medicalServices, setMedicalServices] = useState<MedicalServiceItem[]>(loadMedicalServices);
+  const [expenseCategories, setExpenseCategories] = useState<ExpenseCategoryItem[]>(loadExpenseCategories);
+  const [expenses, setExpenses] = useState<ClinicExpenseRecord[]>(loadClinicExpenses);
+
+  // Historical deterministic records seed
+  const historicalRecords = useMemo(() => generateHistoricalTransactions(), []);
+
+  // Filter & Search states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedTimeframe, setSelectedTimeframe] = useState<TimeframeOption>('month'); // Default Month as requested
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const PAGE_SIZE = 40; // 40 items per page as requested
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedTimeframe]);
+
+  // Re-sync on custom storage events
+  useEffect(() => {
+    const handleServicesUpdate = () => setMedicalServices(loadMedicalServices());
+    const handleExpCatsUpdate = () => setExpenseCategories(loadExpenseCategories());
+    const handleExpensesUpdate = () => setExpenses(loadClinicExpenses());
+
+    window.addEventListener('soli_services_updated', handleServicesUpdate);
+    window.addEventListener('soli_expense_categories_updated', handleExpCatsUpdate);
+    window.addEventListener('soli_clinic_expenses_updated', handleExpensesUpdate);
+
+    return () => {
+      window.removeEventListener('soli_services_updated', handleServicesUpdate);
+      window.removeEventListener('soli_expense_categories_updated', handleExpCatsUpdate);
+      window.removeEventListener('soli_clinic_expenses_updated', handleExpensesUpdate);
+    };
+  }, []);
+
+  // UI Modal & Confirmation States
   const [toast, setToast] = useState<string | null>(null);
   const [selectedReceipt, setSelectedReceipt] = useState<TransactionRecord | null>(null);
   const [txToDelete, setTxToDelete] = useState<TransactionRecord | null>(null);
+  const [expenseToDelete, setExpenseToDelete] = useState<ClinicExpenseRecord | null>(null);
 
-  const totalIn = transactions.filter((t) => t.type === 'in').reduce((sum, t) => sum + t.amount, 0);
-  const totalOut = transactions.filter((t) => t.type === 'out').reduce((sum, t) => sum + t.amount, 0);
-  const netInDrawer = totalIn - totalOut;
+  // New Invoice Modal States
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [invPatientName, setInvPatientName] = useState('');
+  const [invService, setInvService] = useState('كشف واستشارة طبية');
+  const [invAmount, setInvAmount] = useState<number>(300);
+  const [invDiscount, setInvDiscount] = useState<number>(0);
+  const [invStatus, setInvStatus] = useState<'مدفوعة' | 'غير مدفوعة' | 'مؤجلة'>('مدفوعة');
+  const [invPaymentMethod, setInvPaymentMethod] = useState<'نقدي' | 'فيزا / كارت' | 'إنستاباي'>('نقدي');
 
-  const cashIn = transactions
-    .filter((t) => t.type === 'in' && t.method === 'نقدي')
-    .reduce((sum, t) => sum + t.amount, 0);
-  const posIn = transactions
-    .filter((t) => t.type === 'in' && (t.method === 'فيزا / كارت' || t.method === 'إنستاباي'))
-    .reduce((sum, t) => sum + t.amount, 0);
+  // Quick Expense Input States
+  const [selectedExpenseCategory, setSelectedExpenseCategory] = useState<string>('');
+  const [quickExpenseAmount, setQuickExpenseAmount] = useState<string>('');
+  const [quickExpenseDate, setQuickExpenseDate] = useState<string>(
+    new Date().toISOString().split('T')[0]
+  );
+  const [quickExpenseNotes, setQuickExpenseNotes] = useState<string>('');
 
-  const handleAddExpense = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!expenseDesc.trim()) return;
+  // Auto-fill price when medical service is selected
+  const handleSelectService = (serviceName: string) => {
+    setInvService(serviceName);
+    const matched = medicalServices.find((s) => s.name === serviceName);
+    if (matched) {
+      setInvAmount(matched.price);
+    }
+  };
+
+  // Combine Live Transactions with Historical Records
+  const allInflowRecords = useMemo(() => {
+    const map = new Map<string, TransactionRecord>();
+    // Live first
+    transactions
+      .filter((t) => t.type !== 'out')
+      .forEach((t) => map.set(t.id, t));
+
+    // Historical next
+    historicalRecords.forEach((t) => {
+      if (!map.has(t.id)) {
+        map.set(t.id, t);
+      }
+    });
+
+    return Array.from(map.values());
+  }, [transactions, historicalRecords]);
+
+  // Live session delta calculations
+  const liveInflowDelta = useMemo(() => {
+    return transactions
+      .filter((t) => t.type !== 'out')
+      .reduce((sum, t) => sum + (t.paidAmount || t.amount || t.totalAmount || 0), 0);
+  }, [transactions]);
+
+  const liveOutflowDelta = useMemo(() => {
+    const txOut = transactions
+      .filter((t) => t.type === 'out')
+      .reduce((sum, t) => sum + (t.amount || 0), 0);
+    const clinicExp = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+    return txOut + clinicExp;
+  }, [transactions, expenses]);
+
+  // 6 Metric Values Calculations
+  const metrics = useMemo(() => {
+    const totalInflowAll = BASE_FINANCIAL_METRICS.totalInflowAllPeriods + liveInflowDelta;
+    const totalOutflowAll = BASE_FINANCIAL_METRICS.totalOutflowAllPeriods + liveOutflowDelta;
+    const actualNetDrawer = totalInflowAll - totalOutflowAll;
+
+    const inflowSept2026 = BASE_FINANCIAL_METRICS.inflowSeptember2026 + liveInflowDelta;
+    const outflowSept2026 = BASE_FINANCIAL_METRICS.outflowSeptember2026 + liveOutflowDelta;
+    const balanceEndSept2026 = BASE_FINANCIAL_METRICS.balanceEndSeptember2026 + (liveInflowDelta - liveOutflowDelta);
+
+    return {
+      totalInflowAll,
+      totalOutflowAll,
+      actualNetDrawer,
+      inflowSept2026,
+      outflowSept2026,
+      balanceEndSept2026,
+    };
+  }, [liveInflowDelta, liveOutflowDelta]);
+
+  // Format currency with 2 decimals
+  const formatCurrency = (val: number) => {
+    return `${val.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })} ج.م`;
+  };
+
+  // Filter records based on timeframe and search query
+  const filteredInflowRecords = useMemo(() => {
+    return allInflowRecords.filter((rec) => {
+      // 1. Timeframe Filter
+      if (selectedTimeframe !== 'all') {
+        const recDate = rec.date || '2026-09-08';
+        if (selectedTimeframe === 'day') {
+          if (recDate !== '2026-09-08' && !rec.time?.includes('اليوم')) return false;
+        } else if (selectedTimeframe === 'week') {
+          // Week of Sept 1 - 8, 2026
+          if (!recDate.startsWith('2026-09-0')) return false;
+        } else if (selectedTimeframe === 'month') {
+          // September 2026
+          if (!recDate.startsWith('2026-09')) return false;
+        } else if (selectedTimeframe === 'year') {
+          // 2026
+          if (!recDate.startsWith('2026')) return false;
+        }
+      }
+
+      // 2. Search Query Filter
+      if (searchQuery.trim()) {
+        const q = searchQuery.trim().toLowerCase();
+        const pat = (rec.patientName || '').toLowerCase();
+        const desc = (rec.description || '').toLowerCase();
+        const srv = (rec.serviceName || '').toLowerCase();
+        const receipt = (rec.receiptNo || rec.receiptNumber || '').toLowerCase();
+        if (!pat.includes(q) && !desc.includes(q) && !srv.includes(q) && !receipt.includes(q)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [allInflowRecords, selectedTimeframe, searchQuery]);
+
+  // Paginated records
+  const totalRecordsCount = filteredInflowRecords.length;
+  const totalPages = Math.max(1, Math.ceil(totalRecordsCount / PAGE_SIZE));
+  const paginatedRecords = useMemo(() => {
+    const startIdx = (currentPage - 1) * PAGE_SIZE;
+    return filteredInflowRecords.slice(startIdx, startIdx + PAGE_SIZE);
+  }, [filteredInflowRecords, currentPage, PAGE_SIZE]);
+
+  // Total visits display counter
+  const totalVisitsCount = allInflowRecords.length;
+
+  // Format Date in Arabic readable
+  const formatArabicDate = (dateStr: string) => {
     try {
-      assertPermission('billing.expenses', 'تسجيل مصروف نثري');
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      return d.toLocaleDateString('ar-EG', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  // Submit New Invoice
+  const handleSaveInvoice = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!invPatientName.trim()) {
+      alert('يرجى كتابة اسم المريض');
+      return;
+    }
+    try {
+      assertPermission('billing.create', 'إنشاء فاتورة جديدة');
+      const finalPaid = invStatus === 'مدفوعة' ? Math.max(0, invAmount - invDiscount) : 0;
       const newTx: TransactionRecord = {
-        id: `tx-${Date.now()}`,
+        id: `inv-${Date.now()}`,
+        receiptNo: `INV-${Math.floor(Math.random() * 9000) + 1000}`,
+        patientName: invPatientName.trim(),
+        serviceName: invService,
+        description: `${invService}${invDiscount > 0 ? ` (خصم ${invDiscount} ج.م)` : ''}`,
+        totalAmount: invAmount,
+        discountAmount: invDiscount,
+        paidAmount: finalPaid,
+        amount: finalPaid > 0 ? finalPaid : invAmount,
+        type: 'in',
+        method: invPaymentMethod,
+        paymentMethod: invPaymentMethod,
+        status: invStatus,
+        time: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+        date: new Date().toISOString().split('T')[0],
+        category: 'خدمات طبية',
+      };
+
+      onAddTransaction(newTx);
+      setShowInvoiceModal(false);
+      setInvPatientName('');
+      setInvDiscount(0);
+      setInvStatus('مدفوعة');
+
+      setToast(`تم إنشاء الفاتورة رقم ${newTx.receiptNo} بنجاح للمريض (${invPatientName})`);
+      setTimeout(() => setToast(null), 3500);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'ليس لديك صلاحية لإنشاء الفواتير.');
+    }
+  };
+
+  // Submit Quick Expense
+  const handleAddQuickExpense = (e: React.FormEvent) => {
+    e.preventDefault();
+    const amountNum = Number(quickExpenseAmount);
+    if (!selectedExpenseCategory) {
+      alert('يرجى اختيار بند المصروف');
+      return;
+    }
+    if (!amountNum || amountNum <= 0) {
+      alert('يرجى إدخال مبلغ صحيح للمصروف');
+      return;
+    }
+
+    try {
+      assertPermission('billing.expenses', 'تسجيل مصروف للعيادة');
+      const newExp: ClinicExpenseRecord = {
+        id: `exp-${Date.now()}`,
+        category: selectedExpenseCategory,
+        amount: amountNum,
+        date: quickExpenseDate,
+        time: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+        notes: quickExpenseNotes.trim() || undefined,
+        createdAt: new Date().toISOString(),
+        createdBy: userProfile?.displayName || 'الاستقبال',
+      };
+
+      const updated = addClinicExpense(newExp);
+      setExpenses(updated);
+
+      // Register into transactions stream
+      const txExp: TransactionRecord = {
+        id: newExp.id,
         receiptNo: `EXP-${Math.floor(Math.random() * 900) + 100}`,
-        patientName: 'مصروفات نثرية',
-        description: expenseDesc,
-        amount: expenseAmount,
+        patientName: `مصروف: ${selectedExpenseCategory}`,
+        description: newExp.notes || selectedExpenseCategory,
+        amount: amountNum,
         type: 'out',
         method: 'نقدي',
-        time: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
-        category: 'نثريات',
+        time: newExp.time,
+        date: newExp.date,
+        category: 'مصروفات العيادة',
       };
-      onAddTransaction(newTx);
-      setShowExpenseModal(false);
-      setExpenseDesc('');
-      setToast(`تم خصم مصروف نثري قدره ${expenseAmount} ج.م من درج العيادة`);
+      onAddTransaction(txExp);
+
+      setSelectedExpenseCategory('');
+      setQuickExpenseAmount('');
+      setQuickExpenseNotes('');
+
+      setToast(`تم تسجيل مصروف "${selectedExpenseCategory}" بمبلغ ${amountNum} ج.م بنجاح ✓`);
       setTimeout(() => setToast(null), 3500);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'ليس لديك صلاحية لتسجيل المصروفات.');
     }
   };
 
+  // Handle Close Shift
   const handleCloseShift = () => {
     try {
       assertPermission('billing.closeShift', 'تقفيل الوردية وتسليم النقدية');
-      setToast(`تم إغلاق وردية الاستقبال بنجاح! صافي النقدية الموردة للخزينة: ${netInDrawer} ج.م`);
+      setToast(`تم إغلاق وردية الاستقبال بنجاح! صافي النقدية بالخزينة: ${formatCurrency(metrics.actualNetDrawer)}`);
       setTimeout(() => setToast(null), 4500);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'ليس لديك صلاحية لتقفيل الوردية.');
     }
   };
-
-  const filteredTx = transactions.filter((t) => {
-    if (filter === 'cash') return t.method === 'نقدي';
-    if (filter === 'pos') return t.method === 'فيزا / كارت';
-    if (filter === 'instapay') return t.method === 'إنستاباي';
-    if (filter === 'expense') return t.type === 'out';
-    return true;
-  });
 
   return (
     <div className="flex flex-col w-full pb-16 space-y-6 text-slate-800 dark:text-[#dde2f5]">
@@ -90,274 +349,787 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({ transactions, onAd
           <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-[#859394] mb-1">
             <span>الرئيسية</span>
             <span>&gt;</span>
-            <span className="text-[#008f97] dark:text-[#00c2cb]">الخزينة والماليات اليومية</span>
+            <span className="text-[#008f97] dark:text-[#00c2cb]">الفواتير والمالية</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-3">
-            <span>إدارة خزينة العيادة والدرج النقدي</span>
+            <span>إدارة الفواتير والتحصيل المالي</span>
             <span className="bg-emerald-100 dark:bg-[#10B981]/20 text-emerald-700 dark:text-[#10B981] px-3 py-0.5 rounded-full text-xs font-bold border border-emerald-200 dark:border-[#10B981]/30">
               وردية اليوم مفتوحة
             </span>
           </h1>
         </div>
 
-        <div className="flex items-center gap-2">
-          <PermissionGate permission="billing.expenses">
-            <button
-              onClick={() => setShowExpenseModal(true)}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-50 dark:bg-[#ef4444]/20 hover:bg-rose-100 dark:hover:bg-[#ef4444]/30 text-rose-600 dark:text-[#ef4444] text-xs font-bold border border-rose-200 dark:border-[#ef4444]/30 transition-all cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-base">remove_circle</span>
-              <span>- تسجيل مصروف نثري</span>
-            </button>
-          </PermissionGate>
-
+        <div className="flex items-center gap-2.5">
           <PermissionGate permission="billing.closeShift">
             <button
               onClick={handleCloseShift}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] text-xs font-bold shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-100 dark:bg-[#18233C] hover:bg-slate-200 dark:hover:bg-[#223254] text-slate-800 dark:text-[#dde2f5] text-xs font-bold border border-slate-200 dark:border-white/10 transition-all cursor-pointer"
             >
-              <span className="material-symbols-outlined text-base">lock_clock</span>
+              <span className="material-symbols-outlined text-base text-[#00c2cb]">lock_clock</span>
               <span>تقفيل الوردية وتسليم النقدية</span>
             </button>
           </PermissionGate>
         </div>
       </div>
 
-      {/* Strict Separation Principle Reminder */}
-      <div className="bg-white dark:bg-[#111A2E] p-4 rounded-2xl border border-slate-200 dark:border-white/5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#00c2cb]/15 flex items-center justify-center text-[#008f97] dark:text-[#00c2cb] shrink-0">
-            <span className="material-symbols-outlined text-xl">account_balance_wallet</span>
+      {/* ========================================================================= */}
+      {/* 6 TOP STATISTICAL FINANCIAL CARDS (بطاقات المؤشرات المالية) */}
+      {/* ========================================================================= */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* Card 1: إجمالي الوارد (كل الفترات) */}
+        <div className="bg-white dark:bg-[#111A2E] p-4.5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs flex flex-col justify-between transition-all hover:border-emerald-500/40">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <span className="text-xs font-bold text-slate-600 dark:text-[#bbc9ca]">
+              إجمالي الوارد (كل الفترات)
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-[#10B981] flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-lg">trending_up</span>
+            </div>
           </div>
-          <p className="text-xs text-slate-600 dark:text-[#bbc9ca] leading-relaxed">
-            <strong className="text-slate-900 dark:text-[#dde2f5]">قاعدة الرقابة المالية الصارمة: </strong>
-            الحسابات تسجل فقط المبالغ المحصلة فعلياً من المرضى بعد تأكيد حضورهم بالاستقبال. لا يتم احتساب أي مواعيد مستقبلية أو متوقعة ضمن أرقام الدرج الحالية.
-          </p>
+          <div className="text-right">
+            <span className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-[#10B981] font-mono tracking-tight block">
+              {formatCurrency(metrics.totalInflowAll)}
+            </span>
+            <span className="text-[10px] text-slate-400 dark:text-[#859394] mt-0.5 block">
+              إجمالي المتحصلات الطبية المسجلة
+            </span>
+          </div>
         </div>
-        <span className="text-xs text-[#008f97] dark:text-[#45dee7] font-semibold bg-slate-100 dark:bg-[#18233C] px-3.5 py-1.5 rounded-xl border border-slate-200 dark:border-white/5 shrink-0">
-          المستخدم الحالي: {userProfile?.displayName || 'الاستقبال'}
-        </span>
+
+        {/* Card 2: إجمالي المنصرف (كل الفترات) */}
+        <div className="bg-white dark:bg-[#111A2E] p-4.5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs flex flex-col justify-between transition-all hover:border-rose-500/40">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <span className="text-xs font-bold text-slate-600 dark:text-[#bbc9ca]">
+              إجمالي المنصرف (كل الفترات)
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-[#ef4444] flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-lg">trending_down</span>
+            </div>
+          </div>
+          <div className="text-right">
+            <span className="text-xl sm:text-2xl font-black text-rose-600 dark:text-[#ef4444] font-mono tracking-tight block">
+              {formatCurrency(metrics.totalOutflowAll)}
+            </span>
+            <span className="text-[10px] text-slate-400 dark:text-[#859394] mt-0.5 block">
+              المصروفات التشغيلية والنثرية
+            </span>
+          </div>
+        </div>
+
+        {/* Card 3: الرصيد الحالي الفعلي */}
+        <div className="bg-white dark:bg-[#111A2E] p-4.5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs flex flex-col justify-between transition-all hover:border-[#00c2cb]/40">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <span className="text-xs font-bold text-slate-900 dark:text-white">
+              الرصيد الحالي الفعلي
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-[#00c2cb]/15 text-[#008f97] dark:text-[#00c2cb] flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-lg">account_balance_wallet</span>
+            </div>
+          </div>
+          <div className="text-right">
+            <span className="text-xl sm:text-2xl font-black text-[#008f97] dark:text-[#45dee7] font-mono tracking-tight block">
+              {formatCurrency(metrics.actualNetDrawer)}
+            </span>
+            <span className="text-[10px] text-slate-400 dark:text-[#859394] mt-0.5 block">
+              صافي الخزينة والدرج المتاح الآن
+            </span>
+          </div>
+        </div>
+
+        {/* Card 4: وارد سبتمبر 2026 */}
+        <div className="bg-white dark:bg-[#111A2E] p-4.5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs flex flex-col justify-between transition-all hover:border-emerald-500/40">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <span className="text-xs font-bold text-slate-600 dark:text-[#bbc9ca]">
+              وارد سبتمبر 2026
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-teal-50 dark:bg-teal-950/50 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-lg">calendar_month</span>
+            </div>
+          </div>
+          <div className="text-right">
+            <span className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-[#10B981] font-mono tracking-tight block">
+              {formatCurrency(metrics.inflowSept2026)}
+            </span>
+            <span className="text-[10px] text-slate-400 dark:text-[#859394] mt-0.5 block">
+              المحصل الفعلي خلال الشهر الحالي
+            </span>
+          </div>
+        </div>
+
+        {/* Card 5: منصرف سبتمبر 2026 */}
+        <div className="bg-white dark:bg-[#111A2E] p-4.5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs flex flex-col justify-between transition-all hover:border-rose-500/40">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <span className="text-xs font-bold text-slate-600 dark:text-[#bbc9ca]">
+              منصرف سبتمبر 2026
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-500 flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-lg">shopping_cart</span>
+            </div>
+          </div>
+          <div className="text-right">
+            <span className="text-xl sm:text-2xl font-black text-rose-600 dark:text-[#ef4444] font-mono tracking-tight block">
+              {formatCurrency(metrics.outflowSept2026)}
+            </span>
+            <span className="text-[10px] text-slate-400 dark:text-[#859394] mt-0.5 block">
+              مصروفات العيادة خلال شهر سبتمبر
+            </span>
+          </div>
+        </div>
+
+        {/* Card 6: الرصيد حتى نهاية سبتمبر 2026 */}
+        <div className="bg-white dark:bg-[#111A2E] p-4.5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs flex flex-col justify-between transition-all hover:border-blue-500/40">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <span className="text-xs font-bold text-slate-900 dark:text-[#dde2f5]">
+              الرصيد حتى نهاية سبتمبر 2026
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-lg">savings</span>
+            </div>
+          </div>
+          <div className="text-right">
+            <span className="text-xl sm:text-2xl font-black text-[#008f97] dark:text-[#45dee7] font-mono tracking-tight block">
+              {formatCurrency(metrics.balanceEndSept2026)}
+            </span>
+            <span className="text-[10px] text-slate-400 dark:text-[#859394] mt-0.5 block">
+              الرصيد التراكمي لنهاية الفترة
+            </span>
+          </div>
+        </div>
       </div>
 
-      {/* 4 Financial Tiles */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Tile 1: Net in Drawer */}
-        <div className="bg-teal-50/70 dark:bg-[#18233C] p-5 rounded-2xl border-2 border-[#00c2cb] shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-900 dark:text-[#dde2f5]">
-            <span className="text-xs font-bold">صافي النقدية بالدرج الآن</span>
-            <span className="material-symbols-outlined text-xl text-[#008f97] dark:text-[#00c2cb]">point_of_sale</span>
+      {/* ========================================================================= */}
+      {/* SEARCH AND FILTER TOOLBAR (شريط البحث وتصفية الحركات والزيارات) */}
+      {/* ========================================================================= */}
+      <div className="bg-white dark:bg-[#111A2E] p-4 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs space-y-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          {/* Left / Search Input */}
+          <div className="flex-1 flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-[#dde2f5] shrink-0">
+              <span className="material-symbols-outlined text-base text-[#00c2cb]">search</span>
+              <span>بحث فى الحركات:</span>
+            </div>
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="ابحث باسم المريض أو البيان..."
+                className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white text-xs cursor-pointer"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
           </div>
-          <div className="my-2">
-            <span className="text-3xl font-extrabold text-[#008f97] dark:text-[#45dee7] font-mono">{netInDrawer.toLocaleString()}</span>
-            <span className="text-xs text-slate-500 dark:text-[#bbc9ca] mr-1">ج.م</span>
-          </div>
-          <span className="text-[11px] text-[#008f97] dark:text-[#00c2cb] font-semibold">نقدية فعلية قابلة للعد والتسليم</span>
-        </div>
 
-        {/* Tile 2: Cash In */}
-        <div className="bg-white dark:bg-[#111A2E] p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-600 dark:text-[#bbc9ca]">
-            <span className="text-xs font-semibold">إجمالي المحصل نقداً (كاش)</span>
-            <span className="material-symbols-outlined text-xl text-emerald-600 dark:text-[#10B981]">payments</span>
-          </div>
-          <div className="my-2">
-            <span className="text-3xl font-extrabold text-emerald-600 dark:text-[#10B981] font-mono">{cashIn.toLocaleString()}</span>
-            <span className="text-xs text-slate-500 dark:text-[#bbc9ca] mr-1">ج.م</span>
-          </div>
-          <span className="text-[11px] text-slate-500 dark:text-[#859394]">تحصيل شباك الاستقبال المباشر</span>
-        </div>
+          {/* Right: Visit Records Badge + View Mode Filters */}
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Visit Records Badge */}
+            <div className="flex items-center gap-2 bg-slate-100 dark:bg-[#18233C] px-3.5 py-2 rounded-xl border border-slate-200 dark:border-white/5 shrink-0">
+              <span className="material-symbols-outlined text-base text-[#008f97] dark:text-[#00c2cb]">
+                history_edu
+              </span>
+              <span className="text-xs text-slate-600 dark:text-[#859394]">سجل الزيارات:</span>
+              <span className="text-xs font-mono font-bold text-slate-900 dark:text-white">
+                {totalVisitsCount} زيارة
+              </span>
+            </div>
 
-        {/* Tile 3: Electronic / POS */}
-        <div className="bg-white dark:bg-[#111A2E] p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-600 dark:text-[#bbc9ca]">
-            <span className="text-xs font-semibold">المحصل إلكترونياً (فيزا + إنستاباي)</span>
-            <span className="material-symbols-outlined text-xl text-purple-600 dark:text-[#d0bcff]">credit_card</span>
-          </div>
-          <div className="my-2">
-            <span className="text-3xl font-extrabold text-purple-700 dark:text-[#d0bcff] font-mono">{posIn.toLocaleString()}</span>
-            <span className="text-xs text-slate-500 dark:text-[#bbc9ca] mr-1">ج.م</span>
-          </div>
-          <span className="text-[11px] text-slate-500 dark:text-[#859394]">مباشرة إلى الحساب البنكي للعيادة</span>
-        </div>
+            {/* Timeframe View Filters */}
+            <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-[#18233C] p-1 rounded-xl border border-slate-200 dark:border-white/5">
+              <span className="text-[11px] font-bold text-slate-500 dark:text-[#859394] px-2 flex items-center gap-1">
+                <span>📅 عرض حسب:</span>
+              </span>
 
-        {/* Tile 4: Expenses */}
-        <div className="bg-white dark:bg-[#111A2E] p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-600 dark:text-[#bbc9ca]">
-            <span className="text-xs font-semibold">مصروفات نثرية منصرفة</span>
-            <span className="material-symbols-outlined text-xl text-rose-500">shopping_bag</span>
-          </div>
-          <div className="my-2">
-            <span className="text-3xl font-extrabold text-rose-600 dark:text-[#ef4444] font-mono">{totalOut.toLocaleString()}</span>
-            <span className="text-xs text-slate-500 dark:text-[#bbc9ca] mr-1">ج.م</span>
-          </div>
-          <span className="text-[11px] text-slate-500 dark:text-[#859394]">بموجب إيصالات معتمدة</span>
-        </div>
-      </div>
-
-      {/* Filter Tabs & Transactions Table */}
-      <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 overflow-hidden shadow-sm p-5 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <h2 className="text-base font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-            <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb] text-xl">receipt_long</span>
-            <span>دفتر اليومية والمعاملات المالية المسجلة ({filteredTx.length})</span>
-          </h2>
-
-          <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#080e1b] p-1 rounded-xl border border-slate-200 dark:border-white/5 overflow-x-auto">
-            {[
-              { id: 'all', label: 'الكل' },
-              { id: 'cash', label: 'نقدي (كاش)' },
-              { id: 'pos', label: 'فيزا POS' },
-              { id: 'instapay', label: 'إنستاباي' },
-              { id: 'expense', label: 'مصروفات' },
-            ].map((btn) => (
               <button
-                key={btn.id}
-                onClick={() => setFilter(btn.id)}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-                  filter === btn.id
-                    ? 'bg-[#00c2cb] text-[#08101C] font-bold shadow-xs'
+                type="button"
+                onClick={() => setSelectedTimeframe('day')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  selectedTimeframe === 'day'
+                    ? 'bg-[#00c2cb] text-slate-950 shadow-xs'
                     : 'text-slate-600 dark:text-[#bbc9ca] hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
-                {btn.label}
+                اليوم
               </button>
-            ))}
-          </div>
-        </div>
 
-        {/* Transactions Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-right border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-50 dark:bg-[#18233C] text-slate-600 dark:text-[#bbc9ca] border-b border-slate-200 dark:border-white/5 font-bold">
-                <th className="p-3">رقم الإيصال</th>
-                <th className="p-3">المريض / البند</th>
-                <th className="p-3">البيان والتفاصيل</th>
-                <th className="p-3">طريقة الدفع</th>
-                <th className="p-3">التوقيت</th>
-                <th className="p-3 text-left">المبلغ المسدد</th>
-                <th className="p-3 text-center">الإجراء</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-              {filteredTx.map((tx) => (
-                <tr key={tx.id} className="hover:bg-slate-50 dark:hover:bg-[#18233C]/60 transition-colors">
-                  <td className="p-3 font-mono text-[#008f97] dark:text-[#00c2cb] font-bold">{tx.receiptNo}</td>
-                  <td className="p-3 font-bold text-slate-900 dark:text-[#dde2f5]">{tx.patientName}</td>
-                  <td className="p-3 text-slate-600 dark:text-[#bbc9ca]">{tx.description}</td>
-                  <td className="p-3">
-                    <span
-                      className={`px-2.5 py-0.5 rounded-lg text-[11px] font-medium ${
-                        tx.method === 'نقدي'
-                          ? 'bg-emerald-50 dark:bg-[#10B981]/20 text-emerald-700 dark:text-[#10B981]'
-                          : tx.method === 'فيزا / كارت'
-                          ? 'bg-purple-50 dark:bg-[#571bc1]/30 text-purple-700 dark:text-[#d0bcff]'
-                          : 'bg-teal-50 dark:bg-[#00c2cb]/20 text-teal-700 dark:text-[#45dee7]'
-                      }`}
-                    >
-                      {tx.method}
-                    </span>
-                  </td>
-                  <td className="p-3 font-mono text-slate-500 dark:text-[#859394]">{tx.time}</td>
-                  <td
-                    className={`p-3 text-left font-mono font-bold text-sm ${
-                      tx.type === 'in' ? 'text-emerald-600 dark:text-[#10B981]' : 'text-rose-600 dark:text-[#ef4444]'
-                    }`}
-                  >
-                    {tx.type === 'in' ? `+${tx.amount}` : `-${tx.amount}`} ج.م
-                  </td>
-                  <td className="p-3 text-center">
-                    <div className="flex items-center justify-center gap-1.5">
-                      <button
-                        onClick={() => setSelectedReceipt(tx)}
-                        className="p-1.5 rounded-lg bg-slate-100 dark:bg-[#080e1b] hover:bg-[#00c2cb]/20 text-slate-600 dark:text-[#bbc9ca] hover:text-[#008f97] dark:hover:text-[#00c2cb] transition-colors cursor-pointer"
-                        title="عرض وطباعة إيصال السداد"
-                      >
-                        <span className="material-symbols-outlined text-base">print</span>
-                      </button>
-                      {onDeleteTransaction && (
-                        <button
-                          type="button"
-                          onClick={() => setTxToDelete(tx)}
-                          className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900 text-rose-600 dark:text-rose-400 transition-colors cursor-pointer"
-                          title="حذف الفاتورة/المعاملة المالية"
-                        >
-                          <span className="material-symbols-outlined text-base">delete</span>
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+              <button
+                type="button"
+                onClick={() => setSelectedTimeframe('week')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  selectedTimeframe === 'week'
+                    ? 'bg-[#00c2cb] text-slate-950 shadow-xs'
+                    : 'text-slate-600 dark:text-[#bbc9ca] hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                الاسبوع
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedTimeframe('month')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                  selectedTimeframe === 'month'
+                    ? 'bg-[#00c2cb] text-slate-950 shadow-xs'
+                    : 'text-slate-600 dark:text-[#bbc9ca] hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <span>📅 الشهر</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedTimeframe('year')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  selectedTimeframe === 'year'
+                    ? 'bg-[#00c2cb] text-slate-950 shadow-xs'
+                    : 'text-slate-600 dark:text-[#bbc9ca] hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                السنه
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedTimeframe('all')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  selectedTimeframe === 'all'
+                    ? 'bg-[#00c2cb] text-slate-950 shadow-xs'
+                    : 'text-slate-600 dark:text-[#bbc9ca] hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                الكل
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Expense Modal */}
-      {showExpenseModal && (
+      {/* ========================================================================= */}
+      {/* 2 SEPARATED MAIN CARDS: CARD 1 (الوارد) & CARD 2 (المنصرف) SIDE-BY-SIDE */}
+      {/* ========================================================================= */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+        
+        {/* ========================================== */}
+        {/* CARD 1: بطاقة الوارد (INFLOW & INVOICES) */}
+        {/* ========================================== */}
+        <div className="xl:col-span-7 bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden flex flex-col">
+          {/* Card 1 Header */}
+          <div className="p-5 border-b border-slate-100 dark:border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/50 dark:bg-[#18233C]/40">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-[#10B981] flex items-center justify-center font-bold">
+                <span className="material-symbols-outlined text-xl">savings</span>
+              </div>
+              <div>
+                <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
+                  <span>سجل الفواتير والتحصيل المالي (الوارد)</span>
+                  <span className="text-[11px] font-mono bg-emerald-100 dark:bg-[#10B981]/20 text-emerald-700 dark:text-[#10B981] px-2 py-0.5 rounded-full">
+                    {totalRecordsCount} سجل
+                  </span>
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
+                  تسجيل وتحصيل تلقائي من الزيارات والفواتير المنشأة
+                </p>
+              </div>
+            </div>
+
+            <PermissionGate permission="billing.create">
+              <button
+                type="button"
+                onClick={() => setShowInvoiceModal(true)}
+                className="px-4 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 shrink-0"
+              >
+                <span className="material-symbols-outlined text-base">add_circle</span>
+                <span>إنشاء فاتورة كشف</span>
+              </button>
+            </PermissionGate>
+          </div>
+
+          {/* Table of Inflow (40 per page) */}
+          <div className="p-5 pt-4 flex-1 flex flex-col">
+            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-white/5">
+              <table className="w-full text-right border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#bbc9ca] border-b border-slate-200 dark:border-white/5 font-bold">
+                    <th className="p-3">المريض</th>
+                    <th className="p-3">الخدمة الطبية</th>
+                    <th className="p-3 text-center">المبلغ الإجمالي</th>
+                    <th className="p-3 text-center">التاريخ والوقت</th>
+                    <th className="p-3 text-center">الحالة</th>
+                    <th className="p-3 text-center">إجراء</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                  {paginatedRecords.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center text-xs text-slate-400 dark:text-[#859394]">
+                        لا توجد فواتير أو متحصلات مطابقة للبحث أو التصفية الحالية
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedRecords.map((tx) => {
+                      const amountDisplay = tx.amount || tx.paidAmount || tx.totalAmount || 0;
+                      const isPaid = tx.status === 'غير مدفوعة' ? false : true;
+                      return (
+                        <tr key={tx.id} className="hover:bg-slate-50 dark:hover:bg-[#18233C]/60 transition-colors">
+                          <td className="p-3 font-bold text-slate-900 dark:text-[#dde2f5]">
+                            <div>{tx.patientName}</div>
+                            {tx.receiptNo && (
+                              <span className="text-[10px] text-[#008f97] dark:text-[#00c2cb] font-mono block">
+                                {tx.receiptNo}
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3 text-slate-700 dark:text-[#bbc9ca]">
+                            {tx.serviceName || tx.description || 'كشف واستشارة طبية'}
+                          </td>
+                          <td className="p-3 text-center font-mono font-bold text-sm text-emerald-600 dark:text-[#10B981]">
+                            {amountDisplay.toLocaleString()} ج.م
+                          </td>
+                          <td className="p-3 text-center font-mono text-slate-500 dark:text-[#859394] text-[11px] whitespace-nowrap">
+                            <div>{tx.date || '2026-09-08'}</div>
+                            <div className="text-[10px] text-slate-400">{tx.time || ''}</div>
+                          </td>
+                          <td className="p-3 text-center">
+                            <span
+                              className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                                isPaid
+                                  ? 'bg-emerald-100 dark:bg-[#10B981]/20 text-emerald-700 dark:text-[#10B981] border border-emerald-200 dark:border-[#10B981]/30'
+                                  : 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
+                              }`}
+                            >
+                              {tx.status || 'مدفوعة'}
+                            </span>
+                          </td>
+                          <td className="p-3 text-center">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedReceipt(tx)}
+                                className="p-1.5 rounded-lg bg-slate-100 dark:bg-[#080e1b] hover:bg-[#00c2cb]/20 text-slate-600 dark:text-[#bbc9ca] hover:text-[#008f97] dark:hover:text-[#00c2cb] transition-colors cursor-pointer"
+                                title="عرض وطباعة إيصال السداد"
+                              >
+                                <span className="material-symbols-outlined text-base">print</span>
+                              </button>
+                              {onDeleteTransaction && (
+                                <button
+                                  type="button"
+                                  onClick={() => setTxToDelete(tx)}
+                                  className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900 text-rose-600 dark:text-rose-400 transition-colors cursor-pointer"
+                                  title="حذف الفاتورة"
+                                >
+                                  <span className="material-symbols-outlined text-base">delete</span>
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination Controls (40 items per page) */}
+            {totalPages > 1 && (
+              <div className="mt-4 pt-3 border-t border-slate-100 dark:border-white/5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                <div className="text-slate-500 dark:text-[#859394]">
+                  عرض{' '}
+                  <strong className="font-mono text-slate-800 dark:text-white">
+                    {(currentPage - 1) * PAGE_SIZE + 1}
+                  </strong>{' '}
+                  -{' '}
+                  <strong className="font-mono text-slate-800 dark:text-white">
+                    {Math.min(currentPage * PAGE_SIZE, totalRecordsCount)}
+                  </strong>{' '}
+                  من أصل{' '}
+                  <strong className="font-mono text-slate-800 dark:text-white">
+                    {totalRecordsCount}
+                  </strong>{' '}
+                  سجل (40 اسم بالصفحة)
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={currentPage === 1}
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                      currentPage === 1
+                        ? 'opacity-40 cursor-not-allowed border-slate-200 dark:border-white/5 text-slate-400'
+                        : 'bg-white dark:bg-[#18233C] border-slate-200 dark:border-white/10 text-slate-700 dark:text-[#dde2f5] hover:bg-slate-100'
+                    }`}
+                  >
+                    السابق
+                  </button>
+
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, idx) => {
+                      let pageNum = idx + 1;
+                      if (totalPages > 5 && currentPage > 3) {
+                        pageNum = currentPage - 3 + idx;
+                        if (pageNum > totalPages) pageNum = totalPages - (4 - idx);
+                      }
+                      return (
+                        <button
+                          key={pageNum}
+                          type="button"
+                          onClick={() => setCurrentPage(pageNum)}
+                          className={`w-8 h-8 rounded-xl font-mono text-xs font-bold transition-all cursor-pointer ${
+                            currentPage === pageNum
+                              ? 'bg-[#00c2cb] text-slate-950 shadow-xs'
+                              : 'bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] hover:bg-slate-200 dark:hover:bg-[#223254]'
+                          }`}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={currentPage === totalPages}
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                      currentPage === totalPages
+                        ? 'opacity-40 cursor-not-allowed border-slate-200 dark:border-white/5 text-slate-400'
+                        : 'bg-white dark:bg-[#18233C] border-slate-200 dark:border-white/10 text-slate-700 dark:text-[#dde2f5] hover:bg-slate-100'
+                    }`}
+                  >
+                    التالي
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ========================================== */}
+        {/* CARD 2: بطاقة المنصرف (OUTFLOW / EXPENSES) */}
+        {/* ========================================== */}
+        <div className="xl:col-span-5 bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden flex flex-col">
+          {/* Card 2 Header */}
+          <div className="p-5 border-b border-slate-100 dark:border-white/5 flex items-center justify-between gap-3 bg-slate-50/50 dark:bg-[#18233C]/40">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-[#ef4444] flex items-center justify-center font-bold">
+                <span className="material-symbols-outlined text-xl">shopping_bag</span>
+              </div>
+              <div>
+                <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-[#dde2f5]">
+                  المنصرف ومصروفات العيادة
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
+                  تسجيل المصروفات النثرية والتشغيلية المعتمدة
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Expense Registration Form */}
+          <div className="p-5 pb-3">
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 space-y-3">
+              <span className="text-xs font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-base text-rose-500">add_shopping_cart</span>
+                <span>تسجيل مصروف جديد</span>
+              </span>
+
+              <form onSubmit={handleAddQuickExpense} className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {/* Select Expense Category */}
+                  <div className="space-y-1 sm:col-span-2">
+                    <label className="text-[11px] font-bold text-slate-600 dark:text-[#859394] block">
+                      اختر بند المصروف... *
+                    </label>
+                    <select
+                      value={selectedExpenseCategory}
+                      onChange={(e) => setSelectedExpenseCategory(e.target.value)}
+                      required
+                      className="w-full bg-white dark:bg-[#18233C] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
+                    >
+                      <option value="">اختر بند المصروف...</option>
+                      {expenseCategories.map((cat) => (
+                        <option key={cat.id || cat.name} value={cat.name}>
+                          {cat.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Amount (ج.م) */}
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-slate-600 dark:text-[#859394] block">
+                      المبلغ (ج.م) *
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      value={quickExpenseAmount}
+                      onChange={(e) => setQuickExpenseAmount(e.target.value)}
+                      placeholder="مثال: 150"
+                      className="w-full bg-white dark:bg-[#18233C] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/10 font-mono font-bold focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
+                    />
+                  </div>
+
+                  {/* Date Picker */}
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-slate-600 dark:text-[#859394] block">
+                      التاريخ
+                    </label>
+                    <input
+                      type="date"
+                      value={quickExpenseDate}
+                      onChange={(e) => setQuickExpenseDate(e.target.value)}
+                      className="w-full bg-white dark:bg-[#18233C] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/10 font-mono focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
+                    />
+                  </div>
+
+                  {/* Notes / Optional */}
+                  <div className="space-y-1 sm:col-span-2">
+                    <input
+                      type="text"
+                      value={quickExpenseNotes}
+                      onChange={(e) => setQuickExpenseNotes(e.target.value)}
+                      placeholder="ملاحظات أو تفاصيل إضافية (اختياري)..."
+                      className="w-full bg-white dark:bg-[#18233C] text-slate-900 dark:text-[#dde2f5] text-xs p-2 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-98"
+                >
+                  <span className="material-symbols-outlined text-base">add_circle</span>
+                  <span>إضافة مصروف</span>
+                </button>
+              </form>
+            </div>
+          </div>
+
+          {/* Table of Expenses */}
+          <div className="p-5 pt-0 flex-1 flex flex-col">
+            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-white/5">
+              <table className="w-full text-right border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#bbc9ca] border-b border-slate-200 dark:border-white/5 font-bold">
+                    <th className="p-3">البند</th>
+                    <th className="p-3 text-center">المبلغ</th>
+                    <th className="p-3 text-center">التاريخ</th>
+                    <th className="p-3 text-center">حذف</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                  {expenses.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="p-8 text-center text-xs text-slate-400 dark:text-[#859394]">
+                        لا توجد مصروفات مسجلة حتى الآن
+                      </td>
+                    </tr>
+                  ) : (
+                    expenses.map((exp) => (
+                      <tr key={exp.id} className="hover:bg-slate-50 dark:hover:bg-[#18233C]/60 transition-colors">
+                        <td className="p-3 font-bold text-slate-900 dark:text-[#dde2f5]">
+                          <div>{exp.category}</div>
+                          {exp.notes && (
+                            <span className="text-[10px] text-slate-500 dark:text-[#859394] block font-normal">
+                              {exp.notes}
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3 text-center font-mono font-bold text-sm text-rose-600 dark:text-[#ef4444]">
+                          {exp.amount.toLocaleString()} ج.م
+                        </td>
+                        <td className="p-3 text-center font-mono text-slate-500 dark:text-[#859394] text-[11px] whitespace-nowrap">
+                          {formatArabicDate(exp.date)}
+                        </td>
+                        <td className="p-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => setExpenseToDelete(exp)}
+                            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900 text-rose-600 dark:text-rose-400 transition-colors cursor-pointer"
+                            title="حذف المصروف"
+                          >
+                            <span className="material-symbols-outlined text-base">delete</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* MODAL: إنشاء فاتورة جديدة (CREATE INVOICE MODAL) */}
+      {/* ========================================================================= */}
+      {showInvoiceModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <form
-            onSubmit={handleAddExpense}
-            className="bg-white dark:bg-[#18233C] border border-slate-200 dark:border-white/10 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-in zoom-in-95"
-          >
+          <div className="bg-white dark:bg-[#18233C] border border-slate-200 dark:border-white/10 rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-4 animate-in zoom-in-95">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/10 pb-3">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                <span className="material-symbols-outlined text-rose-500">shopping_bag</span>
-                <span>تسجيل مصروف نثري من الدرج</span>
+              <h3 className="text-base font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
+                <span className="material-symbols-outlined text-[#00c2cb]">receipt_long</span>
+                <span>إنشاء فاتورة جديدة</span>
               </h3>
               <button
                 type="button"
-                onClick={() => setShowExpenseModal(false)}
+                onClick={() => setShowInvoiceModal(false)}
                 className="text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <div>
-              <label className="text-xs text-slate-600 dark:text-[#859394] block mb-1">وصف المصروف:</label>
-              <input
-                type="text"
-                required
-                value={expenseDesc}
-                onChange={(e) => setExpenseDesc(e.target.value)}
-                placeholder="مثال: شراء شاش وسرنجات طوارئ من الصيدلية"
-                className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/5 focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
-              />
-            </div>
+            <form onSubmit={handleSaveInvoice} className="space-y-4">
+              {/* Field 1: اسم المريض * */}
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 dark:text-[#dde2f5] block">
+                  اسم المريض *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={invPatientName}
+                  onChange={(e) => setInvPatientName(e.target.value)}
+                  placeholder="مثال: دينا رمضان"
+                  list="patients-suggestions"
+                  className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-3 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
+                />
+                <datalist id="patients-suggestions">
+                  {patients.map((p) => (
+                    <option key={p.id} value={p.name} />
+                  ))}
+                </datalist>
+              </div>
 
-            <div>
-              <label className="text-xs text-slate-600 dark:text-[#859394] block mb-1">المبلغ المنصرف (ج.م):</label>
-              <input
-                type="number"
-                required
-                value={expenseAmount}
-                onChange={(e) => setExpenseAmount(Number(e.target.value))}
-                className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/5 font-mono focus:outline-none"
-              />
-            </div>
+              {/* Field 2: الخدمة الطبية */}
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 dark:text-[#dde2f5] block">
+                  الخدمة الطبية
+                </label>
+                <select
+                  value={invService}
+                  onChange={(e) => handleSelectService(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-3 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
+                >
+                  {medicalServices.map((srv) => (
+                    <option key={srv.id || srv.name} value={srv.name}>
+                      {srv.name} ({srv.price} ج.م)
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowExpenseModal(false)}
-                className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-[#111A2E] text-xs text-slate-600 dark:text-[#bbc9ca] hover:bg-slate-200 cursor-pointer"
-              >
-                إلغاء
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-2 rounded-xl bg-rose-600 text-xs font-bold text-white hover:bg-rose-700 transition-all cursor-pointer"
-              >
-                خصم المصروف من الدرج
-              </button>
-            </div>
-          </form>
+              {/* Grid: المبلغ + الخصم */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Field 3: المبلغ (ج.م) */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 dark:text-[#dde2f5] block">
+                    المبلغ (ج.م) *
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    value={invAmount}
+                    onChange={(e) => setInvAmount(Number(e.target.value))}
+                    className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-3 rounded-xl border border-slate-200 dark:border-white/10 font-mono font-bold focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
+                  />
+                </div>
+
+                {/* Field 4: الخصم (ج.م) */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 dark:text-[#dde2f5] block">
+                    الخصم (ج.م)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={invDiscount}
+                    onChange={(e) => setInvDiscount(Number(e.target.value))}
+                    className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-3 rounded-xl border border-slate-200 dark:border-white/10 font-mono focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
+                  />
+                </div>
+              </div>
+
+              {/* Grid: حالة الفاتورة + طريقة الدفع */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Field 5: حالة الفاتورة */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 dark:text-[#dde2f5] block">
+                    حالة الفاتورة
+                  </label>
+                  <select
+                    value={invStatus}
+                    onChange={(e) => setInvStatus(e.target.value as any)}
+                    className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-3 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
+                  >
+                    <option value="مدفوعة">مدفوعة</option>
+                    <option value="غير مدفوعة">غير مدفوعة</option>
+                    <option value="مؤجلة">مؤجلة</option>
+                  </select>
+                </div>
+
+                {/* Field 6: طريقة الدفع */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 dark:text-[#dde2f5] block">
+                    طريقة الدفع
+                  </label>
+                  <select
+                    value={invPaymentMethod}
+                    onChange={(e) => setInvPaymentMethod(e.target.value as any)}
+                    className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-3 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
+                  >
+                    <option value="نقدي">نقدي (كاش)</option>
+                    <option value="فيزا / كارت">فيزا / كارت POS</option>
+                    <option value="إنستاباي">إنستاباي / تحويل</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Net Total Summary Badge */}
+              <div className="p-3 bg-teal-50 dark:bg-[#00c2cb]/10 border border-[#00c2cb]/30 rounded-xl flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-800 dark:text-[#dde2f5]">الصافي المطلوب تحصيله:</span>
+                <span className="font-mono font-extrabold text-base text-[#008f97] dark:text-[#45dee7]">
+                  {Math.max(0, invAmount - invDiscount)} ج.م
+                </span>
+              </div>
+
+              {/* Actions: إلغاء / حفظ الفاتورة */}
+              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100 dark:border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setShowInvoiceModal(false)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-[#111A2E] text-xs font-bold text-slate-600 dark:text-[#bbc9ca] hover:bg-slate-200 cursor-pointer"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold text-xs shadow-md shadow-[#00c2cb]/20 cursor-pointer active:scale-95"
+                >
+                  حفظ الفاتورة
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
-      {/* Receipt Print Preview Modal (Thermal 80mm format) */}
+      {/* ========================================================================= */}
+      {/* RECEIPT PRINT MODAL (THERMAL 80MM) */}
+      {/* ========================================================================= */}
       {selectedReceipt && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white text-slate-900 border border-slate-300 rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4 font-mono animate-in zoom-in-95">
@@ -392,7 +1164,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({ transactions, onAd
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">الخدمة:</span>
-                <span>{selectedReceipt.description}</span>
+                <span>{selectedReceipt.serviceName || selectedReceipt.description}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">طريقة الدفع:</span>
@@ -429,7 +1201,9 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({ transactions, onAd
         </div>
       )}
 
-      {/* Confirmation Modal for Deleting Transaction / Invoice */}
+      {/* ========================================================================= */}
+      {/* CONFIRMATION MODAL: DELETE INVOICE / TRANSACTION */}
+      {/* ========================================================================= */}
       {txToDelete && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white dark:bg-[#111A2E] border border-rose-500/30 rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl animate-in zoom-in-95">
@@ -438,10 +1212,10 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({ transactions, onAd
             </div>
             <div className="space-y-1">
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                تأكيد حذف المعاملة المالية
+                تأكيد حذف الفاتورة
               </h3>
               <p className="text-xs text-slate-500 dark:text-[#859394] leading-relaxed">
-                هل أنت متأكد من حذف الإيصال رقم <strong className="text-slate-800 dark:text-white">({txToDelete.receiptNo})</strong> بمبلغ <strong className="text-[#008f97] dark:text-[#00c2cb] font-mono">{txToDelete.amount} ج.م</strong> لـ ({txToDelete.patientName})؟
+                هل أنت متأكد من حذف الفاتورة <strong className="text-slate-800 dark:text-white">({txToDelete.receiptNo})</strong> بمبلغ <strong className="text-[#008f97] dark:text-[#00c2cb] font-mono">{txToDelete.amount} ج.م</strong> لـ ({txToDelete.patientName})؟
               </p>
             </div>
             <div className="flex items-center gap-2 pt-2">
@@ -457,10 +1231,53 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({ transactions, onAd
                 onClick={() => {
                   if (onDeleteTransaction && txToDelete) {
                     onDeleteTransaction(txToDelete.id);
-                    setToast(`تم حذف المعاملة رقم ${txToDelete.receiptNo} بنجاح`);
+                    setToast(`تم حذف الفاتورة ${txToDelete.receiptNo} بنجاح`);
                     setTimeout(() => setToast(null), 3000);
                     setTxToDelete(null);
                   }
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md transition-all cursor-pointer"
+              >
+                تأكيد الحذف
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* CONFIRMATION MODAL: DELETE CLINIC EXPENSE */}
+      {/* ========================================================================= */}
+      {expenseToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#111A2E] border border-rose-500/30 rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl animate-in zoom-in-95">
+            <div className="w-14 h-14 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-500 mx-auto flex items-center justify-center">
+              <span className="material-symbols-outlined text-3xl">delete_sweep</span>
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                تأكيد حذف المصروف
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-[#859394] leading-relaxed">
+                هل أنت متأكد من حذف مصروف <strong className="text-slate-800 dark:text-white">({expenseToDelete.category})</strong> بمبلغ <strong className="text-rose-600 dark:text-[#ef4444] font-mono">{expenseToDelete.amount} ج.م</strong>؟
+              </p>
+            </div>
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setExpenseToDelete(null)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] text-xs font-bold transition-all cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const updated = removeClinicExpense(expenseToDelete.id);
+                  setExpenses(updated);
+                  setToast(`تم حذف مصروف ${expenseToDelete.category} بنجاح`);
+                  setTimeout(() => setToast(null), 3000);
+                  setExpenseToDelete(null);
                 }}
                 className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md transition-all cursor-pointer"
               >

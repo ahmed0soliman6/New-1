@@ -74,11 +74,14 @@ export interface AppointmentListItem {
   phone: string;
   medicalCode: string;
   timeSlot: string;
+  time?: string;
+  date?: string;
   branch: string;
   visitType: string;
   expectedFee: number;
-  status: 'مجدول' | 'حضر وسدد' | 'في الانتظار' | 'جاري الكشف' | 'مكتمل' | 'لم يحضر';
+  status: 'مجدول' | 'فى الانتظار حضر المريض' | 'ملغى' | string;
   notes?: string;
+  isAttended?: boolean;
   freeFollowupEligible?: boolean;
 }
 
@@ -88,6 +91,7 @@ export interface TransactionRecord {
   receiptNo?: string;
   timestamp?: string;
   time?: string;
+  date?: string;
   patientName: string;
   medicalCode?: string;
   phone?: string;

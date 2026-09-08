@@ -8,6 +8,7 @@ import {
 } from '../../types';
 import { MedicalCatalogsManager } from '../settings/MedicalCatalogsManager';
 import { UserManagementPanel } from '../settings/UserManagementPanel';
+import { RecurringTemplatesManager } from '../settings/RecurringTemplatesManager';
 import { usePermissions } from '../../context/AuthContext';
 import { PermissionGate } from '../auth/PermissionGate';
 import { loadAlertSettings, saveAlertSettings, playSingleAlertSound, AlertSettings } from '../../utils/alertManager';
@@ -16,6 +17,20 @@ import {
   saveExamDisplaySettings,
   ExamDisplaySettings,
 } from '../../utils/examDisplaySettings';
+import { loadRecurringTemplates } from '../../utils/recurringTemplatesManager';
+import {
+  loadMedicalServices,
+  saveMedicalServices,
+  addMedicalService,
+  removeMedicalService,
+  updateMedicalService,
+  loadExpenseCategories,
+  saveExpenseCategories,
+  addExpenseCategory,
+  removeExpenseCategory,
+  MedicalServiceItem,
+  ExpenseCategoryItem,
+} from '../../utils/financeManager';
 
 interface ChronicItem {
   id: string;
@@ -105,6 +120,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   // Accordion Collapsible Open States
   const [openCards, setOpenCards] = useState<Record<string, boolean>>({
     pricing: true,
+    services: false,
+    expenses: false,
     alerts: false,
     display: false,
     templates: false,
@@ -115,26 +132,37 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     setOpenCards((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const [savedTemplates, setSavedTemplates] = useState<Array<{
-    id: string;
-    title: string;
-    diagnoses: any[];
-    prescription: any[];
-    lifestyleAdvice?: string;
-  }>>([]);
+  const [deleteConfirmVisitId, setDeleteConfirmVisitId] = useState<string | null>(null);
+  const [savedTemplates, setSavedTemplates] = useState<any[]>(loadRecurringTemplates);
+
+  // Dynamic Medical Services & Expense Categories states
+  const [medicalServicesList, setMedicalServicesList] = useState<MedicalServiceItem[]>(loadMedicalServices);
+  const [expenseCategoriesList, setExpenseCategoriesList] = useState<ExpenseCategoryItem[]>(loadExpenseCategories);
+
+  const [newServiceName, setNewServiceName] = useState('');
+  const [newServicePrice, setNewServicePrice] = useState<number>(200);
+  const [showAddServiceModal, setShowAddServiceModal] = useState(false);
+  const [deleteConfirmServiceId, setDeleteConfirmServiceId] = useState<string | null>(null);
+
+  const [newExpenseCategoryInput, setNewExpenseCategoryInput] = useState('');
+  const [deleteConfirmExpenseCatId, setDeleteConfirmExpenseCatId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleServicesUpdate = () => setMedicalServicesList(loadMedicalServices());
+    const handleExpCatsUpdate = () => setExpenseCategoriesList(loadExpenseCategories());
+
+    window.addEventListener('soli_services_updated', handleServicesUpdate);
+    window.addEventListener('soli_expense_categories_updated', handleExpCatsUpdate);
+
+    return () => {
+      window.removeEventListener('soli_services_updated', handleServicesUpdate);
+      window.removeEventListener('soli_expense_categories_updated', handleExpCatsUpdate);
+    };
+  }, []);
 
   useEffect(() => {
     const loadTemplates = () => {
-      try {
-        const stored = localStorage.getItem('soli_recurring_rx_templates');
-        if (stored) {
-          setSavedTemplates(JSON.parse(stored));
-        } else {
-          setSavedTemplates([]);
-        }
-      } catch (e) {
-        console.error(e);
-      }
+      setSavedTemplates(loadRecurringTemplates());
     };
     loadTemplates();
     window.addEventListener('soli_templates_updated', loadTemplates);
@@ -142,19 +170,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       window.removeEventListener('soli_templates_updated', loadTemplates);
     };
   }, []);
-
-  const handleDeleteTemplate = (id: string) => {
-    const updated = savedTemplates.filter((t) => t.id !== id);
-    setSavedTemplates(updated);
-    try {
-      localStorage.setItem('soli_recurring_rx_templates', JSON.stringify(updated));
-      window.dispatchEvent(new Event('soli_templates_updated'));
-    } catch (e) {
-      console.error(e);
-    }
-    setSavedToast('تم حذف القائمة المتكررة بنجاح ✓');
-    setTimeout(() => setSavedToast(null), 3000);
-  };
 
   // If user cannot view users but tab was selected, fallback to catalogs
   useEffect(() => {
@@ -219,8 +234,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     setTimeout(() => setSavedToast(null), 3000);
   };
 
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSave = (e?: React.FormEvent) => {
+    if (e && e.preventDefault) e.preventDefault();
     try {
       assertPermission('settings.edit', 'حفظ إعدادات العيادة العامة والأسعار');
       saveAlertSettings(alertConfig);
@@ -336,7 +351,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
       {/* SYSTEM SETTINGS TAB (COLLAPSIBLE ACCORDION CARDS) */}
       {activeSettingsSection === 'general' && (
-        <form onSubmit={handleSave} className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Main Column (8 Cols) */}
           <div className="lg:col-span-8 flex flex-col gap-4">
             
@@ -411,18 +426,38 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                         </div>
 
                         {visitTypesList.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (confirm(`هل أنت تأكد من حذف نوع الزيارة "${vt.name}"؟`)) {
-                                onRemoveVisitType(vt.id);
-                              }
-                            }}
-                            title="حذف نوع الزيارة"
-                            className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer shrink-0"
-                          >
-                            <span className="material-symbols-outlined text-lg">delete</span>
-                          </button>
+                          deleteConfirmVisitId === vt.id ? (
+                            <div className="flex items-center gap-1 bg-rose-50 dark:bg-rose-950/80 p-1 rounded-lg border border-rose-200 dark:border-rose-900 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onRemoveVisitType(vt.id);
+                                  setDeleteConfirmVisitId(null);
+                                  setSavedToast(`تم حذف نوع الزيارة "${vt.name}" بنجاح ✓`);
+                                  setTimeout(() => setSavedToast(null), 3000);
+                                }}
+                                className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-[10px] rounded cursor-pointer transition-all"
+                              >
+                                تأكيد
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeleteConfirmVisitId(null)}
+                                className="px-1 text-slate-500 hover:text-slate-700 dark:text-slate-400 text-[10px] cursor-pointer"
+                              >
+                                إلغاء
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setDeleteConfirmVisitId(vt.id)}
+                              title="حذف نوع الزيارة"
+                              className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer shrink-0"
+                            >
+                              <span className="material-symbols-outlined text-lg">delete</span>
+                            </button>
+                          )
                         )}
                       </div>
                     ))}
@@ -452,7 +487,305 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               )}
             </div>
 
-            {/* ACCORDION CARD 2: Notifications & Sounds (نظام التنبيهات والأصوات المتقدم) */}
+            {/* ACCORDION CARD 2: Medical Services & Pricing (خدمات وبنود الوارد والتسعير) */}
+            <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
+              <button
+                type="button"
+                onClick={() => toggleCard('services')}
+                className="w-full p-5 flex items-center justify-between text-right cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-[#10B981] flex items-center justify-center font-bold">
+                    <span className="material-symbols-outlined text-xl">medical_services</span>
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
+                      <span>2. خدمات وبنود الوارد (الخدمات الطبية والتسعير)</span>
+                      <span className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20 font-bold">
+                        {medicalServicesList.length} خدمة طبية
+                      </span>
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
+                      تظهر هذه الخدمات في قائمة الفواتير عند تسجيل كشف أو إجراء طبي للمريض
+                    </p>
+                  </div>
+                </div>
+                <span
+                  className="material-symbols-outlined text-slate-400 text-2xl transition-transform duration-200"
+                  style={{ transform: openCards.services ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                >
+                  expand_more
+                </span>
+              </button>
+
+              {openCards.services && (
+                <div className="p-5 pt-0 border-t border-slate-100 dark:border-white/5 space-y-4 text-xs">
+                  <div className="flex items-center justify-between pt-3">
+                    <span className="font-bold text-slate-800 dark:text-[#dde2f5]">
+                      الخدمات الطبية المعرفة بنظام الفواتير والتحصيل:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddServiceModal(true)}
+                      className="px-3 py-1.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95"
+                    >
+                      <span className="material-symbols-outlined text-base">add_circle</span>
+                      <span>إضافة خدمة طبية جديدة</span>
+                    </button>
+                  </div>
+
+                  {/* Add Medical Service Modal / Form */}
+                  {showAddServiceModal && (
+                    <div className="p-4 rounded-xl bg-teal-50/60 dark:bg-[#00c2cb]/10 border border-[#00c2cb]/30 space-y-3 animate-in fade-in">
+                      <span className="font-bold text-slate-900 dark:text-[#dde2f5] block">
+                        إضافة خدمة طبية جديدة لقائمة الوارد:
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                        <input
+                          type="text"
+                          value={newServiceName}
+                          onChange={(e) => setNewServiceName(e.target.value)}
+                          placeholder="اسم الخدمة (مثال: عمل رسم قلب / خياطة جرح)..."
+                          className="sm:col-span-8 bg-white dark:bg-[#18233C] px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white text-xs focus:outline-none"
+                        />
+                        <div className="sm:col-span-4 flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="0"
+                            value={newServicePrice}
+                            onChange={(e) => setNewServicePrice(Number(e.target.value))}
+                            placeholder="السعر (ج.م)"
+                            className="w-full bg-white dark:bg-[#18233C] px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white font-mono font-bold text-xs text-center focus:outline-none"
+                          />
+                          <span className="text-xs font-bold text-slate-500 shrink-0">ج.م</span>
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setShowAddServiceModal(false)}
+                          className="px-3 py-1.5 rounded-lg bg-slate-200 dark:bg-white/10 text-slate-700 dark:text-slate-300 font-bold text-xs cursor-pointer"
+                        >
+                          إلغاء
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!newServiceName.trim()) return;
+                            const newSrv: MedicalServiceItem = {
+                              id: `srv-${Date.now()}`,
+                              name: newServiceName.trim(),
+                              price: Number(newServicePrice) || 0,
+                            };
+                            const updated = addMedicalService(newSrv);
+                            setMedicalServicesList(updated);
+                            setNewServiceName('');
+                            setNewServicePrice(200);
+                            setShowAddServiceModal(false);
+                            setSavedToast(`تمت إضافة الخدمة الطبية "${newSrv.name}" بنجاح ✓`);
+                            setTimeout(() => setSavedToast(null), 3000);
+                          }}
+                          className="px-4 py-1.5 rounded-lg bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold text-xs cursor-pointer shadow-xs"
+                        >
+                          حفظ الخدمة
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Medical Services Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {medicalServicesList.map((srv) => (
+                      <div
+                        key={srv.id}
+                        className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex items-center justify-between gap-3 shadow-2xs"
+                      >
+                        <div className="space-y-1.5 min-w-0 flex-1">
+                          <span className="font-bold text-slate-900 dark:text-white block truncate text-xs">
+                            {srv.name}
+                          </span>
+                          <div className="flex items-center gap-1 text-xs text-slate-600 dark:text-[#859394]">
+                            <span>السعر:</span>
+                            <input
+                              type="number"
+                              value={srv.price}
+                              onChange={(e) => {
+                                const newPrice = Number(e.target.value);
+                                const updated = updateMedicalService(srv.id, { price: newPrice });
+                                setMedicalServicesList(updated);
+                              }}
+                              className="w-20 bg-white dark:bg-[#18233C] px-2 py-1 rounded-lg border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white font-mono font-bold text-xs text-center"
+                            />
+                            <span>ج.م</span>
+                          </div>
+                        </div>
+
+                        {deleteConfirmServiceId === srv.id ? (
+                          <div className="flex items-center gap-1 bg-rose-50 dark:bg-rose-950/80 p-1 rounded-lg border border-rose-200 dark:border-rose-900 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = removeMedicalService(srv.id);
+                                setMedicalServicesList(updated);
+                                setDeleteConfirmServiceId(null);
+                                setSavedToast(`تم حذف الخدمة الطبية "${srv.name}" بنجاح ✓`);
+                                setTimeout(() => setSavedToast(null), 3000);
+                              }}
+                              className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-[10px] rounded cursor-pointer transition-all"
+                            >
+                              تأكيد
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeleteConfirmServiceId(null)}
+                              className="px-1 text-slate-500 hover:text-slate-700 dark:text-slate-400 text-[10px] cursor-pointer"
+                            >
+                              إلغاء
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setDeleteConfirmServiceId(srv.id)}
+                            title="حذف الخدمة الطبية"
+                            className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer shrink-0"
+                          >
+                            <span className="material-symbols-outlined text-lg">delete</span>
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ACCORDION CARD 3: Expense Categories (بنود المنصرف - مصروفات العيادة) */}
+            <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
+              <button
+                type="button"
+                onClick={() => toggleCard('expenses')}
+                className="w-full p-5 flex items-center justify-between text-right cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-[#ef4444] flex items-center justify-center font-bold">
+                    <span className="material-symbols-outlined text-xl">shopping_cart_checkout</span>
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
+                      <span>3. بنود المنصرف (مصروفات العيادة)</span>
+                      <span className="text-[10px] bg-rose-500/10 text-rose-600 dark:text-rose-400 px-2 py-0.5 rounded-full border border-rose-500/20 font-bold">
+                        {expenseCategoriesList.length} بنود مصروفات
+                      </span>
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
+                      هذه البنود تظهر في القائمة المنسدلة عند تسجيل مصروف جديد بقسم 'الفواتير والمالية'.
+                    </p>
+                  </div>
+                </div>
+                <span
+                  className="material-symbols-outlined text-slate-400 text-2xl transition-transform duration-200"
+                  style={{ transform: openCards.expenses ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                >
+                  expand_more
+                </span>
+              </button>
+
+              {openCards.expenses && (
+                <div className="p-5 pt-0 border-t border-slate-100 dark:border-white/5 space-y-4 text-xs">
+                  {/* Quick Add Expense Category Row */}
+                  <div className="pt-3">
+                    <span className="font-bold text-slate-800 dark:text-[#dde2f5] block mb-2">
+                      إضافة بند منصرف جديد:
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={newExpenseCategoryInput}
+                        onChange={(e) => setNewExpenseCategoryInput(e.target.value)}
+                        placeholder="إضافة بند مصروف جديد (مثال: صيانة أجهزة)..."
+                        className="flex-1 bg-white dark:bg-[#18233C] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white text-xs focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!newExpenseCategoryInput.trim()) return;
+                          const updated = addExpenseCategory(newExpenseCategoryInput.trim());
+                          setExpenseCategoriesList(updated);
+                          setSavedToast(`تمت إضافة بند المصروف "${newExpenseCategoryInput.trim()}" بنجاح ✓`);
+                          setNewExpenseCategoryInput('');
+                          setTimeout(() => setSavedToast(null), 3000);
+                        }}
+                        className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
+                      >
+                        <span className="material-symbols-outlined text-base">add</span>
+                        <span>إضافة</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* List of Defined Expense Categories */}
+                  <div className="space-y-2 pt-2">
+                    <span className="font-bold text-slate-700 dark:text-[#bbc9ca] block">
+                      بنود المصروفات المعتمدة الحالية:
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                      {expenseCategoriesList.map((cat) => (
+                        <div
+                          key={cat.id || cat.name}
+                          className="p-3 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex items-center justify-between gap-2 shadow-2xs"
+                        >
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <span className="material-symbols-outlined text-base text-rose-500 shrink-0">
+                              receipt_long
+                            </span>
+                            <span className="font-bold text-slate-900 dark:text-white text-xs truncate">
+                              {cat.name}
+                            </span>
+                          </div>
+
+                          {deleteConfirmExpenseCatId === cat.id ? (
+                            <div className="flex items-center gap-1 bg-rose-50 dark:bg-rose-950/80 p-1 rounded-lg border border-rose-200 dark:border-rose-900 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = removeExpenseCategory(cat.id);
+                                  setExpenseCategoriesList(updated);
+                                  setDeleteConfirmExpenseCatId(null);
+                                  setSavedToast(`تم حذف بند المصروف "${cat.name}" بنجاح ✓`);
+                                  setTimeout(() => setSavedToast(null), 3000);
+                                }}
+                                className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-[10px] rounded cursor-pointer transition-all"
+                              >
+                                تأكيد
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeleteConfirmExpenseCatId(null)}
+                                className="px-1 text-slate-500 hover:text-slate-700 dark:text-slate-400 text-[10px] cursor-pointer"
+                              >
+                                إلغاء
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setDeleteConfirmExpenseCatId(cat.id)}
+                              title="حذف بند المصروف"
+                              className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer shrink-0"
+                            >
+                              <span className="material-symbols-outlined text-base">delete</span>
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ACCORDION CARD 4: Notifications & Sounds (نظام التنبيهات والأصوات المتقدم) */}
             <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
               <button
                 type="button"
@@ -465,7 +798,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                      <span>2. نظام التنبيهات والأصوات المتقدم</span>
+                      <span>4. نظام التنبيهات والأصوات المتقدم</span>
                       <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20 font-bold">
                         {alertConfig.audioEnabled ? 'الصوت يعمل ✓' : 'الصوت صامت'}
                       </span>
@@ -679,7 +1012,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               )}
             </div>
 
-            {/* ACCORDION CARD 3: Examination Display Customization (تخصيص أقسام شاشة الكشف الطبي) */}
+            {/* ACCORDION CARD 5: Examination Display Customization (تخصيص أقسام شاشة الكشف الطبي) */}
             <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
               <button
                 type="button"
@@ -692,7 +1025,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">
-                      3. تخصيص أقسام شاشة الكشف الطبي (عرض وإخفاء)
+                      5. تخصيص أقسام شاشة الكشف الطبي (عرض وإخفاء)
                     </h2>
                     <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
                       إظهار أو إخفاء أقسام العلامات الحيوية والتحاليل والأشعة بغرفة الكشف
@@ -831,7 +1164,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               )}
             </div>
 
-            {/* ACCORDION CARD 4: Recurring Prescription Templates (القوائم المتكررة من الروشتة) */}
+            {/* ACCORDION CARD 6: Recurring Prescription Templates & Clinical Guides (القوائم المتكررة وبروتوكولات الروشتة) */}
             <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
               <button
                 type="button"
@@ -844,13 +1177,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                      <span>4. القوائم المتكررة من الروشتة</span>
+                      <span>6. القوائم المتكررة وبروتوكولات الروشتة</span>
                       <span className="px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-bold text-[10px]">
-                        {savedTemplates.length} قائمة محفوظة
+                        {savedTemplates.length} قائمة وبروتوكول
                       </span>
                     </h2>
                     <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
-                      تُحفظ من زر «حفظ عناصر الروشتة كقائمة متكررة» بجوار حفظ الزيارة، ثم تظهر أعلى الروشتة للاستخدام السريع.
+                      إدارة القوائم المتكررة وتعديلها وإضافة قوائم مخصصة أو استدعاؤها من الأدلة والبروتوكولات الطبية
                     </p>
                   </div>
                 </div>
@@ -863,68 +1196,20 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               </button>
 
               {openCards.templates && (
-                <div className="p-5 pt-0 border-t border-slate-100 dark:border-white/5 text-xs pt-3 space-y-4">
-                  <div className="bg-slate-50 dark:bg-[#080e1b] p-3.5 rounded-xl border border-slate-100 dark:border-white/5">
-                    <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-xs">
-                      تُحفظ من زر <strong className="text-[#008f97] dark:text-[#00c2cb]">«حفظ عناصر الروشتة كقائمة متكررة»</strong> بجوار حفظ الزيارة، ثم تظهر أعلى الروشتة للاستخدام السريع.
-                    </p>
-                  </div>
-
-                  <div className="space-y-3">
-                    <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5 border-b border-slate-100 dark:border-white/5 pb-2">
-                      <span className="material-symbols-outlined text-sm text-[#008f97] dark:text-[#00c2cb]">folder_open</span>
-                      <span>القوائم المحفوظة</span>
-                      <span className="bg-slate-100 dark:bg-white/5 px-2 py-0.5 rounded-md text-[10px] font-mono">
-                        {savedTemplates.length} قائمة
-                      </span>
-                    </h3>
-
-                    {savedTemplates.length === 0 ? (
-                      <div className="p-8 text-center text-slate-400 dark:text-slate-500 bg-slate-50/50 dark:bg-[#080e1b]/30 rounded-xl border border-dashed border-slate-200 dark:border-white/5">
-                        <span className="material-symbols-outlined text-3xl text-slate-300 dark:text-slate-700 mb-1 block">receipt_long</span>
-                        <p className="font-bold text-xs text-slate-600 dark:text-slate-400">لا توجد قوائم محفوظة بعد.</p>
-                        <p className="text-[11px] text-slate-400 dark:text-[#859394] mt-1">أنشئ واحدة من زر الحفظ بجوار «حفظ الزيارة» لتظهر أدوات التعديل هنا.</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {savedTemplates.map((tmpl) => (
-                          <div
-                            key={tmpl.id}
-                            className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex items-start justify-between gap-3"
-                          >
-                            <div className="space-y-1 min-w-0">
-                              <h4 className="font-bold text-slate-900 dark:text-[#dde2f5] truncate">{tmpl.title}</h4>
-                              {tmpl.diagnoses && tmpl.diagnoses.length > 0 && (
-                                <p className="text-[11px] text-slate-500 dark:text-[#859394] truncate">
-                                  <strong>التشخيص:</strong> {tmpl.diagnoses.map((d: any) => d.nameAr || d.nameEn || d.name).join('، ')}
-                                </p>
-                              )}
-                              {tmpl.prescription && tmpl.prescription.length > 0 && (
-                                <p className="text-[11px] text-slate-500 dark:text-[#859394] truncate">
-                                  <strong>الأدوية ({tmpl.prescription.length}):</strong>{' '}
-                                  {tmpl.prescription.map((p: any) => p.drugName || p.name).join(' + ')}
-                                </p>
-                              )}
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteTemplate(tmpl.id)}
-                              className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 transition-colors border border-rose-100 dark:border-rose-900/30 cursor-pointer"
-                              title="حذف القائمة"
-                            >
-                              <span className="material-symbols-outlined text-sm">delete</span>
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                <div className="p-5 pt-0 border-t border-slate-100 dark:border-white/5 text-xs pt-4 space-y-4">
+                  <RecurringTemplatesManager
+                    diagnosesCatalog={diagnosesCatalog}
+                    drugCatalog={drugCatalog}
+                    onNotify={(msg) => {
+                      setSavedToast(msg);
+                      setTimeout(() => setSavedToast(null), 3500);
+                    }}
+                  />
                 </div>
               )}
             </div>
 
-            {/* ACCORDION CARD 5: Version & Updates Info (معلومات وإصدار النظام) */}
+            {/* ACCORDION CARD 7: Version & Updates Info (معلومات وإصدار النظام) */}
             <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
               <button
                 type="button"
@@ -937,7 +1222,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                      <span>5. رقم الإصدار والتحديثات الحالية</span>
+                      <span>7. رقم الإصدار والتحديثات الحالية</span>
                       <span className="px-2.5 py-0.5 rounded-full bg-[#00c2cb]/20 text-[#008f97] dark:text-[#00c2cb] font-black text-[11px] border border-[#00c2cb]/30">
                         v2.6.0 Stable
                       </span>
@@ -984,7 +1269,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 تطبق أي تغييرات في أنواع الزيارات أو الأسعار أو التنبيهات مباشرة على كافة أجهزة العيادة وغرفة الكشف.
               </p>
               <button
-                type="submit"
+                type="button"
+                onClick={handleSave}
                 className="w-full py-3.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] font-bold text-xs shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95"
               >
                 حفظ كافة التغييرات
@@ -1008,7 +1294,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               </button>
             </div>
           </div>
-        </form>
+        </div>
       )}
 
       {/* MODAL: Add New Visit Type */}
