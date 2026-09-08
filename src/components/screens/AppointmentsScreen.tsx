@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { CLINIC_INFO } from '../../data/previewClinicData';
 import { AppointmentListItem, ScreenType, PatientListItem } from '../../types';
 import { usePermissions } from '../../context/AuthContext';
 
@@ -331,7 +332,7 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
         daysRemaining: 0,
         isFreeEligible: false,
         diagnosis: 'فحوصات الغدة الدرقية والكولسترول',
-        notes: 'انتهت فترة الاستشارة المجانية (14 يوماً)',
+        notes: 'انتهت فترة المتابعة المسجلة (14 يوماً)',
       },
     ];
   }, [followUps]);
@@ -415,7 +416,7 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
     const cleanPhone = (app.phone || '').replace(/[^0-9]/g, '');
     const formattedPhone = cleanPhone.startsWith('0') ? `2${cleanPhone}` : cleanPhone || '201000000000';
     const message = `مرحباً بحضرتك أستاذ/ة *${app.patientName}* 🌸
-نود تذكيركم بموعدكم في *عيادة د. حازم القاضي* 🩺
+نود تذكيركم بموعدكم في *عيادة ${CLINIC_INFO.doctorName}* 🩺
 🗓 موعد الحجز: *${app.timeSlot || '09:00 ص'}* (${app.visitType || 'كشف'})
 📍 العنوان: عيادة الباطنة التخصصية - المهندسين
 📞 للتأكيد أو تعديل الموعد: 01000000000
@@ -438,7 +439,7 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
     const formattedPhone = cleanPhone.startsWith('0') ? `2${cleanPhone}` : cleanPhone || '201092847162';
 
     const message = `مرحباً بحضرتك أستاذ/ة *${fu.patientName}* 🌸
-نود تذكيركم بموعد المتابعة والاستشارة الطبية المحدد لكم في *عيادة د. حازم القاضي* 🩺
+نود تذكيركم بموعد المتابعة والاستشارة الطبية المحدد لكم في *عيادة ${CLINIC_INFO.doctorName}* 🩺
 🗓 موعد المتابعة: *${fu.dueDate}*
 📍 العنوان: عيادة الباطنة التخصصية - المهندسين
 📞 للتأكيد أو الاستفسار: 01092847162

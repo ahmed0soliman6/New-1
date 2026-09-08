@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { CLINIC_INFO } from '../data/previewClinicData';
+import { useDoctorName } from '../hooks/useDoctorName';
 import { QueueItem, AppointmentListItem, ScreenType } from '../types';
 import { ClinicAlertPayload } from '../utils/alertManager';
 
@@ -46,6 +48,7 @@ export const Header: React.FC<HeaderProps> = ({
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSyncDetailsModal, setShowSyncDetailsModal] = useState(false);
   const [activeNotifyTab, setActiveNotifyTab] = useState<'queue' | 'alerts' | 'followups'>('queue');
+  const activeDoctorName = useDoctorName();
   const [whatsappToast, setWhatsappToast] = useState<string | null>(null);
 
   // Filter urgent follow-ups: Only patients with less than 2 days remaining (0 <= daysRemaining <= 2)
@@ -58,7 +61,7 @@ export const Header: React.FC<HeaderProps> = ({
     const dateText = dueDate || 'الأيام القادمة';
 
     const message = `مرحباً بحضرتك أستاذ/ة *${patientName}* 🌸
-نود تذكيركم بموعد المتابعة والاستشارة الطبية المحدد لكم في *عيادة د. حازم القاضي* 🩺
+نود تذكيركم بموعد المتابعة والاستشارة الطبية المحدد لكم في *عيادة ${activeDoctorName}* 🩺
 🗓 موعد المتابعة: *${dateText}*
 📍 العنوان: عيادة الباطنة التخصصية - المهندسين
 📞 للتأكيد أو الاستفسار: 01092847162

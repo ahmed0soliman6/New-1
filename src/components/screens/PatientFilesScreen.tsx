@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { CLINIC_INFO } from '../../data/previewClinicData';
 import { PatientListItem, ScreenType } from '../../types';
 import { usePermissions } from '../../context/AuthContext';
 import type {
@@ -369,7 +370,7 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
                                   }
 
                                   const message = `مرحباً بك أستاذ/ة *${p.fullName}* 🌸
-إليك تفاصيل وتقارير زيارتكم الطبية لدى *عيادة د. حازم القاضي* 🩺
+إليك تفاصيل وتقارير زيارتكم الطبية لدى *عيادة ${CLINIC_INFO.doctorName}* 🩺
 
 🗓 *تاريخ الزيارة:* ${visitDateStr}
 📋 *التشخيص الإكلينيكي:* ${diagnosisStr}${medsSection}${labsSection}${radsSection}${followUpSection}
@@ -471,7 +472,7 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
                                           const cleanPhone = (p.phone || '').replace(/[^0-9]/g, '');
                                           const formattedPhone = cleanPhone.startsWith('0') ? `2${cleanPhone}` : cleanPhone || '201092847162';
                                           const medsList = pr.items.map((it, idx) => `${idx + 1}. *${it.name}* (${it.strength || ''})\n   - الجرعة: ${it.dose || 'قرص'}\n   - المدة والتكرار: ${it.duration || ''}`).join('\n');
-                                          const message = `مرحباً بك أستاذ/ة *${p.fullName}* 🌸\nإليك الروشتة الطبية الخاصة بزيارتكم في *عيادة د. حازم القاضي* 🩺\n\n🗓 تاريخ الروشتة: *${new Date(pr.createdAt).toLocaleDateString('ar-EG')}*\n\n💊 *الأدوية الموصوفة:*\n${medsList}\n\n${pr.notes ? `📝 *إرشادات الطبيب:* ${pr.notes}\n\n` : ''}📍 عيادة الباطنة التخصصية - المهندسين\nمع تمنياتنا لكم بالشفاء العاجل ودوام الصحة والعافية ✨`;
+                                          const message = `مرحباً بك أستاذ/ة *${p.fullName}* 🌸\nإليك الروشتة الطبية الخاصة بزيارتكم في *عيادة ${CLINIC_INFO.doctorName}* 🩺\n\n🗓 تاريخ الروشتة: *${new Date(pr.createdAt).toLocaleDateString('ar-EG')}*\n\n💊 *الأدوية الموصوفة:*\n${medsList}\n\n${pr.notes ? `📝 *إرشادات الطبيب:* ${pr.notes}\n\n` : ''}📍 عيادة الباطنة التخصصية - المهندسين\nمع تمنياتنا لكم بالشفاء العاجل ودوام الصحة والعافية ✨`;
                                           window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`, '_blank');
                                         }}
                                         className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all shadow-xs"

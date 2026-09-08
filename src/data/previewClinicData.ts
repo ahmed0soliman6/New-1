@@ -1,9 +1,26 @@
 import { PatientListItem, QueueItem, AppointmentListItem, TransactionRecord, PrescriptionItem } from '../types';
 
+export function getDynamicDoctorName(): string {
+  try {
+    const cachedRx = localStorage.getItem('soli_prescription_settings');
+    if (cachedRx) {
+      const parsed = JSON.parse(cachedRx);
+      if (parsed.doctorName && parsed.doctorName.trim()) {
+        return parsed.doctorName.trim();
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return 'د. حازم سمير القاضي';
+}
+
 export const CLINIC_INFO = {
   name: 'سولي ميديكال كلينيك',
   enName: 'Soli Medical Clinic',
-  doctorName: 'د. حازم سمير القاضي',
+  get doctorName() {
+    return getDynamicDoctorName();
+  },
   doctorTitle: 'استشاري الباطنة والقلب والسكر والغدد الصماء',
   doctorCredentials: 'زميل الكلية الملكية للأطباء - دكتوراه الباطنة العامة (قصر العيني)',
   syndicateNumber: 'EG-DOC-48291-GZ',
@@ -183,7 +200,7 @@ export const INITIAL_QUEUE: QueueItem[] = [
     arrivalTime: '05:53 م',
     elapsedMinutes: 7,
     paidAmount: 0,
-    paymentMethod: 'مجانية (ضمن الـ 14 يوم)',
+    paymentMethod: 'متابعة (ضمن الـ 7 و 14 يوم)',
     complaint: 'استشارة أدوية: مراجعة الأعراض الجانبية لدواء تنظيم ضربات القلب الموصوف في 4 أكتوبر.',
     status: 'waiting',
   },

@@ -98,7 +98,7 @@ export const DatabaseInspectorModal: React.FC<DatabaseInspectorModalProps> = ({
     { id: 'invoices', name: 'invoices (فواتير الكشوفات)', count: invoices.length, icon: 'receipt', color: 'text-emerald-400' },
     { id: 'payments', name: 'payments (سجل المقبوضات النقدية)', count: payments.length, icon: 'payments', color: 'text-green-400' },
     { id: 'prescriptions', name: 'prescriptions (الروشتات واللقطات)', count: prescriptions.length, icon: 'prescriptions', color: 'text-purple-400' },
-    { id: 'followUps', name: 'followUps (متابعات الكشف المجانية)', count: followUps.length, icon: 'event_repeat', color: 'text-rose-400' },
+    { id: 'followUps', name: 'followUps (سجل المتابعات والاستشارات)', count: followUps.length, icon: 'event_repeat', color: 'text-rose-400' },
     { id: 'labOrders', name: 'labOrders (طلبات التحاليل)', count: labOrders.length, icon: 'biotech', color: 'text-indigo-400' },
     { id: 'radiologyOrders', name: 'radiologyOrders (طلبات الأشعة)', count: radiologyOrders.length, icon: 'radiology', color: 'text-sky-400' },
     { id: 'medications', name: 'medications (دليل الأدوية الشامل)', count: medications.length, icon: 'medication', color: 'text-teal-400' },
@@ -508,7 +508,7 @@ export const DatabaseInspectorModal: React.FC<DatabaseInspectorModalProps> = ({
                       <li>حفظ لقطة <code className="text-purple-300">Prescription</code> بالأدوية</li>
                       <li>توليد طلبات <code className="text-indigo-300">LabOrders</code> المطلوبة</li>
                       <li>توليد طلبات <code className="text-sky-300">RadiologyOrders</code></li>
-                      <li>تسجيل لقطة <code className="text-rose-300">FollowUp</code> برسم ومجانية الاستشارة</li>
+                      <li>تسجيل لقطة <code className="text-rose-300">FollowUp</code> برسم ومواعيد المتابعة</li>
                     </ul>
                   </div>
                 </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { CLINIC_INFO } from '../../data/previewClinicData';
 import { TransactionRecord, PatientListItem } from '../../types';
 import { usePermissions } from '../../context/AuthContext';
 import { PermissionGate } from '../auth/PermissionGate';
@@ -1145,7 +1146,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
 
             <div className="text-center space-y-1">
               <h3 className="font-bold text-sm">عيادات سولي التخصصية</h3>
-              <p className="text-[11px] text-slate-500">د. حازم سمير القاضي - باطنة وقلب</p>
+              <p className="text-[11px] text-slate-500">{CLINIC_INFO.doctorName} - باطنة وقلب</p>
               <p className="text-[10px] text-slate-400">14 شارع جامعة الدول العربية - المهندسين</p>
             </div>
 

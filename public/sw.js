@@ -1,9 +1,13 @@
-const CACHE_NAME = 'soli-medical-v1';
+const CACHE_NAME = 'soli-medical-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/logo.svg'
+  '/logo.svg',
+  '/pwa-192x192.png',
+  '/pwa-512x512.png',
+  '/pwa-maskable-512x512.png',
+  '/apple-touch-icon.png'
 ];
 
 self.addEventListener('install', (event) => {

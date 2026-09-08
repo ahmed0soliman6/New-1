@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { CLINIC_INFO } from '../../data/previewClinicData';
+import { useDoctorName } from '../../hooks/useDoctorName';
 
 interface ClinicalReportsScreenProps {
   onExportReport?: (type: 'pdf' | 'excel') => void;
@@ -9,9 +10,236 @@ export const ClinicalReportsScreen: React.FC<ClinicalReportsScreenProps> = () =>
   const [timeRange, setTimeRange] = useState<'today' | 'week' | 'month' | 'quarter'>('month');
   const [toast, setToast] = useState<string | null>(null);
 
+  const activeDoctorName = useDoctorName();
+
+  // Dynamic statistics per selected timeframe
+  const rangeData = useMemo(() => {
+    switch (timeRange) {
+      case 'today':
+        return {
+          label: 'اليوم',
+          totalVisits: 14,
+          visitsCompare: '↑ +8% عن المتوسط اليومي',
+          visitsBreakdown: 'منها 10 كشف جديد و 4 استشارات ومتابعات',
+          revenue: '3,800',
+          avgExamDuration: '16.0',
+          avgWaitTime: '12.0',
+          diagnoses: [
+            { name: 'جرثومة المعدة وقرحة الاثنى عشر (H. Pylori)', count: 5, percent: 36, color: 'bg-[#00c2cb]' },
+            { name: 'ارتفاع ضغط الدم الشرياني (Essential HTN)', count: 4, percent: 28, color: 'bg-purple-500' },
+            { name: 'السكري من النوع الثاني واعتلال الأعصاب (T2D)', count: 3, percent: 21, color: 'bg-indigo-500' },
+            { name: 'القولون العصبي وعسر الهضم الوظيفي (IBS)', count: 2, percent: 15, color: 'bg-teal-500' },
+          ],
+          followupStats: {
+            retention: '85%',
+            count: '4 متابعة',
+            overdue: '0 حالات',
+          },
+        };
+      case 'week':
+        return {
+          label: 'هذا الأسبوع',
+          totalVisits: 42,
+          visitsCompare: '↑ +12% مقارنة بالأسبوع السابق',
+          visitsBreakdown: 'منها 30 كشف جديد و 12 استشارة ومتابعة',
+          revenue: '12,600',
+          avgExamDuration: '16.2',
+          avgWaitTime: '13.5',
+          diagnoses: [
+            { name: 'جرثومة المعدة وقرحة الاثنى عشر (H. Pylori)', count: 14, percent: 33, color: 'bg-[#00c2cb]' },
+            { name: 'ارتفاع ضغط الدم الشرياني (Essential HTN)', count: 11, percent: 26, color: 'bg-purple-500' },
+            { name: 'السكري من النوع الثاني واعتلال الأعصاب (T2D)', count: 9, percent: 21, color: 'bg-indigo-500' },
+            { name: 'القولون العصبي وعسر الهضم الوظيفي (IBS)', count: 5, percent: 12, color: 'bg-teal-500' },
+            { name: 'التهاب الشعب الهوائية وحساسية الصدر', count: 3, percent: 8, color: 'bg-amber-500' },
+          ],
+          followupStats: {
+            retention: '78%',
+            count: '12 متابعة',
+            overdue: '2 حالات',
+          },
+        };
+      case 'quarter':
+        return {
+          label: 'الربع الحالي',
+          totalVisits: 520,
+          visitsCompare: '↑ +18% مقارنة بالربع السابق',
+          visitsBreakdown: 'منها 390 كشف جديد و 130 استشارة ومتابعة',
+          revenue: '156,000',
+          avgExamDuration: '16.8',
+          avgWaitTime: '15.0',
+          diagnoses: [
+            { name: 'جرثومة المعدة وقرحة الاثنى عشر (H. Pylori)', count: 152, percent: 29, color: 'bg-[#00c2cb]' },
+            { name: 'ارتفاع ضغط الدم الشرياني (Essential HTN)', count: 125, percent: 24, color: 'bg-purple-500' },
+            { name: 'السكري من النوع الثاني واعتلال الأعصاب (T2D)', count: 108, percent: 21, color: 'bg-indigo-500' },
+            { name: 'القولون العصبي وعسر الهضم الوظيفي (IBS)', count: 75, percent: 14, color: 'bg-teal-500' },
+            { name: 'التهاب الشعب الهوائية وحساسية الصدر', count: 38, percent: 7, color: 'bg-amber-500' },
+            { name: 'أخرى (فحوصات دورية ومتابعة تحاليل عامة)', count: 22, percent: 5, color: 'bg-slate-400' },
+          ],
+          followupStats: {
+            retention: '76%',
+            count: '130 متابعة',
+            overdue: '22 حالة',
+          },
+        };
+      case 'month':
+      default:
+        return {
+          label: 'هذا الشهر',
+          totalVisits: 184,
+          visitsCompare: '↑ +14% مقارنة بالشهر السابق',
+          visitsBreakdown: 'منها 138 كشف جديد و 46 استشارة ومتابعة',
+          revenue: '55,200',
+          avgExamDuration: '16.4',
+          avgWaitTime: '14.2',
+          diagnoses: [
+            { name: 'جرثومة المعدة وقرحة الاثنى عشر (H. Pylori)', count: 52, percent: 28, color: 'bg-[#00c2cb]' },
+            { name: 'ارتفاع ضغط الدم الشرياني (Essential HTN)', count: 44, percent: 24, color: 'bg-purple-500' },
+            { name: 'السكري من النوع الثاني واعتلال الأعصاب (T2D)', count: 38, percent: 21, color: 'bg-indigo-500' },
+            { name: 'القولون العصبي وعسر الهضم الوظيفي (IBS)', count: 26, percent: 14, color: 'bg-teal-500' },
+            { name: 'التهاب الشعب الهوائية وحساسية الصدر', count: 14, percent: 8, color: 'bg-amber-500' },
+            { name: 'أخرى (فحوصات دورية ومتابعة تحاليل عامة)', count: 10, percent: 5, color: 'bg-slate-400' },
+          ],
+          followupStats: {
+            retention: '73%',
+            count: '46 متابعة',
+            overdue: '8 حالات',
+          },
+        };
+    }
+  }, [timeRange]);
+
   const handleExport = (format: 'PDF' | 'Excel') => {
-    setToast(`جاري استخراج تقرير العيادة الشامل بصيغة (${format})... سيتم التنزيل فوراً.`);
-    setTimeout(() => setToast(null), 3500);
+    if (format === 'PDF') {
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        setToast('يرجى السماح بالنوافذ المنبثقة لطباعة التقرير PDF');
+        return;
+      }
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+        <head>
+          <meta charset="UTF-8" />
+          <title>تقرير العيادة الإكلينيكي - ${rangeData.label}</title>
+          <style>
+            body { font-family: 'Segoe UI', Tahoma, sans-serif; padding: 20px; color: #1e293b; background: #fff; }
+            .header { text-align: center; border-bottom: 2px solid #00c2cb; padding-bottom: 12px; margin-bottom: 20px; }
+            .header h1 { margin: 0; color: #08101C; font-size: 22px; }
+            .header h2 { margin: 4px 0 0 0; color: #008f97; font-size: 16px; }
+            .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+            .kpi-card { border: 1px solid #cbd5e1; padding: 12px; border-radius: 8px; text-align: center; background: #f8fafc; }
+            .kpi-title { font-size: 11px; color: #64748b; font-weight: bold; }
+            .kpi-value { font-size: 20px; font-weight: bold; margin: 6px 0; color: #0f172a; }
+            table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+            th, td { border: 1px solid #e2e8f0; padding: 10px; text-align: right; font-size: 12px; }
+            th { background: #f1f5f9; color: #334155; }
+            .footer { margin-top: 30px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 10px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>سولي ميديكال كلينيك - ${CLINIC_INFO.name}</h1>
+            <h2>${activeDoctorName} - التقرير الطبي الشامل (${rangeData.label})</h2>
+            <p style="font-size: 12px; color: #64748b; margin-top: 4px;">تاريخ الاستخراج: ${new Date().toLocaleDateString('ar-EG')}</p>
+          </div>
+
+          <div class="kpi-grid">
+            <div class="kpi-card">
+              <div class="kpi-title">إجمالي الكشوفات والزيارات</div>
+              <div class="kpi-value">${rangeData.totalVisits}</div>
+              <div style="font-size: 10px; color: #10b981;">${rangeData.visitsBreakdown}</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-title">الإيرادات المحصلة</div>
+              <div class="kpi-value">${rangeData.revenue} ج.م</div>
+              <div style="font-size: 10px; color: #64748b;">مقبوضات الخزينة الإجمالية</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-title">متوسط مدة الكشف</div>
+              <div class="kpi-value">${rangeData.avgExamDuration} دقيقة</div>
+              <div style="font-size: 10px; color: #10b981;">زمن استشارة فحص مثالي</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-title">متوسط انتظار صالة الانتظار</div>
+              <div class="kpi-value">${rangeData.avgWaitTime} دقيقة</div>
+              <div style="font-size: 10px; color: #f59e0b;">تدفق صالة الانتظار</div>
+            </div>
+          </div>
+
+          <h3>توزيع أكثر التشخيصات والحالات تردداً</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>التشخيص الطبي الإكلينيكي</th>
+                <th>عدد الحالات</th>
+                <th>النسبة المئوية</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rangeData.diagnoses
+                .map(
+                  (d, i) => `
+                <tr>
+                  <td>${i + 1}</td>
+                  <td>${d.name}</td>
+                  <td>${d.count} حالة</td>
+                  <td>${d.percent}%</td>
+                </tr>
+              `
+                )
+                .join('')}
+            </tbody>
+          </table>
+
+          <div class="footer">
+            تم توليد هذا التقرير آلياً من نظام إدارة عيادة سولي - ${activeDoctorName}
+          </div>
+
+          <script>
+            window.onload = function() {
+              window.print();
+            };
+          </script>
+        </body>
+        </html>
+      `;
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+      setToast('تم فتح نافذة المعاينة وتصدير PDF بنجاح.');
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+
+    if (format === 'Excel') {
+      const csvRows = [
+        ['\uFEFFتاريخ التقرير', new Date().toLocaleDateString('ar-EG')],
+        ['الطبيب المعالج', activeDoctorName],
+        ['الفترة المحددة', rangeData.label],
+        [''],
+        ['المؤشر الإكلينيكي / المالي', 'القيمة'],
+        ['إجمالي الكشوفات والزيارات', rangeData.totalVisits],
+        ['إجمالي الإيرادات المحصلة (ج.م)', rangeData.revenue],
+        ['متوسط مدة الكشف (دقيقة)', rangeData.avgExamDuration],
+        ['متوسط زمن الانتظار (دقيقة)', rangeData.avgWaitTime],
+        [''],
+        ['التشخيص الطبي', 'عدد الحالات', 'النسبة المئوية'],
+        ...rangeData.diagnoses.map((d) => [d.name, d.count, `${d.percent}%`]),
+      ];
+
+      const csvContent = csvRows.map((e) => e.map((val) => `"${val}"`).join(',')).join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `Soli_Clinic_Report_${rangeData.label}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setToast('تم إنشاء وتنزيل ملف Excel / CSV بنجاح.');
+      setTimeout(() => setToast(null), 3500);
+    }
   };
 
   return (
@@ -66,14 +294,14 @@ export const ClinicalReportsScreen: React.FC<ClinicalReportsScreenProps> = () =>
           {/* Export buttons */}
           <button
             onClick={() => handleExport('PDF')}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white dark:bg-[#18233C] hover:bg-slate-50 dark:hover:bg-[#242a38] text-slate-700 dark:text-[#dde2f5] text-xs font-bold border border-slate-200 dark:border-white/10 shadow-xs cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white dark:bg-[#18233C] hover:bg-slate-50 dark:hover:bg-[#242a38] text-slate-700 dark:text-[#dde2f5] text-xs font-bold border border-slate-200 dark:border-white/10 shadow-xs cursor-pointer transition-all active:scale-95"
           >
             <span className="material-symbols-outlined text-base text-rose-500">picture_as_pdf</span>
             <span>تصدير PDF</span>
           </button>
           <button
             onClick={() => handleExport('Excel')}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] text-xs font-bold shadow-md shadow-[#00c2cb]/20 cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] text-xs font-bold shadow-md shadow-[#00c2cb]/20 cursor-pointer transition-all active:scale-95"
           >
             <span className="material-symbols-outlined text-base">table_view</span>
             <span>تصدير Excel</span>
@@ -85,16 +313,16 @@ export const ClinicalReportsScreen: React.FC<ClinicalReportsScreenProps> = () =>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white dark:bg-[#111A2E] p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 dark:text-[#859394]">إجمالي كشوفات الشهر</span>
+            <span className="text-xs font-bold text-slate-500 dark:text-[#859394]">إجمالي الكشوفات والزيارات</span>
             <span className="w-8 h-8 rounded-lg bg-[#00c2cb]/15 text-[#008f97] dark:text-[#00c2cb] flex items-center justify-center">
               <span className="material-symbols-outlined text-base">groups</span>
             </span>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-extrabold text-slate-900 dark:text-[#dde2f5] font-mono">184</span>
-            <span className="text-xs text-emerald-600 dark:text-emerald-400 font-bold">↑ +14% مقارنة بالشهر السابق</span>
+            <span className="text-2xl font-extrabold text-slate-900 dark:text-[#dde2f5] font-mono">{rangeData.totalVisits}</span>
+            <span className="text-xs text-emerald-600 dark:text-emerald-400 font-bold">{rangeData.visitsCompare}</span>
           </div>
-          <span className="text-[11px] text-slate-500 dark:text-[#bbc9ca]">منها 138 كشف جديد و 46 استشارة ومتابعة</span>
+          <span className="text-[11px] text-slate-500 dark:text-[#bbc9ca]">{rangeData.visitsBreakdown}</span>
         </div>
 
         <div className="bg-white dark:bg-[#111A2E] p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm flex flex-col gap-2">
@@ -105,10 +333,10 @@ export const ClinicalReportsScreen: React.FC<ClinicalReportsScreenProps> = () =>
             </span>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-extrabold text-purple-700 dark:text-[#d0bcff] font-mono">55,200</span>
+            <span className="text-2xl font-extrabold text-purple-700 dark:text-[#d0bcff] font-mono">{rangeData.revenue}</span>
             <span className="text-xs font-bold text-slate-500 dark:text-[#859394]">ج.م</span>
           </div>
-          <span className="text-[11px] text-slate-500 dark:text-[#bbc9ca]">متوسط قيمة الإيراد لكل كشف: 300 ج.م</span>
+          <span className="text-[11px] text-slate-500 dark:text-[#bbc9ca]">من مقبوضات الكشوفات الفعلية للفترة ({rangeData.label})</span>
         </div>
 
         <div className="bg-white dark:bg-[#111A2E] p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm flex flex-col gap-2">
@@ -119,7 +347,7 @@ export const ClinicalReportsScreen: React.FC<ClinicalReportsScreenProps> = () =>
             </span>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-extrabold text-emerald-600 dark:text-[#10B981] font-mono">16.4</span>
+            <span className="text-2xl font-extrabold text-emerald-600 dark:text-[#10B981] font-mono">{rangeData.avgExamDuration}</span>
             <span className="text-xs font-bold text-slate-500 dark:text-[#859394]">دقيقة / مريض</span>
           </div>
           <span className="text-[11px] text-slate-500 dark:text-[#bbc9ca]">وقت فحص إكلينيكي وتوجيه علاجي مثالي</span>
@@ -133,7 +361,7 @@ export const ClinicalReportsScreen: React.FC<ClinicalReportsScreenProps> = () =>
             </span>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-extrabold text-amber-600 dark:text-amber-400 font-mono">14.2</span>
+            <span className="text-2xl font-extrabold text-amber-600 dark:text-amber-400 font-mono">{rangeData.avgWaitTime}</span>
             <span className="text-xs font-bold text-slate-500 dark:text-[#859394]">دقيقة فقط</span>
           </div>
           <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">أقل بنسبة 28% عن المعيار العام</span>
@@ -142,25 +370,18 @@ export const ClinicalReportsScreen: React.FC<ClinicalReportsScreenProps> = () =>
 
       {/* Main Analytical Grid: Most Frequent Diagnoses & Peak Attendance Hours */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Most Frequent Diagnoses (ICD-10 Distribution) - 7 Cols */}
+        {/* Most Frequent Diagnoses - 7 Cols */}
         <div className="lg:col-span-7 bg-white dark:bg-[#111A2E] p-6 rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm flex flex-col gap-5">
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/5 pb-3">
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb] text-xl">bar_chart</span>
               <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">أكثر التشخيصات والأمراض تردداً على العيادة</h2>
             </div>
-            <span className="text-xs text-slate-500 dark:text-[#859394]">تصنيف د. حازم القاضي</span>
+            <span className="text-xs text-slate-500 dark:text-[#859394]">تصنيف {activeDoctorName}</span>
           </div>
 
           <div className="space-y-4">
-            {[
-              { name: 'جرثومة المعدة وقرحة الاثنى عشر (H. Pylori)', count: 52, percent: 28, color: 'bg-[#00c2cb]' },
-              { name: 'ارتفاع ضغط الدم الشرياني (Essential HTN)', count: 44, percent: 24, color: 'bg-purple-500' },
-              { name: 'السكري من النوع الثاني واعتلال الأعصاب (T2D)', count: 38, percent: 21, color: 'bg-indigo-500' },
-              { name: 'القولون العصبي وعسر الهضم الوظيفي (IBS)', count: 26, percent: 14, color: 'bg-teal-500' },
-              { name: 'التهاب الشعب الهوائية وحساسية الصدر', count: 14, percent: 8, color: 'bg-amber-500' },
-              { name: 'أخرى (فحوصات دورية ومتابعة تحاليل عامة)', count: 10, percent: 5, color: 'bg-slate-400' },
-            ].map((item, idx) => (
+            {rangeData.diagnoses.map((item, idx) => (
               <div key={idx} className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between text-xs font-semibold">
                   <span className="text-slate-800 dark:text-[#dde2f5]">{item.name}</span>
@@ -225,31 +446,31 @@ export const ClinicalReportsScreen: React.FC<ClinicalReportsScreenProps> = () =>
         </div>
       </div>
 
-      {/* Free Followup & Patient Loyalty Analytics */}
+      {/* Followup & Patient Loyalty Analytics */}
       <div className="bg-white dark:bg-[#111A2E] p-6 rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm flex flex-col gap-4">
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/5 pb-3">
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-emerald-600 text-xl">health_and_safety</span>
-            <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">حوكمة الاستشارات والمتابعات المجانية (14 يوماً)</h2>
+            <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">حوكمة المتابعات خلال 7 أيام و 14 يوماً</h2>
           </div>
-          <span className="text-xs text-slate-500 dark:text-[#859394]">لائحة عيادة د. حازم القاضي</span>
+          <span className="text-xs text-slate-500 dark:text-[#859394]">نظام متابعات {activeDoctorName}</span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="p-4 bg-slate-50 dark:bg-[#080e1b] rounded-xl border border-slate-200 dark:border-white/5 flex flex-col gap-1">
             <span className="text-xs text-slate-500 dark:text-[#859394]">معدل التزام المرضى بالمتابعة:</span>
-            <span className="text-xl font-bold text-slate-900 dark:text-[#dde2f5] font-mono">73%</span>
+            <span className="text-xl font-bold text-slate-900 dark:text-[#dde2f5] font-mono">{rangeData.followupStats.retention}</span>
             <span className="text-[11px] text-emerald-600 dark:text-emerald-400">معدل شفاء ومتابعة ممتاز</span>
           </div>
           <div className="p-4 bg-slate-50 dark:bg-[#080e1b] rounded-xl border border-slate-200 dark:border-white/5 flex flex-col gap-1">
-            <span className="text-xs text-slate-500 dark:text-[#859394]">استشارات مجانية ضمن الـ 14 يوم:</span>
-            <span className="text-xl font-bold text-slate-900 dark:text-[#dde2f5] font-mono">46 استشارة</span>
-            <span className="text-[11px] text-slate-500 dark:text-[#bbc9ca]">بدون تحصيل رسوم طبقاً للائحة</span>
+            <span className="text-xs text-slate-500 dark:text-[#859394]">المتابعات ضمن الـ 7 أيام والـ 14 يوم:</span>
+            <span className="text-xl font-bold text-slate-900 dark:text-[#dde2f5] font-mono">{rangeData.followupStats.count}</span>
+            <span className="text-[11px] text-slate-500 dark:text-[#bbc9ca]">متابعات مجدولة وفق النظام</span>
           </div>
           <div className="p-4 bg-slate-50 dark:bg-[#080e1b] rounded-xl border border-slate-200 dark:border-white/5 flex flex-col gap-1">
-            <span className="text-xs text-slate-500 dark:text-[#859394]">حالات تجاوزت فترة الاستشارة:</span>
-            <span className="text-xl font-bold text-purple-600 dark:text-[#d0bcff] font-mono">8 حالات</span>
-            <span className="text-[11px] text-purple-700 dark:text-[#d0bcff]">تم تحويلها لكشف متابعة بنصف القيمة (150 ج.م)</span>
+            <span className="text-xs text-slate-500 dark:text-[#859394]">حالات تجاوزت فترة المتابعة (14 يوماً):</span>
+            <span className="text-xl font-bold text-purple-600 dark:text-[#d0bcff] font-mono">{rangeData.followupStats.overdue}</span>
+            <span className="text-[11px] text-purple-700 dark:text-[#d0bcff]">تم تحويلها لمتابعة متأخرة</span>
           </div>
         </div>
       </div>

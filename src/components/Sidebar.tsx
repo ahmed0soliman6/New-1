@@ -112,15 +112,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   onNavigate(item.id);
                   if (onCloseMobile) onCloseMobile();
                 }}
-                className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl text-right transition-all duration-200 cursor-pointer ${
+                className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl text-right transition-all duration-200 cursor-pointer group ${
                   isActive
-                    ? 'bg-[#18233C] text-[#45dee7] font-bold shadow-md relative before:absolute before:right-0 before:top-1/2 before:-translate-y-1/2 before:w-1.5 before:h-8 before:bg-[#00c2cb] before:rounded-l-full scale-[1.01]'
-                    : 'text-[#cbd5e1] hover:bg-[#161b29] hover:text-white font-medium'
+                    ? 'bg-[#18233C] text-[#45dee7] font-bold shadow-md relative border-r-4 border-[#00c2cb] scale-[1.01]'
+                    : 'text-[#cbd5e1] hover:bg-[#00c2cb]/15 hover:text-[#45dee7] hover:border-r-4 hover:border-[#00c2cb]/70 font-medium'
                 }`}
               >
                 <div className="flex items-center gap-4">
                   <span
-                    className={`material-symbols-outlined text-[22px] ${isActive ? 'text-[#00c2cb]' : 'text-slate-400'}`}
+                    className={`material-symbols-outlined text-[22px] transition-colors ${
+                      isActive ? 'text-[#00c2cb]' : 'text-slate-400 group-hover:text-[#00c2cb]'
+                    }`}
                     style={isActive ? { fontVariationSettings: "'FILL' 1" } : {}}
                   >
                     {item.icon}

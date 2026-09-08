@@ -132,6 +132,7 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
             ...remoteConfig,
           }));
           localStorage.setItem('soli_prescription_settings', JSON.stringify(remoteConfig));
+          window.dispatchEvent(new Event('soli_prescription_updated'));
         }
       },
       (err) => {
@@ -140,6 +141,12 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
     );
     return () => unsubscribe();
   }, []);
+
+  // Instantly reflect prescription configuration changes (including doctor name) across all screens
+  useEffect(() => {
+    localStorage.setItem('soli_prescription_settings', JSON.stringify(config));
+    window.dispatchEvent(new Event('soli_prescription_updated'));
+  }, [config]);
 
   const [activeTab, setActiveTab] = useState<'layout' | 'header' | 'qr' | 'branches' | 'printers'>('layout');
   const [printerPaper, setPrinterPaper] = useState<string>(() => localStorage.getItem('soli_printer_paper') || '80mm');

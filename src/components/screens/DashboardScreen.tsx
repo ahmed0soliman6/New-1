@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { ScreenType, AppointmentListItem, QueueItem } from '../../types';
 import { usePermissions } from '../../context/AuthContext';
 
@@ -18,10 +18,47 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   onCallPatient,
 }) => {
   const { canAccess } = usePermissions();
+  const [dashboardTimeframe, setDashboardTimeframe] = useState<'today' | 'week' | 'month'>('today');
   const [filterType, setFilterType] = useState<string>('all');
   const [selectedPayMethod, setSelectedPayMethod] = useState<string>('cash');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [checkInNotice, setCheckInNotice] = useState<string | null>(null);
+
+  // Dynamic KPI calculations based on selected timeframe
+  const timeframeStats = useMemo(() => {
+    if (dashboardTimeframe === 'week') {
+      return {
+        periodLabel: 'هذا الأسبوع',
+        arrivedVisits: 42,
+        scheduledCount: 58,
+        completedCount: 34,
+        completedPercent: '81%',
+        revenueFormatted: '12,600',
+        waitingAvgText: 'متوسط: 12 د',
+      };
+    }
+    if (dashboardTimeframe === 'month') {
+      return {
+        periodLabel: 'هذا الشهر',
+        arrivedVisits: 184,
+        scheduledCount: 210,
+        completedCount: 138,
+        completedPercent: '75%',
+        revenueFormatted: '55,200',
+        waitingAvgText: 'متوسط: 14 د',
+      };
+    }
+    // 'today' default
+    return {
+      periodLabel: 'اليوم',
+      arrivedVisits: 14,
+      scheduledCount: Math.max(19, appointments.length),
+      completedCount: 10,
+      completedPercent: '71%',
+      revenueFormatted: '3,800',
+      waitingAvgText: 'متوسط: 14 د',
+    };
+  }, [dashboardTimeframe, appointments.length]);
 
   // Active check-in card patient
   const targetCheckIn = appointments.find((a) => a && (a.id === 'app-1' || a.id === 'appt-1')) || appointments[0];
@@ -64,18 +101,45 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
         </div>
       )}
 
+      {/* Timeframe Filter Bar */}
+      <div className="flex items-center justify-between bg-white dark:bg-[#0f172a] p-3 rounded-2xl border border-slate-200 dark:border-white/10 shadow-xs">
+        <div className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-[#00c2cb] text-xl">insights</span>
+          <span className="text-xs font-bold text-slate-900 dark:text-white">نطاق إحصائيات المؤشرات:</span>
+        </div>
+        <div className="flex items-center bg-slate-100 dark:bg-[#111A2E] p-1 rounded-xl border border-slate-200 dark:border-white/5">
+          {[
+            { id: 'today', label: 'اليوم' },
+            { id: 'week', label: 'هذا الأسبوع' },
+            { id: 'month', label: 'هذا الشهر' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setDashboardTimeframe(tab.id as any)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                dashboardTimeframe === tab.id
+                  ? 'bg-[#00c2cb] text-[#08101C] shadow-sm'
+                  : 'text-slate-600 dark:text-[#bbc9ca] hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Top 5 KPI Summary Grid */}
       <section className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
         {/* KPI 1: Actual Arrived Visits */}
         <div className="relative overflow-hidden rounded-2xl bg-white dark:bg-[#0f172a] p-4 shadow-sm dark:shadow-lg border border-slate-200 dark:border-white/10 flex flex-col justify-between hover:bg-slate-50 dark:hover:bg-[#1e293b] transition-all">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-200">مرضى اليوم الفعليين</span>
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-200">المرضى الفعليين ({timeframeStats.periodLabel})</span>
             <div className="w-8 h-8 rounded-lg bg-teal-50 dark:bg-[#00c2cb]/20 text-teal-700 dark:text-[#00c2cb] flex items-center justify-center font-bold">
               <span className="material-symbols-outlined text-lg">how_to_reg</span>
             </div>
           </div>
           <div className="mt-3 flex items-baseline justify-between">
-            <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white font-mono">14</div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white font-mono">{timeframeStats.arrivedVisits}</div>
             <span className="text-xs text-teal-800 dark:text-[#45dee7] font-bold bg-teal-100/70 dark:bg-[#00c2cb]/20 px-2 py-0.5 rounded-md">
               زيارة مثبتة
             </span>
@@ -99,7 +163,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
           </div>
           <div className="mt-3 flex items-baseline justify-between">
             <div className="text-2xl sm:text-3xl font-extrabold text-teal-700 dark:text-[#45dee7] font-mono">{queue.length}</div>
-            <span className="text-xs text-teal-800 dark:text-[#45dee7] font-bold">متوسط: 14 د</span>
+            <span className="text-xs text-teal-800 dark:text-[#45dee7] font-bold">{timeframeStats.waitingAvgText}</span>
           </div>
           <p className="text-[11px] text-slate-600 dark:text-slate-300 font-medium mt-1">جاهزون لدخول غرفة الكشف</p>
         </div>
@@ -107,13 +171,13 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
         {/* KPI 3: Scheduled Appointments */}
         <div className="relative overflow-hidden rounded-2xl bg-white dark:bg-[#0f172a] p-4 shadow-sm dark:shadow-lg border border-slate-200 dark:border-white/10 flex flex-col justify-between hover:bg-slate-50 dark:hover:bg-[#1e293b] transition-all">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-200">مواعيد اليوم المجدولة</span>
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-200">المواعيد المجدولة ({timeframeStats.periodLabel})</span>
             <div className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-[#8B5CF6]/20 text-purple-700 dark:text-[#d0bcff] flex items-center justify-center font-bold">
               <span className="material-symbols-outlined text-lg">calendar_month</span>
             </div>
           </div>
           <div className="mt-3 flex items-baseline justify-between">
-            <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white font-mono">19</div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white font-mono">{timeframeStats.scheduledCount}</div>
             <span className="text-xs text-purple-800 dark:text-[#e9ddff] bg-purple-100 dark:bg-[#8B5CF6]/30 px-2 py-0.5 rounded-md font-bold">
               حجز مسبق
             </span>
@@ -130,9 +194,9 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
             </div>
           </div>
           <div className="mt-3 flex items-baseline justify-between">
-            <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white font-mono">10</div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white font-mono">{timeframeStats.completedCount}</div>
             <span className="text-xs text-sky-800 dark:text-[#9dd0ff] font-bold bg-sky-100 dark:bg-[#0284C7]/30 px-2 py-0.5 rounded-md">
-              71% من الإجمالي
+              {timeframeStats.completedPercent} من الإجمالي
             </span>
           </div>
           <p className="text-[11px] text-slate-600 dark:text-slate-300 font-medium mt-1">صدرت لهم روشتات ومتابعة</p>
@@ -141,13 +205,13 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
         {/* KPI 5: Cash Drawer Revenue */}
         <div className="col-span-2 sm:col-span-2 lg:col-span-1 relative overflow-hidden rounded-2xl bg-white dark:bg-[#0f172a] p-4 shadow-sm dark:shadow-xl border border-purple-300 dark:border-[#8B5CF6]/40 flex flex-col justify-between hover:bg-slate-50 dark:hover:bg-[#1e293b] transition-all">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-purple-950 dark:text-[#e9ddff]">إيراد الخزينة</span>
+            <span className="text-xs font-bold text-purple-950 dark:text-[#e9ddff]">إيراد الخزينة ({timeframeStats.periodLabel})</span>
             <div className="w-8 h-8 rounded-lg bg-[#8B5CF6] text-white flex items-center justify-center font-bold">
               <span className="material-symbols-outlined text-lg">payments</span>
             </div>
           </div>
           <div className="mt-3 flex items-baseline justify-start gap-1">
-            <div className="text-2xl sm:text-3xl font-extrabold text-teal-700 dark:text-[#45dee7] tracking-tight font-mono">3,800</div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-teal-700 dark:text-[#45dee7] tracking-tight font-mono">{timeframeStats.revenueFormatted}</div>
             <span className="text-sm text-slate-700 dark:text-slate-300 font-bold">ج.م</span>
           </div>
           <div className="mt-1 flex items-center gap-1 text-[11px] text-purple-900 dark:text-[#d0bcff] font-semibold">

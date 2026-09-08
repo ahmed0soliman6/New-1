@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { CLINIC_INFO } from '../../data/previewClinicData';
 import {
   ScreenType,
   PatientListItem,
@@ -467,7 +468,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
     }
 
     return `مرحباً بك أستاذ/ة *${patient?.name || 'مريض'}* 🌸
-إليك تفاصيل وتقارير زيارتكم الطبية لدى *عيادة د. حازم القاضي* 🩺
+إليك تفاصيل وتقارير زيارتكم الطبية لدى *عيادة ${CLINIC_INFO.doctorName}* 🩺
 
 🗓 *تاريخ الزيارة:* ${todayStr}
 📋 *التشخيص الإكلينيكي:* ${diagnosisList}${medsSection}${labsSection}${radsSection}${adviceSection}${followUpSection}
@@ -1570,7 +1571,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                     تم اعتماد وإنهاء الكشف الطبي بنجاح
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-[#859394]">
-                    المريض: {patient?.name || 'مريض غير محدد'} • #{patient?.fileNumber || '-'} • الطبيب المعالج: د. حازم سولي
+                    المريض: {patient?.name || 'مريض غير محدد'} • #{patient?.fileNumber || '-'} • الطبيب المعالج: {CLINIC_INFO.doctorName}
                   </p>
                 </div>
               </div>
