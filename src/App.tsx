@@ -205,6 +205,84 @@ function ClinicApp() {
     });
   };
 
+  const handleGenerateYearlyDemoData = async () => {
+    try {
+      const { generateOneYearDemoData } = await import('./utils/demoDataGenerator');
+      await generateOneYearDemoData(db);
+      setSyncRetryCounter((c) => c + 1);
+      alert('تم توليد بيانات تجريبية متكاملة لمدى سنة كاملة بنجاح! تشمل سجلات المرضى والزيارات الموزعة، الحجوزات، الفواتير، المقبوضات ومصروفات العيادة المتنوعة لتظهر في التقارير والرسوم البيانية بشكل دقيق.');
+    } catch (err) {
+      console.error(err);
+      alert('حدث خطأ أثناء توليد البيانات التجريبية.');
+    }
+  };
+
+  const handleClearAllData = async () => {
+    try {
+      const { clearAllDatabaseCollections } = await import('./utils/demoDataGenerator');
+      await clearAllDatabaseCollections(db);
+      
+      setPatientsCanonical([]);
+      setAppointmentsCanonical([]);
+      setVisitsCanonical([]);
+      setInvoicesCanonical([]);
+      setPaymentsCanonical([]);
+      setFollowUpsCanonical([]);
+      setPrescriptionsCanonical([]);
+      setLabOrdersCanonical([]);
+      setRadiologyOrdersCanonical([]);
+
+      alert('تم مسح سجلات المرضى والزيارات والفواتير التجريبية والبدء من جديد مع بقاء الإعدادات والأدلة الطبية الثابتة ✓');
+    } catch (err) {
+      console.error(err);
+      alert('حدث خطأ أثناء مسح البيانات.');
+    }
+  };
+
+  const handleClearBrowserVisitsOnly = async () => {
+    try {
+      setPatientsCanonical([]);
+      setVisitsCanonical([]);
+      setInvoicesCanonical([]);
+      setPaymentsCanonical([]);
+      setAppointmentsCanonical([]);
+      setFollowUpsCanonical([]);
+      setPrescriptionsCanonical([]);
+      setLabOrdersCanonical([]);
+      setRadiologyOrdersCanonical([]);
+
+      // Force-reload / Re-fetch the registered database records from Firestore cloud
+      setSyncRetryCounter((c) => c + 1);
+
+      alert('تم مسح المرضى، الزيارات والفواتير من ذاكرة المتصفح محلياً، وإعادة استدعاء وجلب البيانات المسجلة على السحابة (Firestore) بنجاح ✓');
+    } catch (err) {
+      console.error(err);
+      alert('حدث خطأ أثناء مسح المتصفح وإعادة الاستدعاء.');
+    }
+  };
+
+  const handleClearAllBrowserAndCloud = async () => {
+    try {
+      const { clearAllDatabaseCollections } = await import('./utils/demoDataGenerator');
+      await clearAllDatabaseCollections(db);
+      
+      setPatientsCanonical([]);
+      setAppointmentsCanonical([]);
+      setVisitsCanonical([]);
+      setInvoicesCanonical([]);
+      setPaymentsCanonical([]);
+      setFollowUpsCanonical([]);
+      setPrescriptionsCanonical([]);
+      setLabOrdersCanonical([]);
+      setRadiologyOrdersCanonical([]);
+
+      alert('تم حذف وتدمير سجلات المرضى والزيارات بالكامل من المتصفح ومن قاعدة بيانات السحابة (Firestore)، مع الاحتفاظ بالإعدادات والأدلة الطبية والروشتة دون تأثر ✓');
+    } catch (err) {
+      console.error(err);
+      alert('حدث خطأ أثناء تدمير ومسح بيانات السحابة.');
+    }
+  };
+
   const [activeExamPatient, setActiveExamPatient] = useState<PatientListItem | null>(null);
 
   // Active Prescription sync state - starts clean
@@ -1916,6 +1994,10 @@ function ClinicApp() {
                   onAddVisitType={handleAddVisitType}
                   onRemoveVisitType={handleRemoveVisitType}
                   onUpdateVisitTypeFee={handleUpdateVisitTypeFee}
+                  onGenerateYearlyDemoData={handleGenerateYearlyDemoData}
+                  onClearAllData={handleClearAllData}
+                  onClearBrowserVisitsOnly={handleClearBrowserVisitsOnly}
+                  onClearAllBrowserAndCloud={handleClearAllBrowserAndCloud}
                 />
               )}
             </>

@@ -7,7 +7,7 @@ interface BeforeInstallPromptEvent extends Event {
 
 export function usePWAInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [isInstallable, setIsInstallable] = useState(false);
+  const [isInstallable, setIsInstallable] = useState(true);
   const [isInstalled, setIsInstalled] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
 
@@ -27,10 +27,6 @@ export function usePWAInstall() {
     const userAgent = window.navigator.userAgent.toLowerCase();
     const iosDevice = /iphone|ipad|ipod/.test(userAgent);
     setIsIOS(iosDevice);
-
-    if (iosDevice && !isStandalone) {
-      setIsInstallable(true);
-    }
 
     // Listen for Chrome / Android / Windows / Mac PWA prompt
     const handleBeforeInstallPrompt = (e: Event) => {
@@ -70,6 +66,7 @@ export function usePWAInstall() {
     isInstallable,
     isInstalled,
     isIOS,
+    canInstallPrompt: !!deferredPrompt,
     installApp,
   };
 }

@@ -4,6 +4,7 @@ import { loginWithUsername } from '../services/auth';
 import { AdminRecoveryDialog } from './auth/AdminRecoveryDialog';
 import { SoliMedicalLogo } from './SoliMedicalLogo';
 import { usePWAInstall } from '../hooks/usePWAInstall';
+import { PWAInstallModal } from './PWAInstallModal';
 
 export const AuthScreen: React.FC = () => {
   const [username, setUsername] = useState('admin');
@@ -13,8 +14,9 @@ export const AuthScreen: React.FC = () => {
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [showRecoveryDialog, setShowRecoveryDialog] = useState(false);
+  const [showPwaModal, setShowPwaModal] = useState(false);
 
-  const { isInstallable, isInstalled, installApp } = usePWAInstall();
+  const { isInstalled, canInstallPrompt, installApp } = usePWAInstall();
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -170,7 +172,13 @@ export const AuthScreen: React.FC = () => {
 
           <button
             type="button"
-            onClick={installApp}
+            onClick={async () => {
+              if (canInstallPrompt) {
+                await installApp();
+              } else {
+                setShowPwaModal(true);
+              }
+            }}
             className="px-3.5 py-2 rounded-xl bg-[#00c2cb]/20 hover:bg-[#00c2cb] text-[#45dee7] hover:text-slate-950 border border-[#00c2cb]/40 font-bold transition-all cursor-pointer shrink-0 text-xs flex items-center gap-1.5"
           >
             <span className="material-symbols-outlined text-sm">download</span>
@@ -194,6 +202,9 @@ export const AuthScreen: React.FC = () => {
           }}
         />
       )}
+
+      {/* PWA Installation Modal */}
+      <PWAInstallModal isOpen={showPwaModal} onClose={() => setShowPwaModal(false)} />
     </main>
   );
 };

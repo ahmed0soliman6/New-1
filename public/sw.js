@@ -1,4 +1,4 @@
-const CACHE_NAME = 'soli-medical-v2';
+const CACHE_NAME = 'soli-medical-v3';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -7,7 +7,8 @@ const STATIC_ASSETS = [
   '/pwa-192x192.png',
   '/pwa-512x512.png',
   '/pwa-maskable-512x512.png',
-  '/apple-touch-icon.png'
+  '/apple-touch-icon.png',
+  '/favicon.png'
 ];
 
 self.addEventListener('install', (event) => {
@@ -41,7 +42,6 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
-        // Fetch background update for cache
         fetch(event.request)
           .then((networkResponse) => {
             if (networkResponse.status === 200) {
@@ -52,7 +52,6 @@ self.addEventListener('fetch', (event) => {
         return cachedResponse;
       }
       return fetch(event.request).catch(() => {
-        // Fallback to index if navigating
         if (event.request.mode === 'navigate') {
           return caches.match('/index.html');
         }

@@ -78,6 +78,11 @@ interface SettingsScreenProps {
   onAddVisitType?: (item: VisitTypeItem) => void;
   onRemoveVisitType?: (id: string) => void;
   onUpdateVisitTypeFee?: (id: string, fee: number) => void;
+
+  onGenerateYearlyDemoData?: () => void;
+  onClearAllData?: () => void;
+  onClearBrowserVisitsOnly?: () => void;
+  onClearAllBrowserAndCloud?: () => Promise<void>;
 }
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
@@ -111,6 +116,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onAddVisitType = (_item: VisitTypeItem) => {},
   onRemoveVisitType = (_id: string) => {},
   onUpdateVisitTypeFee = (_id: string, _fee: number) => {},
+  onGenerateYearlyDemoData = () => {},
+  onClearAllData = () => {},
+  onClearBrowserVisitsOnly = () => {},
+  onClearAllBrowserAndCloud = async () => {},
 }) => {
   const { hasPermission, assertPermission } = usePermissions();
   const [activeSettingsSection, setActiveSettingsSection] = useState<
@@ -126,7 +135,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     display: false,
     templates: false,
     version: false,
+    demoData: false,
   });
+
+  const [isGeneratingDemo, setIsGeneratingDemo] = useState(false);
+  const [isClearingAll, setIsClearingAll] = useState(false);
+  const [isClearingBrowserOnly, setIsClearingBrowserOnly] = useState(false);
+  const [isClearingBrowserCloud, setIsClearingBrowserCloud] = useState(false);
 
   const toggleCard = (key: string) => {
     setOpenCards((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -1252,6 +1267,174 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                     <li>نقل إعدادات طابعات الإيصالات والروشتات إلى صفحة الروشتة.</li>
                     <li>تحويل كافة بطاقات وقوائم الإعدادات إلى قوائم منسدلة أنيقة.</li>
                   </ul>
+                </div>
+              )}
+            </div>
+
+            {/* ACCORDION CARD 8: Demo Data & Database Management (إدارة البيانات والبيانات التجريبية للتوضيح) */}
+            <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
+              <button
+                type="button"
+                onClick={() => toggleCard('demoData')}
+                className="w-full p-5 flex items-center justify-between text-right cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-[#F59E0B] flex items-center justify-center font-bold">
+                    <span className="material-symbols-outlined text-xl">database</span>
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
+                      <span>8. إدارة البيانات والبيانات التجريبية</span>
+                      <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-[#F59E0B] px-2 py-0.5 rounded-full border border-amber-500/20 font-bold">
+                        أدوات المطورين والتهيئة
+                      </span>
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
+                      توليد بيانات تجريبية للتوضيح، أو تصفير وتهيئة قاعدة بيانات العيادة للاستخدام الفعلي
+                    </p>
+                  </div>
+                </div>
+                <span
+                  className="material-symbols-outlined text-slate-400 text-2xl transition-transform duration-200"
+                  style={{ transform: openCards.demoData ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                >
+                  expand_more
+                </span>
+              </button>
+
+              {openCards.demoData && (
+                <div className="p-5 pt-0 border-t border-slate-100 dark:border-white/5 space-y-5 text-xs pt-4">
+                  
+                  {/* Notice Banner */}
+                  <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 flex gap-3">
+                    <span className="material-symbols-outlined text-amber-600 dark:text-[#F59E0B] shrink-0 text-xl">info</span>
+                    <div className="space-y-1">
+                      <span className="font-bold text-slate-800 dark:text-amber-200 block text-xs">بيانات تجريبية للتوضيح:</span>
+                      <p className="text-[11px] text-slate-600 dark:text-[#bbc9ca] leading-relaxed">
+                        الزيارات والوارد والمنصرف المعروضة الآن أمثلة توضيحية — احذفها قبل الاستخدام الفعلي. يمكنك توليد بيانات لسنة كاملة لتجربة الرسوم البيانية أو مسحها نهائياً.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Block 1: Generate & Reset Demo Data */}
+                  <div className="space-y-3">
+                    <h3 className="font-bold text-slate-800 dark:text-[#dde2f5] flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#00c2cb]"></span>
+                      <span>توليد ومسح البيانات التوضيحية:</span>
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        disabled={isGeneratingDemo}
+                        onClick={async () => {
+                          setIsGeneratingDemo(true);
+                          try {
+                            await onGenerateYearlyDemoData();
+                          } catch (e) {
+                            console.error(e);
+                          } finally {
+                            setIsGeneratingDemo(false);
+                          }
+                        }}
+                        className="p-3.5 rounded-xl border border-[#00c2cb]/30 bg-[#00c2cb]/10 hover:bg-[#00c2cb]/20 text-[#00c2cb] hover:text-[#45dee7] font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        <span className="material-symbols-outlined text-lg">auto_awesome</span>
+                        <span>{isGeneratingDemo ? 'جاري التوليد...' : 'توليد بيانات تجريبيه سنه كاملة'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={isClearingAll}
+                        onClick={async () => {
+                          if (window.confirm('هل أنت متأكد من رغبتك في مسح كافة البيانات التجريبية والبدء من جديد بالكامل؟')) {
+                            setIsClearingAll(true);
+                            try {
+                              await onClearAllData();
+                            } catch (e) {
+                              console.error(e);
+                            } finally {
+                              setIsClearingAll(false);
+                            }
+                          }
+                        }}
+                        className="p-3.5 rounded-xl border border-rose-500/20 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        <span className="material-symbols-outlined text-lg">restart_alt</span>
+                        <span>{isClearingAll ? 'جاري المسح...' : 'مسح كل البيانات والبدء من جديد'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Block 2: Clear Browser Patients, Visits and Invoices */}
+                  <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 space-y-3">
+                    <div className="space-y-1">
+                      <h4 className="font-bold text-slate-800 dark:text-white text-xs flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-blue-500 text-lg">phonelink_erase</span>
+                        <span>حذف بيانات المتصفح من ملفات المرضى والزيارات والفواتير</span>
+                      </h4>
+                      <p className="text-[11px] text-slate-500 dark:text-[#859394] leading-relaxed">
+                        تقوم هذه الميزة بحذف ملفات المرضى، كشف الزيارات، الحجوزات، الفواتير والمدفوعات من ذاكرة المتصفح الحالي فقط، مع بقاء الأدلة الطبية الثابتة وإعدادات وتنسيقات صفحة الروشتة وصفحة الإعدادات كاملة كما هي، ويتم استدعاء وجلب البيانات الرسمية المسجلة على السحابة (Firestore) تلقائياً لتحديث العرض.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={isClearingBrowserOnly}
+                      onClick={async () => {
+                        if (window.confirm('هل تريد حذف ملفات المرضى وكشف الزيارات والفواتير محلياً وإعادة استيراد وجلب البيانات المسجلة على السحابة؟')) {
+                          setIsClearingBrowserOnly(true);
+                          try {
+                            await onClearBrowserVisitsOnly();
+                          } catch (e) {
+                            console.error(e);
+                          } finally {
+                            setIsClearingBrowserOnly(false);
+                          }
+                        }
+                      }}
+                      className="px-4 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-[#18233C] dark:hover:bg-[#242a38] text-slate-700 dark:text-[#dde2f5] font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <span className="material-symbols-outlined text-base">delete_sweep</span>
+                      <span>{isClearingBrowserOnly ? 'جاري المسح والاستدعاء...' : 'حذف بيانات المتصفح من المرضى والزيارات والفواتير'}</span>
+                    </button>
+                  </div>
+
+                  {/* Block 3: Complete Wipe with Heavy Warning */}
+                  <div className="p-4 rounded-xl bg-rose-500/5 border border-rose-500/20 space-y-3">
+                    <div className="space-y-1">
+                      <h4 className="font-bold text-rose-600 dark:text-rose-400 text-xs flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-lg">warning</span>
+                        <span>حذف بيانات المرضى والزيارات من السحابة نهائياً</span>
+                      </h4>
+                      <p className="text-[11px] text-slate-600 dark:text-[#bbc9ca] leading-relaxed">
+                        تحذير هام: سيؤدي هذا الإجراء إلى مسح كافة ملفات وسجلات المرضى، الزيارات، الحجوزات، الفواتير، والمدفوعات بشكل نهائي من المتصفح ومن قاعدة البيانات السحابية (Firestore). سيتم الإبقاء على البيانات الثابتة من الأدلة الطبية (الأدوية، التشخيصات، الفحوصات) وتنسيقات وإعدادات صفحة الروشتة وصفحة الإعدادات لتجنب إعادة ضبط البنية التحتية للعيادة.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={isClearingBrowserCloud}
+                      onClick={async () => {
+                        const code = 'حذف المرضى والزيارات';
+                        const confirmCode = window.prompt(`تحذير أمني هام! هذا الإجراء سيمسح سجلات المرضى والزيارات والفواتير من السحابة والمحلي بالكامل ولن تتمكن من استعادتها.\nلتأكيد الحذف النهائي، اكتب العبارة التالية بدقة في المربع: (${code})`);
+                        if (confirmCode === code) {
+                          setIsClearingBrowserCloud(true);
+                          try {
+                            await onClearAllBrowserAndCloud();
+                          } catch (e) {
+                            console.error(e);
+                          } finally {
+                            setIsClearingBrowserCloud(false);
+                          }
+                        } else if (confirmCode !== null) {
+                          alert('العبارة التي أدخلتها غير صحيحة. تم إلغاء العملية.');
+                        }
+                      }}
+                      className="w-full py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm disabled:opacity-50"
+                    >
+                      <span className="material-symbols-outlined text-base">delete_forever</span>
+                      <span>{isClearingBrowserCloud ? 'جاري مسح المرضى والزيارات من السحابة...' : 'حذف بيانات المرضى والزيارات من السحابة نهائياً'}</span>
+                    </button>
+                  </div>
+
                 </div>
               )}
             </div>

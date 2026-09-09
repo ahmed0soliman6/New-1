@@ -3,6 +3,8 @@ import { CLINIC_INFO } from '../data/previewClinicData';
 import { useDoctorName } from '../hooks/useDoctorName';
 import { QueueItem, AppointmentListItem, ScreenType } from '../types';
 import { ClinicAlertPayload } from '../utils/alertManager';
+import { usePWAInstall } from '../hooks/usePWAInstall';
+import { PWAInstallModal } from './PWAInstallModal';
 
 export interface FollowUpItem {
   id: string;
@@ -47,8 +49,10 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSyncDetailsModal, setShowSyncDetailsModal] = useState(false);
+  const [showPwaModal, setShowPwaModal] = useState(false);
   const [activeNotifyTab, setActiveNotifyTab] = useState<'queue' | 'alerts' | 'followups'>('queue');
   const activeDoctorName = useDoctorName();
+  const { isInstalled, canInstallPrompt, installApp } = usePWAInstall();
   const [whatsappToast, setWhatsappToast] = useState<string | null>(null);
 
   // Filter urgent follow-ups: Only patients with less than 2 days remaining (0 <= daysRemaining <= 2)
@@ -152,8 +156,23 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Left Side: Notifications Hub */}
+        {/* Left Side: PWA Install & Notifications Hub */}
         <div className="flex items-center gap-2 sm:gap-3">
+          {/* PWA Install Button */}
+          <button
+            onClick={async () => {
+              if (canInstallPrompt) {
+                await installApp();
+              } else {
+                setShowPwaModal(true);
+              }
+            }}
+            className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#00c2cb]/15 hover:bg-[#00c2cb]/25 text-[#00c2cb] dark:text-[#45dee7] border border-[#00c2cb]/30 text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+            title="تثبيت سولي ميديكال كتطبيق ويب على الكمبيوتر أو الموبايل"
+          >
+            <span className="material-symbols-outlined text-lg">download_for_offline</span>
+            <span>{isInstalled ? 'تثبيت التطبيق' : 'تثبيت التطبيق 📲'}</span>
+          </button>
           {/* Notifications Dropdown Button */}
           <div className="relative">
             <button
@@ -534,6 +553,9 @@ export const Header: React.FC<HeaderProps> = ({
           <span className="text-xs font-bold leading-snug">{whatsappToast}</span>
         </div>
       )}
+
+      {/* PWA Install Modal */}
+      <PWAInstallModal isOpen={showPwaModal} onClose={() => setShowPwaModal(false)} />
     </>
   );
 };
