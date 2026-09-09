@@ -452,7 +452,6 @@ function ClinicApp() {
         phone: p.phone || '',
         governorate: p.governorate || 'القاهرة',
         address: p.address || p.governorate || '',
-        avatarUrl: p.avatarUrl,
         allergies: p.allergies || [],
         chronicConditions: p.chronicDiseases || [],
         bloodType: p.bloodType || 'غير محدد',
@@ -551,7 +550,7 @@ function ClinicApp() {
         method: (p.method === 'CARD' ? 'فيزا / كارت' : 'نقدي'),
         status: (inv?.status === 'PAID' || paidAmount >= totalAmount) ? 'مدفوعة' : 'غير مدفوعة',
         time: new Date(p.paidAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
-        date: new Date(p.paidAt).toLocaleDateString('ar-EG'),
+        date: p.paidAt ? (p.paidAt.includes('T') ? p.paidAt.split('T')[0] : p.paidAt) : new Date().toISOString().split('T')[0],
         category: 'كشوفات وخدمات طبية',
       });
     });
@@ -578,7 +577,7 @@ function ClinicApp() {
           method: 'نقدي',
           status: inv.status === 'PAID' ? 'مدفوعة' : 'غير مدفوعة',
           time: new Date(inv.createdAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
-          date: new Date(inv.createdAt).toLocaleDateString('ar-EG'),
+          date: inv.createdAt ? (inv.createdAt.includes('T') ? inv.createdAt.split('T')[0] : inv.createdAt) : new Date().toISOString().split('T')[0],
           category: 'فواتير كشوفات',
         });
       }

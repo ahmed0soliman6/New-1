@@ -49,10 +49,18 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
   const [currentPage, setCurrentPage] = useState<number>(1);
   const PAGE_SIZE = 40; // 40 items per page as requested
 
+  // Month & Year Filter for Top Statistical Cards (بجوار بطاقة وارد سبتمبر)
+  const [selectedYear, setSelectedYear] = useState<string>('2026');
+  const [selectedMonth, setSelectedMonth] = useState<string>('9'); // Default September 2026
+
+  // Month & Year Filter for Visits/Inflow Records Table (في سجلات الزيارات)
+  const [tableFilterYear, setTableFilterYear] = useState<string>('2026');
+  const [tableFilterMonth, setTableFilterMonth] = useState<string>('9');
+
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedTimeframe]);
+  }, [searchQuery, selectedTimeframe, tableFilterMonth, tableFilterYear]);
 
   // Re-sync on custom storage events
   useEffect(() => {
@@ -136,25 +144,109 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
     return txOut + clinicExp;
   }, [transactions, expenses]);
 
-  // 6 Metric Values Calculations
+  // Month Names in Arabic
+  const MONTH_NAMES_AR: Record<string, string> = {
+    '1': 'يناير',
+    '2': 'فبراير',
+    '3': 'مارس',
+    '4': 'أبريل',
+    '5': 'مايو',
+    '6': 'يونيو',
+    '7': 'يوليو',
+    '8': 'أغسطس',
+    '9': 'سبتمبر',
+    '10': 'أكتوبر',
+    '11': 'نوفمبر',
+    '12': 'ديسمبر',
+  };
+
+  // Helper to extract year, month, and day safely
+  const extractDateParts = (dateStr?: string) => {
+    if (!dateStr) return { year: 2026, month: 9, day: 8 };
+    const match = dateStr.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+    if (match) {
+      return {
+        year: parseInt(match[1], 10),
+        month: parseInt(match[2], 10),
+        day: parseInt(match[3], 10),
+      };
+    }
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) {
+      return {
+        year: d.getFullYear(),
+        month: d.getMonth() + 1,
+        day: d.getDate(),
+      };
+    }
+    return { year: 2026, month: 9, day: 8 };
+  };
+
+  // Selected period label for top statistics cards
+  const selectedPeriodLabel = useMemo(() => {
+    if (selectedMonth === 'all') {
+      return selectedYear === 'all' ? 'جميع الفترات' : `عام ${selectedYear}`;
+    }
+    const monthName = MONTH_NAMES_AR[selectedMonth] || selectedMonth;
+    return selectedYear === 'all' ? `شهر ${monthName}` : `${monthName} ${selectedYear}`;
+  }, [selectedMonth, selectedYear]);
+
+  // 6 Metric Values Calculations (Dynamically responsive to selected month & year)
   const metrics = useMemo(() => {
     const totalInflowAll = BASE_FINANCIAL_METRICS.totalInflowAllPeriods + liveInflowDelta;
     const totalOutflowAll = BASE_FINANCIAL_METRICS.totalOutflowAllPeriods + liveOutflowDelta;
     const actualNetDrawer = totalInflowAll - totalOutflowAll;
 
-    const inflowSept2026 = BASE_FINANCIAL_METRICS.inflowSeptember2026 + liveInflowDelta;
-    const outflowSept2026 = BASE_FINANCIAL_METRICS.outflowSeptember2026 + liveOutflowDelta;
-    const balanceEndSept2026 = BASE_FINANCIAL_METRICS.balanceEndSeptember2026 + (liveInflowDelta - liveOutflowDelta);
+    // Calculate Inflow for the selected period (الشهر / السنة المختارة)
+    let periodInflow = 0;
+    allInflowRecords.forEach((rec) => {
+      const parts = extractDateParts(rec.date);
+      if (selectedYear !== 'all' && parts.year !== Number(selectedYear)) return;
+      if (selectedMonth !== 'all' && parts.month !== Number(selectedMonth)) return;
+      periodInflow += (rec.paidAmount ?? rec.amount ?? rec.totalAmount ?? 0);
+    });
+
+    // Calculate Outflow for the selected period (الشهر / السنة المختارة)
+    let periodOutflow = 0;
+    expenses.forEach((exp) => {
+      const parts = extractDateParts(exp.date);
+      if (selectedYear !== 'all' && parts.year !== Number(selectedYear)) return;
+      if (selectedMonth !== 'all' && parts.month !== Number(selectedMonth)) return;
+      periodOutflow += (exp.amount || 0);
+    });
+
+    transactions.filter((t) => t.type === 'out').forEach((tx) => {
+      const parts = extractDateParts(tx.date);
+      if (selectedYear !== 'all' && parts.year !== Number(selectedYear)) return;
+      if (selectedMonth !== 'all' && parts.month !== Number(selectedMonth)) return;
+      periodOutflow += (tx.amount || 0);
+    });
+
+    // Historical baseline adjustment for 2026
+    if (selectedYear === '2026') {
+      if (selectedMonth === '9') {
+        periodOutflow += (BASE_FINANCIAL_METRICS.outflowSeptember2026 - 700);
+      } else if (selectedMonth === 'all') {
+        periodOutflow += (BASE_FINANCIAL_METRICS.totalOutflowAllPeriods - 700);
+      } else {
+        const m = Number(selectedMonth);
+        if (m >= 1 && m <= 8) {
+          periodOutflow += 4620;
+        }
+      }
+    }
+
+    const periodBalance = periodInflow - periodOutflow;
 
     return {
       totalInflowAll,
       totalOutflowAll,
       actualNetDrawer,
-      inflowSept2026,
-      outflowSept2026,
-      balanceEndSept2026,
+      periodInflow,
+      periodOutflow,
+      periodBalance,
     };
-  }, [liveInflowDelta, liveOutflowDelta]);
+  }, [allInflowRecords, expenses, transactions, liveInflowDelta, liveOutflowDelta, selectedYear, selectedMonth]);
 
   // Format currency with 2 decimals
   const formatCurrency = (val: number) => {
@@ -164,23 +256,23 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
     })} ج.م`;
   };
 
-  // Filter records based on timeframe and search query
+  // Filter records based on timeframe, month, year, and search query
   const filteredInflowRecords = useMemo(() => {
     return allInflowRecords.filter((rec) => {
       // 1. Timeframe Filter
       if (selectedTimeframe !== 'all') {
-        const recDate = rec.date || '2026-09-08';
+        const parts = extractDateParts(rec.date);
         if (selectedTimeframe === 'day') {
-          if (recDate !== '2026-09-08' && !rec.time?.includes('اليوم')) return false;
+          const isToday = (parts.year === 2026 && parts.month === 9 && parts.day === 8) || rec.time?.includes('اليوم');
+          if (!isToday) return false;
         } else if (selectedTimeframe === 'week') {
           // Week of Sept 1 - 8, 2026
-          if (!recDate.startsWith('2026-09-0')) return false;
+          if (parts.year !== 2026 || parts.month !== 9 || parts.day > 8) return false;
         } else if (selectedTimeframe === 'month') {
-          // September 2026
-          if (!recDate.startsWith('2026-09')) return false;
+          if (tableFilterYear !== 'all' && parts.year !== Number(tableFilterYear)) return false;
+          if (tableFilterMonth !== 'all' && parts.month !== Number(tableFilterMonth)) return false;
         } else if (selectedTimeframe === 'year') {
-          // 2026
-          if (!recDate.startsWith('2026')) return false;
+          if (tableFilterYear !== 'all' && parts.year !== Number(tableFilterYear)) return false;
         }
       }
 
@@ -198,7 +290,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
 
       return true;
     });
-  }, [allInflowRecords, selectedTimeframe, searchQuery]);
+  }, [allInflowRecords, selectedTimeframe, tableFilterMonth, tableFilterYear, searchQuery]);
 
   // Paginated records
   const totalRecordsCount = filteredInflowRecords.length;
@@ -376,6 +468,8 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
       {/* ========================================================================= */}
       {/* 6 TOP STATISTICAL FINANCIAL CARDS (بطاقات المؤشرات المالية) */}
       {/* ========================================================================= */}
+      
+      {/* Cards 1, 2, 3: الإجماليات الشاملة */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Card 1: إجمالي الوارد (كل الفترات) */}
         <div className="bg-white dark:bg-[#111A2E] p-4.5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs flex flex-col justify-between transition-all hover:border-emerald-500/40">
@@ -436,63 +530,153 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
             </span>
           </div>
         </div>
+      </div>
 
-        {/* Card 4: وارد سبتمبر 2026 */}
+      {/* شريط اختيار الشهر والسنة بجوار بطاقات الفترة */}
+      <div className="bg-slate-50 dark:bg-[#18233C]/60 p-3 sm:px-4 rounded-2xl border border-slate-200 dark:border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-xl bg-[#00c2cb]/15 text-[#008f97] dark:text-[#00c2cb] flex items-center justify-center shrink-0">
+            <span className="material-symbols-outlined text-lg">date_range</span>
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-900 dark:text-[#dde2f5]">
+                عرض إيرادات ومصروفات حسب الشهر والسنة:
+              </span>
+              <span className="text-xs font-black text-[#008f97] dark:text-[#45dee7] bg-[#00c2cb]/10 px-2 py-0.5 rounded-md border border-[#00c2cb]/20">
+                {selectedPeriodLabel}
+              </span>
+            </div>
+            <span className="text-[10px] text-slate-500 dark:text-[#859394]">
+              تحديث مباشر للبطاقات الثلاث أدناه بناءً على اختيارك
+            </span>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* اختيار الشهر */}
+          <div className="flex items-center gap-1.5 bg-white dark:bg-[#111A2E] px-3 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 shadow-2xs">
+            <span className="text-xs font-bold text-slate-500 dark:text-[#859394]">الشهر:</span>
+            <select
+              value={selectedMonth}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSelectedMonth(val);
+                setTableFilterMonth(val);
+              }}
+              className="bg-transparent text-xs font-bold text-slate-900 dark:text-[#dde2f5] focus:outline-none cursor-pointer"
+            >
+              <option value="all">كامل السنة (جميع الشهور)</option>
+              <option value="1">يناير (01)</option>
+              <option value="2">فبراير (02)</option>
+              <option value="3">مارس (03)</option>
+              <option value="4">أبريل (04)</option>
+              <option value="5">مايو (05)</option>
+              <option value="6">يونيو (06)</option>
+              <option value="7">يوليو (07)</option>
+              <option value="8">أغسطس (08)</option>
+              <option value="9">سبتمبر (09)</option>
+              <option value="10">أكتوبر (10)</option>
+              <option value="11">نوفمبر (11)</option>
+              <option value="12">ديسمبر (12)</option>
+            </select>
+          </div>
+
+          {/* اختيار السنة */}
+          <div className="flex items-center gap-1.5 bg-white dark:bg-[#111A2E] px-3 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 shadow-2xs">
+            <span className="text-xs font-bold text-slate-500 dark:text-[#859394]">السنة:</span>
+            <select
+              value={selectedYear}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSelectedYear(val);
+                setTableFilterYear(val);
+              }}
+              className="bg-transparent text-xs font-bold text-slate-900 dark:text-[#dde2f5] focus:outline-none cursor-pointer"
+            >
+              <option value="all">كل السنوات</option>
+              <option value="2027">2027</option>
+              <option value="2026">2026</option>
+              <option value="2025">2025</option>
+              <option value="2024">2024</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Cards 4, 5, 6: بطاقات الفترة المحددة (الشهر والسنة) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* Card 4: وارد [الفترة المحددة] */}
         <div className="bg-white dark:bg-[#111A2E] p-4.5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs flex flex-col justify-between transition-all hover:border-emerald-500/40">
           <div className="flex items-center justify-between gap-3 mb-2">
-            <span className="text-xs font-bold text-slate-600 dark:text-[#bbc9ca]">
-              وارد سبتمبر 2026
-            </span>
+            <div>
+              <span className="text-xs font-bold text-slate-700 dark:text-[#bbc9ca] block">
+                وارد {selectedPeriodLabel}
+              </span>
+              <span className="text-[10px] text-emerald-600 dark:text-[#10B981] font-bold">
+                إيرادات الفترة المحددة
+              </span>
+            </div>
             <div className="w-8 h-8 rounded-xl bg-teal-50 dark:bg-teal-950/50 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0">
               <span className="material-symbols-outlined text-lg">calendar_month</span>
             </div>
           </div>
           <div className="text-right">
             <span className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-[#10B981] font-mono tracking-tight block">
-              {formatCurrency(metrics.inflowSept2026)}
+              {formatCurrency(metrics.periodInflow)}
             </span>
             <span className="text-[10px] text-slate-400 dark:text-[#859394] mt-0.5 block">
-              المحصل الفعلي خلال الشهر الحالي
+              {selectedMonth === 'all' ? `إجمالي وارد عام ${selectedYear}` : `المحصل الفعلي خلال ${selectedPeriodLabel}`}
             </span>
           </div>
         </div>
 
-        {/* Card 5: منصرف سبتمبر 2026 */}
+        {/* Card 5: منصرف [الفترة المحددة] */}
         <div className="bg-white dark:bg-[#111A2E] p-4.5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs flex flex-col justify-between transition-all hover:border-rose-500/40">
           <div className="flex items-center justify-between gap-3 mb-2">
-            <span className="text-xs font-bold text-slate-600 dark:text-[#bbc9ca]">
-              منصرف سبتمبر 2026
-            </span>
+            <div>
+              <span className="text-xs font-bold text-slate-700 dark:text-[#bbc9ca] block">
+                منصرف {selectedPeriodLabel}
+              </span>
+              <span className="text-[10px] text-rose-500 font-bold">
+                مصروفات الفترة المحددة
+              </span>
+            </div>
             <div className="w-8 h-8 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-500 flex items-center justify-center shrink-0">
               <span className="material-symbols-outlined text-lg">shopping_cart</span>
             </div>
           </div>
           <div className="text-right">
             <span className="text-xl sm:text-2xl font-black text-rose-600 dark:text-[#ef4444] font-mono tracking-tight block">
-              {formatCurrency(metrics.outflowSept2026)}
+              {formatCurrency(metrics.periodOutflow)}
             </span>
             <span className="text-[10px] text-slate-400 dark:text-[#859394] mt-0.5 block">
-              مصروفات العيادة خلال شهر سبتمبر
+              {selectedMonth === 'all' ? `إجمالي مصروفات عام ${selectedYear}` : `مصروفات العيادة خلال ${selectedPeriodLabel}`}
             </span>
           </div>
         </div>
 
-        {/* Card 6: الرصيد حتى نهاية سبتمبر 2026 */}
+        {/* Card 6: صافي رصيد [الفترة المحددة] */}
         <div className="bg-white dark:bg-[#111A2E] p-4.5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs flex flex-col justify-between transition-all hover:border-blue-500/40">
           <div className="flex items-center justify-between gap-3 mb-2">
-            <span className="text-xs font-bold text-slate-900 dark:text-[#dde2f5]">
-              الرصيد حتى نهاية سبتمبر 2026
-            </span>
+            <div>
+              <span className="text-xs font-bold text-slate-900 dark:text-[#dde2f5] block">
+                صافي رصيد {selectedPeriodLabel}
+              </span>
+              <span className="text-[10px] text-[#008f97] dark:text-[#00c2cb] font-bold">
+                (الوارد - المنصرف)
+              </span>
+            </div>
             <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
               <span className="material-symbols-outlined text-lg">savings</span>
             </div>
           </div>
           <div className="text-right">
             <span className="text-xl sm:text-2xl font-black text-[#008f97] dark:text-[#45dee7] font-mono tracking-tight block">
-              {formatCurrency(metrics.balanceEndSept2026)}
+              {formatCurrency(metrics.periodBalance)}
             </span>
             <span className="text-[10px] text-slate-400 dark:text-[#859394] mt-0.5 block">
-              الرصيد التراكمي لنهاية الفترة
+              صافي الفائض المالي للفترة المحددة
             </span>
           </div>
         </div>
@@ -543,7 +727,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
             </div>
 
             {/* Timeframe View Filters */}
-            <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-[#18233C] p-1 rounded-xl border border-slate-200 dark:border-white/5">
+            <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 dark:bg-[#18233C] p-1 rounded-xl border border-slate-200 dark:border-white/5">
               <span className="text-[11px] font-bold text-slate-500 dark:text-[#859394] px-2 flex items-center gap-1">
                 <span>📅 عرض حسب:</span>
               </span>
@@ -572,33 +756,87 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
                 الاسبوع
               </button>
 
-              <button
-                type="button"
-                onClick={() => setSelectedTimeframe('month')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
-                  selectedTimeframe === 'month'
-                    ? 'bg-[#00c2cb] text-slate-950 shadow-xs'
-                    : 'text-slate-600 dark:text-[#bbc9ca] hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                <span>📅 الشهر</span>
-              </button>
+              {/* اختيار الشهر المخصص لسجل الزيارات */}
+              <div className={`flex items-center gap-1 px-2 py-1 rounded-lg border transition-all ${
+                selectedTimeframe === 'month'
+                  ? 'bg-white dark:bg-[#111A2E] border-[#00c2cb]/50 shadow-xs'
+                  : 'border-transparent'
+              }`}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedTimeframe('month')}
+                  className={`text-xs font-bold transition-all cursor-pointer ${
+                    selectedTimeframe === 'month'
+                      ? 'text-[#008f97] dark:text-[#00c2cb]'
+                      : 'text-slate-600 dark:text-[#bbc9ca] hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  الشهر:
+                </button>
+                <select
+                  value={tableFilterMonth}
+                  onChange={(e) => {
+                    setTableFilterMonth(e.target.value);
+                    setSelectedTimeframe('month');
+                  }}
+                  className="bg-transparent text-xs font-bold text-slate-900 dark:text-[#dde2f5] focus:outline-none cursor-pointer"
+                >
+                  <option value="all">كل الشهور</option>
+                  <option value="1">يناير (01)</option>
+                  <option value="2">فبراير (02)</option>
+                  <option value="3">مارس (03)</option>
+                  <option value="4">أبريل (04)</option>
+                  <option value="5">مايو (05)</option>
+                  <option value="6">يونيو (06)</option>
+                  <option value="7">يوليو (07)</option>
+                  <option value="8">أغسطس (08)</option>
+                  <option value="9">سبتمبر (09)</option>
+                  <option value="10">أكتوبر (10)</option>
+                  <option value="11">نوفمبر (11)</option>
+                  <option value="12">ديسمبر (12)</option>
+                </select>
+              </div>
+
+              {/* اختيار السنة لسجل الزيارات */}
+              <div className={`flex items-center gap-1 px-2 py-1 rounded-lg border transition-all ${
+                selectedTimeframe === 'year'
+                  ? 'bg-white dark:bg-[#111A2E] border-[#00c2cb]/50 shadow-xs'
+                  : 'border-transparent'
+              }`}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedTimeframe('year')}
+                  className={`text-xs font-bold transition-all cursor-pointer ${
+                    selectedTimeframe === 'year'
+                      ? 'text-[#008f97] dark:text-[#00c2cb]'
+                      : 'text-slate-600 dark:text-[#bbc9ca] hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  السنة:
+                </button>
+                <select
+                  value={tableFilterYear}
+                  onChange={(e) => {
+                    setTableFilterYear(e.target.value);
+                    setSelectedTimeframe('year');
+                  }}
+                  className="bg-transparent text-xs font-bold text-slate-900 dark:text-[#dde2f5] focus:outline-none cursor-pointer"
+                >
+                  <option value="all">كل السنوات</option>
+                  <option value="2027">2027</option>
+                  <option value="2026">2026</option>
+                  <option value="2025">2025</option>
+                  <option value="2024">2024</option>
+                </select>
+              </div>
 
               <button
                 type="button"
-                onClick={() => setSelectedTimeframe('year')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  selectedTimeframe === 'year'
-                    ? 'bg-[#00c2cb] text-slate-950 shadow-xs'
-                    : 'text-slate-600 dark:text-[#bbc9ca] hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                السنه
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSelectedTimeframe('all')}
+                onClick={() => {
+                  setSelectedTimeframe('all');
+                  setTableFilterMonth('all');
+                  setTableFilterYear('all');
+                }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   selectedTimeframe === 'all'
                     ? 'bg-[#00c2cb] text-slate-950 shadow-xs'

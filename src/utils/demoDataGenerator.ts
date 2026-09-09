@@ -88,7 +88,6 @@ export async function generateOneYearDemoData(db: Firestore | null): Promise<voi
       allergies: index % 3 === 0 ? ['البنسلين'] : [],
       chronicDiseases: index % 2 === 0 ? ['السكري', 'ارتفاع ضغط الدم'] : [],
       emergencyContact: { name: 'قريب للمريض', relation: 'ابن / ابنة', phone: '01099999999' },
-      avatarUrl: undefined,
       createdAt: generateDateInMonth(11),
       updatedAt: timestamp,
       createdBy: 'admin',

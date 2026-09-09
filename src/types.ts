@@ -25,7 +25,6 @@ export interface PatientListItem {
   phone: string;
   governorate: string;
   address?: string;
-  avatarUrl?: string;
   allergies: string[];
   chronicConditions: string[];
   bloodType?: string;

@@ -194,8 +194,6 @@ export const INITIAL_PATIENTS: Patient[] = [
     fileNumber: 1,
     medicalCode: 'EG-94820',
     governorate: 'المهندسين، شارع سوريا - الجيزة',
-    avatarUrl:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuBaCQar19fJMWF10eVU_TN5mgX4b4IJD1v7hTOgsISklbHooK-K6NQp1WEPiyAkAvtyqMiC41nSluDpFFxKGAg2XvCcsTNe6cWJ1UWdJ2QCMryRxqKq8ZX1irKpDctXk2LL51ziE0tgK5sBwSRUJu-ORTpizCdblwOp2zIACTNVma53A8ldOq8CQIWUtFcRJbSCLd52RgiaCmhZjU6LSsTmfd-g6sxfVtn47uDlhRyK-eNq0QdkuTI',
   },
   {
     patientId: 'pat-2',
