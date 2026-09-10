@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { CLINIC_INFO } from '../../data/previewClinicData';
 import { PatientListItem, ScreenType } from '../../types';
 import { usePermissions } from '../../context/AuthContext';
+import { exportPatientMedicalDossierPdf } from '../../utils/exportPatientDossierPdf';
 import type {
   FollowUp,
   Invoice,
@@ -79,8 +80,11 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
 
   // Tab state
   const [activeTab, setActiveTab] = useState<
-    'basic' | 'visits' | 'prescriptions' | 'labs' | 'radiology' | 'billing'
+    'all' | 'basic' | 'visits' | 'prescriptions' | 'labs' | 'radiology' | 'billing'
   >('basic');
+
+  // PDF Exporting state
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
 
   // Edit Mode state for Basic Info
   const [isEditing, setIsEditing] = useState(false);
@@ -241,6 +245,27 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
     window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
+  // Handle PDF Dossier Export
+  const handleDownloadDossierPdf = async () => {
+    if (isExportingPdf) return;
+    setIsExportingPdf(true);
+    try {
+      await exportPatientMedicalDossierPdf({
+        patient,
+        patientCanonical,
+        visits: pVisits,
+        prescriptions: pPrescriptions,
+        labOrders: pLabOrders,
+        radiologyOrders: pRadiologyOrders,
+        invoices: pInvoices,
+      });
+    } catch (err) {
+      console.error('Error generating patient dossier PDF:', err);
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
   return (
     <div className="flex flex-col w-full pb-20 space-y-6 text-slate-800 dark:text-[#dde2f5]" id="patient-detail-screen">
       {/* ========================================================================= */}
@@ -280,6 +305,20 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
 
         {/* Top Fast Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Download Medical File PDF Button */}
+          <button
+            type="button"
+            onClick={handleDownloadDossierPdf}
+            disabled={isExportingPdf}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer disabled:opacity-50"
+            title="تحميل وطباعة الملف الطبي الشامل للمريض بصيغة PDF منسقة"
+          >
+            <span className="material-symbols-outlined text-base">
+              {isExportingPdf ? 'hourglass_top' : 'picture_as_pdf'}
+            </span>
+            <span>{isExportingPdf ? 'جارِ تجهيز PDF...' : 'تحميل الملف الطبي (PDF)'}</span>
+          </button>
+
           {canAccess('clinical-exam') && (
             <button
               type="button"
@@ -291,20 +330,6 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
             >
               <span className="material-symbols-outlined text-base">stethoscope</span>
               <span>بدء كشف إكلينيكي</span>
-            </button>
-          )}
-
-          {canAccess('prescription-pad') && (
-            <button
-              type="button"
-              onClick={() => {
-                onSelectPatientForExam(patient);
-                onNavigate('prescription-pad');
-              }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-50 dark:bg-[#571bc1]/60 hover:bg-purple-100 dark:hover:bg-[#571bc1] text-purple-700 dark:text-[#e9ddff] text-xs font-bold transition-all cursor-pointer border border-purple-200 dark:border-transparent"
-            >
-              <span className="material-symbols-outlined text-base">prescription</span>
-              <span>إصدار روشتة</span>
             </button>
           )}
 
@@ -457,6 +482,7 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
       {/* ========================================================================= */}
       <div className="flex items-center gap-2 border-b border-slate-200 dark:border-white/10 pb-2 overflow-x-auto">
         {[
+          { id: 'all', label: 'الكل (عرض جميع البطاقات)', icon: 'view_agenda', badge: null },
           { id: 'basic', label: 'البيانات الأساسية وتعديل الملف', icon: 'person', badge: null },
           { id: 'visits', label: 'سجل الزيارات والكشوفات', icon: 'history', badge: pVisits.length },
           { id: 'prescriptions', label: 'الروشتات والوصفات الطبية', icon: 'description', badge: pPrescriptions.length },
@@ -494,10 +520,10 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
       {/* ========================================================================= */}
       {/* TAB 1: BASIC INFORMATION & EDITING SECTION */}
       {/* ========================================================================= */}
-      {activeTab === 'basic' && (
+      {(activeTab === 'basic' || activeTab === 'all') && (
         <div className="space-y-6">
-          {/* Header of Section with Edit Toggle Button */}
-          <div className="flex items-center justify-between gap-4 bg-white dark:bg-[#111A2E] p-4 rounded-2xl border border-slate-200 dark:border-white/5">
+          {/* Header of Section with Edit Toggle Button & All Toggle Button */}
+          <div className="flex items-center justify-between gap-4 bg-white dark:bg-[#111A2E] p-4 rounded-2xl border border-slate-200 dark:border-white/5 flex-wrap">
             <div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb]">manage_accounts</span>
@@ -508,37 +534,54 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
               </p>
             </div>
 
-            {!isEditing ? (
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Button 'الكل' next to basic info */}
               <button
                 type="button"
-                onClick={() => setIsEditing(true)}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-100 dark:bg-[#18233C] hover:bg-teal-50 dark:hover:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#00c2cb] text-xs font-bold transition-all border border-slate-200 dark:border-white/10 shadow-xs cursor-pointer"
-                id="btn-edit-patient-basic"
+                onClick={() => setActiveTab(activeTab === 'all' ? 'basic' : 'all')}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border shadow-xs cursor-pointer ${
+                  activeTab === 'all'
+                    ? 'bg-[#00c2cb] text-[#08101C] border-[#00c2cb]'
+                    : 'bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] hover:bg-slate-200 dark:hover:bg-[#202c4b] border-slate-200 dark:border-white/10'
+                }`}
+                title="عرض جميع البطاقات والملفات الطبية أسفل بعضها"
               >
-                <span className="material-symbols-outlined text-sm">edit</span>
-                <span>تعديل البيانات الأساسية</span>
+                <span className="material-symbols-outlined text-sm">view_agenda</span>
+                <span>{activeTab === 'all' ? 'عرض الأساسية فقط' : 'الكل (عرض جميع البطاقات)'}</span>
               </button>
-            ) : (
-              <div className="flex items-center gap-2">
+
+              {!isEditing ? (
                 <button
                   type="button"
-                  onClick={() => setIsEditing(false)}
-                  className="px-3 py-2 rounded-xl bg-slate-100 dark:bg-[#18233C] text-slate-600 dark:text-[#bbc9ca] text-xs font-bold hover:bg-slate-200 dark:hover:bg-[#202c4b] cursor-pointer"
+                  onClick={() => setIsEditing(true)}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-100 dark:bg-[#18233C] hover:bg-teal-50 dark:hover:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#00c2cb] text-xs font-bold transition-all border border-slate-200 dark:border-white/10 shadow-xs cursor-pointer"
+                  id="btn-edit-patient-basic"
                 >
-                  إلغاء التعديل
+                  <span className="material-symbols-outlined text-sm">edit</span>
+                  <span>تعديل البيانات الأساسية</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => handleSaveBasicInfo()}
-                  disabled={isSaving}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-xs cursor-pointer disabled:opacity-50"
-                  id="btn-save-patient-basic"
-                >
-                  <span className="material-symbols-outlined text-sm">save</span>
-                  <span>{isSaving ? 'جارِ الحفظ...' : 'حفظ التعديلات'}</span>
-                </button>
-              </div>
-            )}
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditing(false)}
+                    className="px-3 py-2 rounded-xl bg-slate-100 dark:bg-[#18233C] text-slate-600 dark:text-[#bbc9ca] text-xs font-bold hover:bg-slate-200 dark:hover:bg-[#202c4b] cursor-pointer"
+                  >
+                    إلغاء التعديل
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSaveBasicInfo()}
+                    disabled={isSaving}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-xs cursor-pointer disabled:opacity-50"
+                    id="btn-save-patient-basic"
+                  >
+                    <span className="material-symbols-outlined text-sm">save</span>
+                    <span>{isSaving ? 'جارِ الحفظ...' : 'حفظ التعديلات'}</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* VIEW MODE: ORGANIZED CATEGORIZED CARDS */}
@@ -1014,7 +1057,7 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
       {/* ========================================================================= */}
       {/* TAB 2: VISITS & CLINICAL CONSULTATIONS TIMELINE */}
       {/* ========================================================================= */}
-      {activeTab === 'visits' && (
+      {(activeTab === 'visits' || activeTab === 'all') && (
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <h3 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -1229,27 +1272,13 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
       {/* ========================================================================= */}
       {/* TAB 3: PRESCRIPTIONS & MEDICATIONS */}
       {/* ========================================================================= */}
-      {activeTab === 'prescriptions' && (
+      {(activeTab === 'prescriptions' || activeTab === 'all') && (
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <h3 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <span className="material-symbols-outlined text-purple-600 dark:text-[#d0bcff] text-base">description</span>
               <span>الروشتات والوصفات الطبية المعتمدة للمريض ({pPrescriptions.length})</span>
             </h3>
-
-            {canAccess('prescription-pad') && (
-              <button
-                type="button"
-                onClick={() => {
-                  onSelectPatientForExam(patient);
-                  onNavigate('prescription-pad');
-                }}
-                className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold cursor-pointer transition-all shadow-xs flex items-center gap-1"
-              >
-                <span className="material-symbols-outlined text-sm">print</span>
-                <span>إصدار وطباعة روشتة</span>
-              </button>
-            )}
           </div>
 
           {pPrescriptions.length === 0 ? (
@@ -1348,7 +1377,7 @@ ${pr.notes ? `📝 *إرشادات الطبيب:* ${pr.notes}\n\n` : ''}مع ت�
       {/* ========================================================================= */}
       {/* TAB 4: LAB ORDERS & MEASURED RESULTS */}
       {/* ========================================================================= */}
-      {activeTab === 'labs' && (
+      {(activeTab === 'labs' || activeTab === 'all') && (
         <div className="space-y-4">
           <h3 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <span className="material-symbols-outlined text-teal-600 dark:text-[#00c2cb] text-base">biotech</span>
@@ -1428,7 +1457,7 @@ ${pr.notes ? `📝 *إرشادات الطبيب:* ${pr.notes}\n\n` : ''}مع ت�
       {/* ========================================================================= */}
       {/* TAB 5: RADIOLOGY & IMAGING REPORTS */}
       {/* ========================================================================= */}
-      {activeTab === 'radiology' && (
+      {(activeTab === 'radiology' || activeTab === 'all') && (
         <div className="space-y-4">
           <h3 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <span className="material-symbols-outlined text-purple-600 dark:text-[#d0bcff] text-base">radiology</span>
@@ -1506,7 +1535,7 @@ ${pr.notes ? `📝 *إرشادات الطبيب:* ${pr.notes}\n\n` : ''}مع ت�
       {/* ========================================================================= */}
       {/* TAB 6: INVOICES & BILLING TRANSACTIONS */}
       {/* ========================================================================= */}
-      {activeTab === 'billing' && (
+      {(activeTab === 'billing' || activeTab === 'all') && (
         <div className="space-y-4">
           <h3 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb] text-base">receipt_long</span>

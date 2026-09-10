@@ -5,6 +5,7 @@ import { FollowUpItem } from './AppointmentsScreen';
 import { usePermissions } from '../../context/AuthContext';
 import { usePrescriptionDoctor } from '../../utils/prescriptionDoctor';
 import { loadMedicalServices, MedicalServiceItem } from '../../utils/financeManager';
+import { ClinicAlertPayload } from '../../utils/alertManager';
 
 interface DashboardScreenProps {
   onNavigate: (screen: ScreenType) => void;
@@ -13,6 +14,9 @@ interface DashboardScreenProps {
   visits?: Visit[];
   transactions?: TransactionRecord[];
   followUps?: FollowUpItem[];
+  recentAlerts?: ClinicAlertPayload[];
+  doctorStatus?: 'available' | 'break';
+  activeExamPatientName?: string;
   onConfirmCheckIn: (appointment: AppointmentListItem, fee: number, method: string) => void;
   onCallPatient: (ticket: string, name: string) => void;
   onSelectPatient?: (patient: PatientListItem | null) => void;
@@ -28,6 +32,9 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   visits = [],
   transactions = [],
   followUps = [],
+  recentAlerts = [],
+  doctorStatus = 'available',
+  activeExamPatientName,
   onConfirmCheckIn,
   onCallPatient,
   onSelectPatient,
@@ -44,6 +51,39 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   const [selectedPayMethod, setSelectedPayMethod] = useState<'cash' | 'card' | 'instapay'>('cash');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [checkInNotice, setCheckInNotice] = useState<string | null>(null);
+
+  // New Clinical Alerts Hub Card Tab State
+  const [activeAlertsCardTab, setActiveAlertsCardTab] = useState<'queue' | 'alerts' | 'followups'>('queue');
+  const [dashboardWhatsappToast, setDashboardWhatsappToast] = useState<string | null>(null);
+
+  // Urgent upcoming follow-ups: strictly less than 3 days (< 3 days: 0, 1, 2 days remaining) sorted in order
+  const dashboardUrgentFollowUps = useMemo(() => {
+    return (followUps || [])
+      .filter((f) => f.daysRemaining >= 0 && f.daysRemaining < 3)
+      .sort((a, b) => a.daysRemaining - b.daysRemaining);
+  }, [followUps]);
+
+  const handleDashboardSendWhatsapp = (phone: string, patientName: string, dueDate?: string) => {
+    const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
+    const formattedPhone = cleanPhone.startsWith('0') ? `2${cleanPhone}` : cleanPhone;
+    const dateText = dueDate || 'الأيام القادمة';
+
+    const message = `مرحباً بحضرتك أستاذ/ة *${patientName}* 🌸
+نود تذكيركم بموعد المتابعة والاستشارة الطبية المحدد لكم في *عيادة ${doctorInfo.doctorName}* 🩺
+🗓 موعد المتابعة: *${dateText}*
+📍 التخصص: *${doctorInfo.specialtyAr}*
+مع تمنياتنا لكم بدوام الصحة والعافية ✨`;
+
+    const whatsappUrl = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`;
+    try {
+      window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+    } catch {
+      // Fallback
+    }
+
+    setDashboardWhatsappToast(`تم تجهيز رسالة تذكير الواتساب وإرسالها لـ (${patientName})`);
+    setTimeout(() => setDashboardWhatsappToast(null), 4000);
+  };
 
   // Quick Invoice Modal State
   const [showQuickInvoiceModal, setShowQuickInvoiceModal] = useState(false);
@@ -464,41 +504,17 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
       )}
 
       {/* =========================================================================
-          1. TOP WELCOME DOCTOR CARD (FROM PRESCRIPTION SETTINGS)
+          1. TOP WELCOME DOCTOR CARD (NAME & SPECIALTY ONLY - NO CLINIC LOGO)
          ========================================================================= */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-l from-slate-900 via-[#0c172e] to-[#08101f] text-white p-4 sm:p-6 shadow-xl border border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-6">
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-l from-slate-900 via-[#0c172e] to-[#08101f] text-white p-4 sm:p-5 shadow-xl border border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         {/* Decorative Background Accent */}
         <div className="absolute top-0 left-0 -mt-8 -ml-8 w-48 h-48 bg-[#00c2cb]/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 right-0 -mb-8 -mr-8 w-48 h-48 bg-[#8B5CF6]/10 rounded-full blur-3xl pointer-events-none" />
 
         {/* Doctor Identity & Information */}
-        <div className="flex items-center gap-3.5 sm:gap-5 z-10 min-w-0 w-full">
-          <div className="relative shrink-0">
-            {doctorInfo.logoUrl ? (
-              <img
-                src={doctorInfo.logoUrl}
-                alt={doctorInfo.doctorName}
-                referrerPolicy="no-referrer"
-                className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl object-cover border-2 border-[#00c2cb] shadow-lg bg-white/5"
-              />
-            ) : (
-              <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-[#00c2cb] to-[#0284C7] text-slate-950 flex items-center justify-center font-black text-xl sm:text-3xl shadow-lg border-2 border-white/20">
-                <span className="material-symbols-outlined text-2xl sm:text-4xl">
-                  stethoscope
-                </span>
-              </div>
-            )}
-            <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-slate-900 rounded-full flex" />
-          </div>
-
-          <div className="space-y-0.5 sm:space-y-1 min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-[#00c2cb] font-bold">
-                {greetingText}،
-              </span>
-            </div>
-
-            <h1 className="text-base sm:text-2xl font-black text-white tracking-tight flex items-center gap-1.5 sm:gap-2 truncate">
+        <div className="flex items-center gap-3 z-10 min-w-0 w-full">
+          <div className="space-y-1 min-w-0 flex-1">
+            <h1 className="text-lg sm:text-2xl font-black text-white tracking-tight flex items-center gap-2 truncate">
               <span className="truncate">{doctorInfo.doctorName}</span>
               <span
                 className="material-symbols-outlined text-teal-400 text-base sm:text-xl shrink-0"
@@ -508,25 +524,18 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
               </span>
             </h1>
 
-            <p className="text-xs sm:text-sm text-slate-300 font-medium truncate max-w-xl">
-              {doctorInfo.specialtyAr} • {doctorInfo.degreesAr}
+            <p className="text-xs sm:text-sm text-[#00c2cb] font-bold truncate">
+              {doctorInfo.specialtyAr}
             </p>
+          </div>
 
-            <div className="flex items-center gap-2 sm:gap-3 text-[10px] sm:text-[11px] text-slate-400 font-medium pt-0.5 flex-wrap">
-              <span className="flex items-center gap-1 shrink-0">
-                <span className="material-symbols-outlined text-xs text-[#00c2cb]">
-                  calendar_today
-                </span>
-                <span>{todayArabicDate}</span>
+          <div className="hidden sm:flex items-center gap-2 text-xs text-slate-400 font-medium z-10">
+            <span className="flex items-center gap-1 shrink-0 bg-white/5 px-3 py-1.5 rounded-xl border border-white/10">
+              <span className="material-symbols-outlined text-sm text-[#00c2cb]">
+                calendar_today
               </span>
-              <span>•</span>
-              <span className="flex items-center gap-1 shrink-0">
-                <span className="material-symbols-outlined text-xs text-purple-400">
-                  phone_iphone
-                </span>
-                <span dir="ltr">{doctorInfo.phone}</span>
-              </span>
-            </div>
+              <span>{todayArabicDate}</span>
+            </span>
           </div>
         </div>
       </div>
@@ -841,584 +850,435 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
       </section>
 
       {/* =========================================================================
-          3. CSS SELECTOR 2: DUAL PANEL LAYOUT (APPOINTMENTS & WAITING ROOM)
+          CLINICAL ALERTS & NOTIFICATION HUB CARD (بطاقة التنبيهات والإشعارات السريرية)
          ========================================================================= */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
-        {/* ================= RIGHT COLUMN (60% / 7 cols): APPOINTMENTS & FOLLOW-UPS ================= */}
-        <section className="xl:col-span-7 flex flex-col space-y-4">
-          {/* Main Sub-Tabs: Scheduled Appointments VS Upcoming Follow-ups */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-[#0f172a] p-3 rounded-2xl border border-slate-200 dark:border-white/10 shadow-xs">
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => setActiveMainTab('appointments')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                  activeMainTab === 'appointments'
-                    ? 'bg-[#00c2cb] text-slate-950 font-black shadow-sm'
-                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5'
-                }`}
-              >
-                <span className="material-symbols-outlined text-base">calendar_month</span>
-                <span>مواعيد اليوم والمجدولة</span>
-                <span className="bg-slate-900/20 text-slate-900 px-1.5 py-0.2 rounded-full font-mono text-[10px] font-black">
-                  {appointments.length}
-                </span>
-              </button>
-
-              <button
-                onClick={() => setActiveMainTab('followups')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                  activeMainTab === 'followups'
-                    ? 'bg-[#8B5CF6] text-white font-black shadow-sm'
-                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5'
-                }`}
-              >
-                <span className="material-symbols-outlined text-base">event_repeat</span>
-                <span>المتابعات القادمة</span>
-                <span className="bg-white/20 text-white px-1.5 py-0.2 rounded-full font-mono text-[10px] font-black">
-                  {followUps.length}
-                </span>
-              </button>
+      <section className="bg-white dark:bg-[#0f172a] rounded-3xl border border-slate-200 dark:border-white/10 p-4 sm:p-6 shadow-sm dark:shadow-xl space-y-4">
+        {/* Card Header & Doctor Status Indicator */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 dark:border-white/5 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-teal-50 dark:bg-[#00c2cb]/15 text-[#00c2cb] flex items-center justify-center font-bold shadow-xs">
+              <span className="material-symbols-outlined text-2xl animate-pulse">campaign</span>
             </div>
-
-            {/* Live Search */}
-            <div className="relative">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="بحث بالاسم أو الهاتف..."
-                className="bg-slate-100 dark:bg-[#111A2E] text-slate-900 dark:text-white text-xs pl-3 pr-8 py-2 rounded-xl placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00c2cb] border border-slate-200 dark:border-white/5 w-full sm:w-52"
-              />
-              <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-base">
-                search
-              </span>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+                  مركز التنبيهات والإشعارات السريرية
+                </h2>
+                <span className="flex h-2 w-2 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00c2cb] opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#00c2cb]" />
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                متابعة فورية لطابور الانتظار، التنبيهات الإكلينيكية، والمتابعات العاجلة
+              </p>
             </div>
           </div>
 
-          {/* TAB 1: SCHEDULED APPOINTMENTS VIEW */}
-          {activeMainTab === 'appointments' && (
-            <div className="space-y-4">
-              {/* Filter Chips Bar */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
-                {[
-                  { id: 'all', label: `الكل (${appointmentCounts.all})` },
-                  { id: 'scheduled', label: `مجدول (${appointmentCounts.scheduled})` },
-                  { id: 'arrived', label: `حضر وسدد (${appointmentCounts.arrived})` },
-                  { id: 'cancelled', label: `ملغى (${appointmentCounts.cancelled})` },
-                ].map((chip) => (
-                  <button
-                    key={chip.id}
-                    onClick={() => setAppointmentFilter(chip.id as any)}
-                    className={`px-3 py-1.5 rounded-lg shrink-0 transition-all cursor-pointer font-bold ${
-                      appointmentFilter === chip.id
-                        ? 'bg-[#00c2cb] text-slate-950 shadow-xs'
-                        : 'bg-white dark:bg-[#111A2E] text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#18233C] border border-slate-200 dark:border-white/5'
+          {/* Doctor Status Badge */}
+          <div className="flex items-center gap-2">
+            <div
+              className={`px-3 py-1.5 rounded-xl border flex items-center gap-2 text-xs font-bold ${
+                doctorStatus === 'available'
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400'
+                  : 'bg-amber-500/10 border-amber-500/30 text-amber-700 dark:text-amber-400 animate-pulse'
+              }`}
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  doctorStatus === 'available' ? 'bg-emerald-500' : 'bg-amber-500'
+                }`}
+              />
+              <span>{doctorStatus === 'available' ? 'الطبيب متاح للكشف' : 'الطبيب في استراحة ☕'}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 3 Main Action Sub-Tabs */}
+        <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-[#111A2E] p-1.5 rounded-2xl border border-slate-200 dark:border-white/5 overflow-x-auto">
+          {/* Tab 1: Waiting Queue */}
+          <button
+            type="button"
+            onClick={() => setActiveAlertsCardTab('queue')}
+            className={`flex-1 min-w-[130px] px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              activeAlertsCardTab === 'queue'
+                ? 'bg-[#00c2cb] text-slate-950 shadow-sm font-black'
+                : 'text-slate-600 dark:text-[#bbc9ca] hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <span className="material-symbols-outlined text-base">chair</span>
+            <span>مرضى في الانتظار</span>
+            <span
+              className={`px-1.5 py-0.2 rounded-full text-[10px] font-black font-mono ${
+                activeAlertsCardTab === 'queue'
+                  ? 'bg-slate-950/20 text-slate-950'
+                  : 'bg-slate-200 dark:bg-white/10 text-slate-700 dark:text-slate-300'
+              }`}
+            >
+              {queue.length}
+            </span>
+          </button>
+
+          {/* Tab 2: Clinical Alerts & Exam Status */}
+          <button
+            type="button"
+            onClick={() => setActiveAlertsCardTab('alerts')}
+            className={`flex-1 min-w-[130px] px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              activeAlertsCardTab === 'alerts'
+                ? 'bg-[#00c2cb] text-slate-950 shadow-sm font-black'
+                : 'text-slate-600 dark:text-[#bbc9ca] hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <span className="material-symbols-outlined text-base">notifications_active</span>
+            <span>التنبيهات وحالة الكشف</span>
+            {recentAlerts.length > 0 && (
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-black font-mono ${
+                  activeAlertsCardTab === 'alerts'
+                    ? 'bg-slate-950/20 text-slate-950'
+                    : 'bg-teal-500/20 text-teal-700 dark:text-[#45dee7]'
+                }`}
+              >
+                {recentAlerts.length}
+              </span>
+            )}
+          </button>
+
+          {/* Tab 3: Upcoming Follow-ups (< 3 days) */}
+          <button
+            type="button"
+            onClick={() => setActiveAlertsCardTab('followups')}
+            className={`flex-1 min-w-[130px] px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              activeAlertsCardTab === 'followups'
+                ? 'bg-[#8B5CF6] text-white shadow-sm font-black'
+                : 'text-slate-600 dark:text-[#bbc9ca] hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <span className="material-symbols-outlined text-base">event_repeat</span>
+            <span>المتابعات القادمة (&lt; 3 أيام)</span>
+            <span
+              className={`px-1.5 py-0.2 rounded-full text-[10px] font-black font-mono ${
+                activeAlertsCardTab === 'followups'
+                  ? 'bg-white/20 text-white'
+                  : 'bg-purple-500/20 text-purple-700 dark:text-purple-300'
+              }`}
+            >
+              {dashboardUrgentFollowUps.length}
+            </span>
+          </button>
+        </div>
+
+        {/* Tab 1 Content: Waiting Queue in Order */}
+        {activeAlertsCardTab === 'queue' && (
+          <div className="space-y-3">
+            {queue.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {queue.map((item, idx) => (
+                  <div
+                    key={item.id || idx}
+                    className={`p-3.5 rounded-2xl border transition-all flex flex-col justify-between space-y-3 ${
+                      idx === 0
+                        ? 'bg-teal-50/50 dark:bg-[#00c2cb]/10 border-[#00c2cb] shadow-sm'
+                        : 'bg-slate-50 dark:bg-[#111A2E] border-slate-200 dark:border-white/10'
                     }`}
                   >
-                    {chip.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Interactive Quick Check-In Box for Scheduled Patient */}
-              {targetCheckIn && (
-                <div className="relative overflow-hidden rounded-2xl bg-white dark:bg-[#0f172a] p-4 sm:p-5 shadow-sm dark:shadow-2xl border-2 border-teal-500 dark:border-[#00c2cb] space-y-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-xl bg-teal-50 dark:bg-[#00c2cb]/20 text-teal-700 dark:text-[#00c2cb] flex items-center justify-center font-bold text-xl border border-teal-200 dark:border-[#00c2cb]/30 shrink-0">
-                        <span className="material-symbols-outlined text-2xl">person_pin</span>
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                            {targetCheckIn.patientName}
-                          </h3>
-                          <span className="bg-teal-100 dark:bg-[#00c2cb]/25 text-teal-800 dark:text-[#45dee7] text-xs px-2.5 py-0.5 rounded-full font-bold border border-teal-300 dark:border-[#00c2cb]/40">
-                            وصل الآن للاستقبال
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-600 dark:text-slate-300 font-medium mt-0.5">
-                          موعد مجدول: {targetCheckIn.timeSlot || targetCheckIn.time || 'اليوم'} • {targetCheckIn.visitType}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-left shrink-0">
-                      <span className="text-2xl font-black text-teal-700 dark:text-[#45dee7] font-mono">
-                        {targetCheckIn.expectedFee || 0}
-                      </span>
-                      <span className="text-xs text-slate-600 dark:text-slate-300 font-bold mr-1">ج.م</span>
-                    </div>
-                  </div>
-
-                  {/* Payment Method & Confirm Action */}
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-white/10">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs text-slate-800 dark:text-slate-200 font-bold">
-                        طريقة السداد:
-                      </span>
-                      <div className="inline-flex rounded-xl bg-slate-100 dark:bg-black p-1 border border-slate-200 dark:border-white/10">
-                        {[
-                          { id: 'cash', label: 'نقدي (كاش)' },
-                          { id: 'card', label: 'فيزا / كارت' },
-                          { id: 'instapay', label: 'InstaPay' },
-                        ].map((m) => (
-                          <button
-                            key={m.id}
-                            onClick={() => setSelectedPayMethod(m.id as any)}
-                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                              selectedPayMethod === m.id
-                                ? 'bg-[#00c2cb] text-slate-950 font-black shadow-xs'
-                                : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white'
-                            }`}
-                          >
-                            {m.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 w-full sm:w-auto">
-                      <button
-                        onClick={() => handleAppCheckIn(targetCheckIn)}
-                        className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-black text-xs shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95"
-                      >
-                        <span className="material-symbols-outlined text-base">check_circle</span>
-                        <span>تأكيد الحضور والدفع ({targetCheckIn.expectedFee || 0} ج.م)</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Appointments List */}
-              <div className="space-y-2.5">
-                {filteredAppointments.length === 0 ? (
-                  <div className="p-8 rounded-2xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-white/10 text-center space-y-3">
-                    <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-white/5 text-slate-400 mx-auto flex items-center justify-center">
-                      <span className="material-symbols-outlined text-2xl">event_busy</span>
-                    </div>
-                    <div className="space-y-0.5">
-                      <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                        لا توجد مواعيد مسجلة
-                      </h4>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                        يمكنك إضافة حجز مسبق جديد للمريض بكل سهولة.
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => onNavigate('appointments')}
-                      className="px-4 py-2 rounded-xl bg-[#00c2cb] text-slate-950 font-bold text-xs hover:bg-[#45dee7] transition-all cursor-pointer"
-                    >
-                      + حجز موعد جديد
-                    </button>
-                  </div>
-                ) : (
-                  filteredAppointments.map((app) => (
-                    <div
-                      key={app.id}
-                      className="flex flex-col md:flex-row md:items-center justify-between p-3.5 rounded-xl bg-white dark:bg-[#0f172a] hover:bg-slate-50 dark:hover:bg-[#1e293b] transition-all gap-3 border border-slate-200 dark:border-white/10 shadow-xs"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-11 h-11 rounded-xl bg-slate-100 dark:bg-black flex items-center justify-center text-slate-900 dark:text-white font-black text-xs font-mono border border-slate-200 dark:border-white/10 shrink-0">
-                          {app.timeSlot || app.time || '17:00'}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div
+                          className={`w-9 h-9 rounded-xl flex flex-col items-center justify-center font-bold shrink-0 ${
+                            idx === 0
+                              ? 'bg-[#00c2cb] text-slate-950 font-black'
+                              : 'bg-slate-200 dark:bg-white/10 text-slate-800 dark:text-slate-200 font-mono text-xs'
+                          }`}
+                        >
+                          <span className="text-[9px] leading-none">#{idx + 1}</span>
+                          <span className="text-xs font-black">{item.ticketNumber || '#'}</span>
                         </div>
                         <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                              {app.patientName}
-                            </span>
-                            <span
-                              className={`text-xs px-2 py-0.5 rounded-md font-bold ${
-                                (app.visitType || '').includes('جديد')
-                                  ? 'bg-teal-100 dark:bg-[#00c2cb]/20 text-teal-800 dark:text-[#45dee7]'
-                                  : (app.visitType || '').includes('متابعة') ||
-                                    (app.visitType || '').includes('استشارة')
-                                  ? 'bg-purple-100 dark:bg-[#8B5CF6]/30 text-purple-800 dark:text-[#d0bcff]'
-                                  : 'bg-slate-100 dark:bg-white/10 text-slate-800 dark:text-slate-200'
-                              }`}
-                            >
-                              {app.visitType}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 text-xs mt-0.5 flex-wrap font-medium">
-                            <span dir="ltr" className="font-mono">
-                              {app.phone || 'بدون هاتف'}
+                          <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate">
+                            {item.patientName}
+                          </h4>
+                          <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                            <span className="text-teal-700 dark:text-[#45dee7] font-semibold">
+                              {item.visitType || 'كشف'}
                             </span>
                             <span>•</span>
-                            <span>فرع {app.branch || 'الرئيسي'}</span>
-                            <span>•</span>
-                            <span className="text-teal-700 dark:text-[#38BDF8] font-mono font-bold">
-                              سعر الزيارة: {app.expectedFee || 0} ج.م
-                            </span>
+                            <span>منذ {item.elapsedMinutes || 1} د</span>
                           </div>
                         </div>
                       </div>
-
-                      <div className="flex items-center gap-2 self-end md:self-center shrink-0">
-                        <span
-                          className={`text-xs px-2.5 py-1 rounded-lg font-bold ${
-                            app.status === 'فى الانتظار حضر المريض' ||
-                            app.status === 'حضر وسدد' ||
-                            app.status === 'في الانتظار'
-                              ? 'bg-emerald-100 dark:bg-[#10B981]/25 text-emerald-800 dark:text-[#10B981]'
-                              : app.status === 'ملغى' || app.status === 'ملغي'
-                              ? 'bg-red-100 dark:bg-[#EF4444]/25 text-red-800 dark:text-[#EF4444]'
-                              : 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300'
-                          }`}
-                        >
-                          {app.status}
+                      {idx === 0 && (
+                        <span className="text-[10px] font-black bg-[#00c2cb] text-slate-950 px-2 py-0.5 rounded-full shrink-0">
+                          الدور الحالي
                         </span>
-
-                        {(app.status === 'مجدول' || app.status === 'بانتظار التأكيد') && (
-                          <button
-                            onClick={() => handleAppCheckIn(app)}
-                            className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#00c2cb] text-slate-950 hover:bg-[#45dee7] text-xs font-black transition-all shadow-xs cursor-pointer"
-                          >
-                            <span className="material-symbols-outlined text-base">login</span>
-                            <span>حضر وسدد</span>
-                          </button>
-                        )}
-
-                        {(app.status === 'فى الانتظار حضر المريض' ||
-                          app.status === 'في الانتظار') &&
-                          canAccess('clinical-exam') && (
-                            <button
-                              onClick={() => {
-                                const matchingPat = patients.find(
-                                  (p) => p.name === app.patientName
-                                );
-                                if (matchingPat && onSelectPatient) {
-                                  onSelectPatient(matchingPat);
-                                }
-                                onNavigate('clinical-exam');
-                              }}
-                              className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#8B5CF6] text-white hover:bg-purple-600 text-xs font-bold transition-all cursor-pointer shadow-xs"
-                            >
-                              <span className="material-symbols-outlined text-base">
-                                door_open
-                              </span>
-                              <span>دخول الغرفة</span>
-                            </button>
-                          )}
-                      </div>
+                      )}
                     </div>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
 
-          {/* TAB 2: UPCOMING FOLLOW-UPS VIEW */}
-          {activeMainTab === 'followups' && (
-            <div className="space-y-3">
-              {filteredFollowUps.length === 0 ? (
-                <div className="p-8 rounded-2xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-white/10 text-center space-y-3">
-                  <div className="w-12 h-12 rounded-2xl bg-purple-50 dark:bg-purple-900/20 text-purple-600 mx-auto flex items-center justify-center">
-                    <span className="material-symbols-outlined text-2xl">event_repeat</span>
-                  </div>
-                  <div className="space-y-0.5">
-                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                      لا توجد استشارات أو متابعات قادمة مسجلة
-                    </h4>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                      يتم تسجيل المتابعات تلقائياً عند حفظ الروشتة وتحديد موعد الاستشارة من غرفة الطبيب.
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                filteredFollowUps.map((fu) => (
-                  <div
-                    key={fu.id}
-                    className="p-4 rounded-xl bg-white dark:bg-[#0f172a] hover:bg-slate-50 dark:hover:bg-[#1e293b] transition-all border border-slate-200 dark:border-white/10 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
-                  >
-                    <div className="space-y-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                          {fu.patientName}
-                        </h4>
-                        <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                            fu.isFreeEligible
-                              ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300'
-                              : 'bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300'
-                          }`}
-                        >
-                          {fu.isFreeEligible ? 'استشارة مجانية' : 'كشف اعتيادي'}
-                        </span>
-                      </div>
-
-                      <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
-                        التشخيص: {fu.diagnosis || 'متابعة دورية'}
+                    {item.complaint && (
+                      <p className="text-[11px] text-slate-600 dark:text-slate-300 line-clamp-1 bg-white dark:bg-black/40 p-1.5 rounded-lg border border-slate-200/60 dark:border-white/5">
+                        <span className="font-bold text-slate-700 dark:text-slate-200">الشكوى: </span>
+                        {item.complaint}
                       </p>
+                    )}
 
-                      <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 flex-wrap">
-                        <span>هاتف: <span dir="ltr" className="font-mono">{fu.phone}</span></span>
-                        <span>•</span>
-                        <span>
-                          موعد الاستحقاق:{' '}
-                          <strong className="text-purple-700 dark:text-purple-300 font-mono">
-                            {fu.dueDate}
-                          </strong>
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
-                      <span
-                        className={`text-xs px-2.5 py-1 rounded-lg font-bold ${
-                          fu.daysRemaining <= 0
-                            ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300'
-                            : fu.daysRemaining <= 2
-                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300'
-                            : 'bg-slate-100 text-slate-800 dark:bg-white/10 dark:text-slate-200'
-                        }`}
-                      >
-                        {fu.daysRemaining <= 0
-                          ? 'موعدها اليوم / مستحقة'
-                          : `متبقي ${fu.daysRemaining} يوم`}
-                      </span>
-
+                    <div className="grid grid-cols-2 gap-2 pt-1">
                       <button
-                        onClick={() => onNavigate('new-visit')}
-                        className="px-3 py-1.5 rounded-xl bg-[#00c2cb] text-slate-950 hover:bg-[#45dee7] text-xs font-black transition-all cursor-pointer shadow-xs"
+                        type="button"
+                        onClick={() => onCallPatient(item.ticketNumber || `#0${idx + 1}`, item.patientName)}
+                        className="py-1.5 px-2 rounded-xl bg-white dark:bg-[#18233C] hover:bg-slate-100 dark:hover:bg-[#242f4c] text-teal-800 dark:text-[#45dee7] border border-teal-300 dark:border-[#00c2cb]/30 text-xs font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                        title="نداء المريض صوتياً وعلى الشاشة"
                       >
-                        تسجيل زيارة
+                        <span className="material-symbols-outlined text-sm">campaign</span>
+                        <span>نداء</span>
                       </button>
+
+                      {canAccess('clinical-exam') && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const matchingPat = patients.find((p) => p.name === item.patientName);
+                            if (matchingPat && onSelectPatient) {
+                              onSelectPatient(matchingPat);
+                            }
+                            onCallPatient(item.ticketNumber || `#0${idx + 1}`, item.patientName);
+                            onNavigate('clinical-exam');
+                          }}
+                          className="py-1.5 px-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs font-black flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                          title="بدء الكشف ودخول غرفة الطبيب"
+                        >
+                          <span className="material-symbols-outlined text-sm">stethoscope</span>
+                          <span>دخول الكشف</span>
+                        </button>
+                      )}
                     </div>
                   </div>
-                ))
-              )}
-            </div>
-          )}
-        </section>
-
-        {/* ================= LEFT COLUMN (40% / 5 cols): LIVE WAITING ROOM ================= */}
-        <section className="xl:col-span-5 flex flex-col space-y-4">
-          {/* Section Header */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-2.5 h-6 bg-[#00c2cb] rounded-full" />
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-lg font-bold text-slate-900 dark:text-[#dde2f5]">
-                    غرفة الانتظار الآن
-                  </h2>
-                  <span className="flex h-2 w-2 relative">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00c2cb] opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-[#00c2cb]" />
-                  </span>
-                </div>
-                <span className="text-xs text-slate-500 dark:text-[#859394]">
-                  المرضى المتواجدين بالعيادة ({queue.length} حالات)
-                </span>
-              </div>
-            </div>
-
-            <span className="bg-teal-50 dark:bg-[#18233C] text-[#008f97] dark:text-[#00c2cb] border border-teal-200 dark:border-[#00c2cb]/30 px-3 py-1 rounded-full text-[11px] font-mono font-bold">
-              مباشر من السحابة
-            </span>
-          </div>
-
-          {/* Live Alert Banner */}
-          <div className="rounded-xl bg-teal-50 dark:bg-[#00c2cb]/15 border border-teal-200 dark:border-[#00c2cb]/40 p-3 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="material-symbols-outlined text-teal-700 dark:text-[#00c2cb] text-xl animate-bounce shrink-0">
-                campaign
-              </span>
-              <span className="text-xs text-slate-900 dark:text-white font-medium truncate">
-                {queue.length > 0 ? (
-                  <>
-                    <strong className="text-teal-800 dark:text-[#45dee7] font-bold">
-                      التالي بالانتظار:{' '}
-                    </strong>
-                    {queue[0].patientName} ({queue[0].visitType} - مسدد {queue[0].paidAmount || 0} ج.م)
-                  </>
-                ) : (
-                  'العيادة جاهزة ومتاحة لاستقبال كشوفات جديدة بالانتظار'
-                )}
-              </span>
-            </div>
-            <span className="text-[10px] text-teal-700 dark:text-[#00c2cb] font-mono font-bold shrink-0">
-              محدث الآن
-            </span>
-          </div>
-
-          {/* Waiting Queue Cards Container */}
-          <div className="space-y-3">
-            {queue.length > 0 && queue[0] ? (
-              /* Patient #1 in Line (Active Calling Card) */
-              <div className="relative overflow-hidden rounded-2xl bg-white dark:bg-[#0f172a] p-4 shadow-md dark:shadow-xl border-2 border-teal-500 dark:border-[#00c2cb] flex flex-col space-y-3 transition-all">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-12 h-12 rounded-xl bg-[#00c2cb] text-slate-950 flex flex-col items-center justify-center font-bold shadow-sm shrink-0">
-                      <span className="text-[10px] font-mono font-black">دور</span>
-                      <span className="text-base font-black leading-none">
-                        {queue[0].ticketNumber || '#01'}
-                      </span>
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-base font-bold text-slate-900 dark:text-white truncate">
-                          {queue[0].patientName}
-                        </h3>
-                        <span className="bg-teal-100 dark:bg-[#00c2cb]/25 text-teal-800 dark:text-[#45dee7] text-[10px] px-2 py-0.5 rounded-full font-bold">
-                          التالي في الدخول
-                        </span>
-                      </div>
-                      <div className="text-slate-600 dark:text-slate-300 text-xs mt-0.5 flex items-center gap-2 flex-wrap font-medium">
-                        <span>{queue[0].visitType || 'كشف'}</span>
-                        <span>•</span>
-                        <span className="text-emerald-700 dark:text-[#10B981] font-bold font-mono">
-                          مدفوع {queue[0].paidAmount || 0} ج.م ({queue[0].paymentMethod || 'نقدي'}) ✓
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="text-left shrink-0">
-                    <span className="text-xs text-teal-700 dark:text-[#00c2cb] font-bold flex items-center gap-1 font-mono">
-                      <span className="material-symbols-outlined text-sm">schedule</span>
-                      منذ {queue[0].elapsedMinutes || 1} دقيقة
-                    </span>
-                  </div>
-                </div>
-
-                <div className="bg-slate-50 dark:bg-black p-2.5 rounded-xl border border-slate-200 dark:border-white/10 text-xs text-slate-700 dark:text-slate-200 font-medium">
-                  <span className="text-teal-700 dark:text-[#45dee7] font-bold">الشكوى / الأعراض: </span>
-                  <span>{queue[0].complaint || 'كشف عيادة باطنة'}</span>
-                </div>
-
-                {/* Primary CTA Call & Enter */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                  <button
-                    onClick={() => onCallPatient(queue[0].ticketNumber || '#01', queue[0].patientName)}
-                    className="py-2.5 rounded-xl bg-slate-100 dark:bg-[#1e293b] hover:bg-slate-200 dark:hover:bg-[#334155] text-teal-800 dark:text-[#45dee7] border border-teal-300 dark:border-[#00c2cb]/30 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-                  >
-                    <span className="material-symbols-outlined text-lg">campaign</span>
-                    <span>نداء صوتي للشاشة</span>
-                  </button>
-
-                  {canAccess('clinical-exam') && (
-                    <button
-                      onClick={() => {
-                        const matchingPat = patients.find(
-                          (p) => p.name === queue[0].patientName
-                        );
-                        if (matchingPat && onSelectPatient) {
-                          onSelectPatient(matchingPat);
-                        }
-                        onCallPatient(queue[0].ticketNumber || '#01', queue[0].patientName);
-                        onNavigate('clinical-exam');
-                      }}
-                      className="py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-black text-xs shadow-md shadow-[#00c2cb]/20 flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
-                    >
-                      <span className="material-symbols-outlined text-lg">stethoscope</span>
-                      <span>بدء الكشف ودخول الغرفة</span>
-                    </button>
-                  )}
-                </div>
+                ))}
               </div>
             ) : (
-              <div className="rounded-2xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-white/10 p-6 text-center space-y-3">
-                <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-white/5 text-slate-400 mx-auto flex items-center justify-center">
-                  <span className="material-symbols-outlined text-2xl">chair</span>
-                </div>
-                <div className="space-y-0.5">
-                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                    لا يوجد مرضى حالياً في طابور الانتظار
-                  </h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                    الاستقبال جاهز لتسجيل مرضى جدد وتحويلهم للانتظار مباشرة.
-                  </p>
-                </div>
+              <div className="p-8 text-center bg-slate-50 dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 space-y-2">
+                <span className="material-symbols-outlined text-3xl text-slate-400">chair</span>
+                <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  لا يوجد مرضى في طابور الانتظار حالياً
+                </p>
                 <button
+                  type="button"
                   onClick={() => onNavigate('new-visit')}
-                  className="px-4 py-2 rounded-xl bg-[#00c2cb] text-slate-950 font-bold text-xs hover:bg-[#45dee7] transition-all cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-xl bg-[#00c2cb] text-slate-950 text-xs font-bold hover:bg-[#45dee7] transition-all cursor-pointer inline-flex items-center gap-1"
                 >
-                  + تسجيل كشف جديد (استقبال)
+                  <span className="material-symbols-outlined text-sm">person_add</span>
+                  <span>تسجيل كشف جديد (استقبال)</span>
                 </button>
               </div>
             )}
-
-            {/* Waiting Patients #2..#N */}
-            {queue.slice(1).map((item) => (
-              <div
-                key={item.id}
-                className="rounded-xl bg-white dark:bg-[#0f172a] p-3.5 hover:bg-slate-50 dark:hover:bg-[#1e293b] transition-all flex items-center justify-between gap-3 border border-slate-200 dark:border-white/10 shadow-xs"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-black text-slate-900 dark:text-white flex flex-col items-center justify-center font-bold border border-slate-200 dark:border-white/10 shrink-0">
-                    <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold">دور</span>
-                    <span className="text-sm font-black font-mono leading-none">
-                      {item.ticketNumber || '#02'}
-                    </span>
-                  </div>
-                  <div className="min-w-0">
-                    <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                      {item.patientName}
-                    </h4>
-                    <div className="text-slate-500 dark:text-slate-400 text-xs mt-0.5 flex items-center gap-2 font-medium">
-                      <span>{item.visitType || 'كشف'}</span>
-                      <span>•</span>
-                      <span className="text-purple-700 dark:text-[#d0bcff] font-mono font-bold">
-                        {item.paidAmount || 0} ج.م ({item.paymentMethod || 'نقدي'})
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex flex-col items-end gap-1.5 shrink-0">
-                  <span className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1 font-mono font-bold">
-                    <span className="material-symbols-outlined text-xs">timer</span>
-                    منذ {item.elapsedMinutes || 1} دقيقة
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => onCallPatient(item.ticketNumber || '#01', item.patientName)}
-                      className="px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-[#00c2cb]/20 hover:bg-teal-100 dark:hover:bg-[#00c2cb]/30 text-teal-800 dark:text-[#45dee7] text-xs font-bold transition-colors cursor-pointer border border-teal-200 dark:border-[#00c2cb]/30"
-                      title="استدعاء صوتي"
-                    >
-                      نداء
-                    </button>
-                    <span className="bg-slate-200 dark:bg-[#1e293b] text-slate-800 dark:text-slate-200 text-[10px] px-2 py-0.5 rounded font-bold border border-slate-300 dark:border-white/10">
-                      في الانتظار
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))}
           </div>
+        )}
 
-          {/* Room Status Mini Card with Dynamic Doctor Name from Prescription Settings */}
-          <div className="rounded-2xl bg-white dark:bg-[#0f172a] p-4 border border-slate-200 dark:border-white/10 flex items-center justify-between shadow-xs">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-teal-50 dark:bg-[#00c2cb]/20 text-teal-700 dark:text-[#00c2cb] flex items-center justify-center shrink-0">
-                <span className="material-symbols-outlined text-2xl">medical_services</span>
+        {/* Tab 2 Content: Clinical Alerts & Exam Status */}
+        {activeAlertsCardTab === 'alerts' && (
+          <div className="space-y-3">
+            {/* Active Examination Room Status Banner */}
+            <div className="p-3 rounded-2xl bg-gradient-to-r from-teal-50 to-emerald-50 dark:from-[#00c2cb]/15 dark:to-emerald-950/20 border border-[#00c2cb]/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-[#00c2cb] text-slate-950 flex items-center justify-center font-bold shrink-0">
+                  <span className="material-symbols-outlined text-lg">stethoscope</span>
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-white">
+                      حالة غرفة الكشف لدى الطبيب
+                    </h4>
+                    <span
+                      className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                        doctorStatus === 'available'
+                          ? 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-300'
+                          : 'bg-amber-500/20 text-amber-800 dark:text-amber-300'
+                      }`}
+                    >
+                      {doctorStatus === 'available' ? 'جاهز ومتاح للكشف 🟢' : 'فترة استراحة مؤقتة ☕'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5">
+                    {activeExamPatientName
+                      ? `المريض قيد الفحص حالياً: (${activeExamPatientName})`
+                      : 'الغرفة مستعدة لاستقبال وفحص المريض التالي من طابور الانتظار.'}
+                  </p>
+                </div>
               </div>
-              <div className="flex flex-col">
-                <span className="text-xs font-bold text-slate-900 dark:text-white">
-                  غرفة الفحص الرئيسية
-                </span>
-                <span className="text-[11px] text-slate-600 dark:text-slate-300 font-medium">
-                  {doctorInfo.doctorName} • جاهز لاستقبال المريض
-                </span>
-              </div>
+
+              {canAccess('clinical-exam') && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate('clinical-exam')}
+                  className="px-3 py-1.5 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-950 font-bold text-xs hover:opacity-90 transition-all cursor-pointer shrink-0 flex items-center gap-1"
+                >
+                  <span className="material-symbols-outlined text-sm">open_in_new</span>
+                  <span>فتح غرفة الكشف</span>
+                </button>
+              )}
             </div>
-            {canAccess('clinical-exam') ? (
-              <button
-                onClick={() => onNavigate('clinical-exam')}
-                className="bg-teal-50 dark:bg-[#00c2cb]/20 hover:bg-teal-100 dark:hover:bg-[#00c2cb]/35 text-teal-800 dark:text-[#45dee7] border border-teal-300 dark:border-[#00c2cb]/40 text-xs px-3 py-1.5 rounded-full font-bold cursor-pointer transition-all shrink-0"
-              >
-                فتح الغرفة
-              </button>
+
+            {/* Alerts Feed */}
+            {recentAlerts.length > 0 ? (
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {recentAlerts.map((alert) => (
+                  <div
+                    key={alert.id}
+                    className={`p-3 rounded-xl border flex items-start justify-between gap-3 ${
+                      alert.type === 'finish'
+                        ? 'bg-emerald-50/70 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-500/30'
+                        : alert.type === 'call'
+                        ? 'bg-amber-50/70 dark:bg-amber-950/20 border-amber-300 dark:border-amber-500/30'
+                        : 'bg-slate-50 dark:bg-[#111A2E] border-slate-200 dark:border-white/10'
+                    }`}
+                  >
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <div
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold shrink-0 mt-0.5 ${
+                          alert.type === 'finish'
+                            ? 'bg-emerald-500 text-white'
+                            : alert.type === 'call'
+                            ? 'bg-amber-500 text-slate-950'
+                            : 'bg-[#00c2cb] text-slate-950'
+                        }`}
+                      >
+                        <span className="material-symbols-outlined text-base">
+                          {alert.type === 'finish'
+                            ? 'task_alt'
+                            : alert.type === 'call'
+                            ? 'campaign'
+                            : 'notifications'}
+                        </span>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                            {alert.title}
+                          </h4>
+                          {alert.ticketNumber && (
+                            <span className="text-[10px] font-mono font-bold bg-white dark:bg-black/50 px-1.5 py-0.2 rounded border border-slate-200 dark:border-white/10">
+                              {alert.ticketNumber}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5">
+                          {alert.message}
+                        </p>
+                      </div>
+                    </div>
+
+                    <span className="text-[10px] text-slate-400 font-mono shrink-0">
+                      {alert.timestamp}
+                    </span>
+                  </div>
+                ))}
+              </div>
             ) : (
-              <span className="text-[11px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-white/10 px-2.5 py-1 rounded-full border border-slate-200 dark:border-white/10 shrink-0 font-medium">
-                غرفة الطبيب
-              </span>
+              <div className="p-6 text-center bg-slate-50 dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 space-y-1">
+                <span className="material-symbols-outlined text-2xl text-slate-400">notifications_none</span>
+                <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  سجل التنبيهات الإكلينيكية هادئ
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  تظهر هنا تنبيهات انتهاء الكشف واعتماد الروشتات وتغييرات حالة الطبيب فور حدوثها.
+                </p>
+              </div>
             )}
           </div>
-        </section>
-      </div>
+        )}
+
+        {/* Tab 3 Content: Upcoming Follow-ups (Strictly < 3 days remaining) */}
+        {activeAlertsCardTab === 'followups' && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-[#111A2E] p-2.5 rounded-xl border border-slate-200 dark:border-white/5">
+              <span className="flex items-center gap-1 font-semibold text-purple-700 dark:text-purple-400">
+                <span className="material-symbols-outlined text-sm">schedule</span>
+                <span>تصفية تلقائية: تعرض فقط من لديه متابعة خلال أقل من 3 أيام (بالترتيب)</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => onNavigate('upcoming-followups')}
+                className="text-xs font-bold text-[#00c2cb] hover:underline cursor-pointer flex items-center gap-0.5"
+              >
+                <span>كافة المتابعات</span>
+                <span className="material-symbols-outlined text-sm">arrow_left</span>
+              </button>
+            </div>
+
+            {dashboardUrgentFollowUps.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {dashboardUrgentFollowUps.map((item) => (
+                  <div
+                    key={item.id}
+                    className="p-3.5 rounded-2xl bg-slate-50 dark:bg-[#111A2E] border border-purple-200/70 dark:border-purple-500/20 hover:border-purple-400 transition-all flex flex-col justify-between space-y-2.5 shadow-xs"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate">
+                          {item.patientName}
+                        </h4>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                          كود: {item.patientCode || 'P-00'}
+                        </span>
+                      </div>
+
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded-full font-bold shrink-0 ${
+                          item.daysRemaining === 0
+                            ? 'bg-rose-500 text-white animate-pulse'
+                            : item.daysRemaining === 1
+                            ? 'bg-amber-500 text-slate-950 font-black'
+                            : 'bg-purple-100 dark:bg-purple-500/20 text-purple-800 dark:text-purple-300'
+                        }`}
+                      >
+                        {item.daysRemaining === 0
+                          ? 'اليوم ⚠️'
+                          : item.daysRemaining === 1
+                          ? 'غداً ⏰'
+                          : 'متبقي يومين 🗓️'}
+                      </span>
+                    </div>
+
+                    <div className="text-[11px] text-slate-600 dark:text-slate-300 space-y-0.5 bg-white dark:bg-black/30 p-2 rounded-xl border border-slate-200/60 dark:border-white/5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400">تاريخ المتابعة:</span>
+                        <span className="font-bold text-slate-800 dark:text-slate-200 font-mono" dir="ltr">
+                          {item.dueDate}
+                        </span>
+                      </div>
+                      {item.diagnosis && (
+                        <div className="truncate">
+                          <span className="text-slate-400">التشخيص: </span>
+                          <span>{item.diagnosis}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDashboardSendWhatsapp(item.phone, item.patientName, item.dueDate)}
+                      className="w-full py-1.5 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                      title="إرسال تذكير المتابعة عبر واتساب"
+                    >
+                      <span className="material-symbols-outlined text-sm">chat</span>
+                      <span>إرسال تذكير واتساب 💬</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-6 text-center bg-slate-50 dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 space-y-1">
+                <span className="material-symbols-outlined text-2xl text-emerald-500">task_alt</span>
+                <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  لا توجد متابعات عاجلة خلال الـ 3 أيام القادمة (أقل من 3 أيام)
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  جميع المتابعات المجدولة تقع في مواعيد أبعد أو مسجلة بالكامل.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       {/* =========================================================================
           4. REVENUE INDICATOR & PERFORMANCE CARD (WEEKLY / MONTHLY)
@@ -1814,6 +1674,14 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* WhatsApp Action Feedback Toast */}
+      {dashboardWhatsappToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-emerald-700 text-white text-xs font-bold px-4 py-3 rounded-2xl shadow-2xl border border-emerald-400 flex items-center gap-2 animate-in slide-in-from-bottom-4">
+          <span className="material-symbols-outlined text-base">chat</span>
+          <span>{dashboardWhatsappToast}</span>
         </div>
       )}
     </div>

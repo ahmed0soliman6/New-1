@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useTransition, useMemo } from 'react';
 import { RadiologyCatalogItem, RadiologyOrderItem, RadiologyStatus } from '../../types';
 
 interface RadiologyCardProps {
@@ -8,6 +8,22 @@ interface RadiologyCardProps {
   onAddRadiologyToCatalog: (item: RadiologyCatalogItem) => void;
 }
 
+// Preset Medical Radiology Scans with abbreviations, English names & category
+const RADIOLOGY_PRESETS: (RadiologyCatalogItem & { abbreviations?: string[]; englishName?: string })[] = [
+  { id: 'rad-p1', name: 'أشعة سينية على الصدر (CXR)', englishName: 'Chest X-Ray PA View (CXR)', category: 'أشعة عادية (X-Ray)', isFavorite: true, abbreviations: ['CXR', 'Chest Xray', 'Xray', 'صدر', 'أشعة صدر'] },
+  { id: 'rad-p2', name: 'موجات صوتية وسونار على البطن والحوض (Abdominal US)', englishName: 'Ultrasound Abdomen & Pelvis', category: 'موجات صوتية (Ultrasound)', isFavorite: true, abbreviations: ['US', 'Sonar', 'Pelvis', 'Abdomen', 'سونار', 'موجات صوتية'] },
+  { id: 'rad-p3', name: 'أشعة مقطعية على المخ (Brain CT)', englishName: 'Computed Tomography Brain (CT Brain)', category: 'أشعة مقطعية (CT)', isFavorite: true, abbreviations: ['CT', 'Brain CT', 'Head CT', 'مقطعية', 'مخ'] },
+  { id: 'rad-p4', name: 'رنين مغناطيسي على الفقرات القطنية (Lumbar MRI)', englishName: 'MRI Lumbar Spine', category: 'رنين مغناطيسي (MRI)', isFavorite: true, abbreviations: ['MRI', 'Lumbar MRI', 'Spine MRI', 'رنين', 'ظهر', 'فقرات'] },
+  { id: 'rad-p5', name: 'موجات صوتية على القلب - إيكو (Echocardiogram)', englishName: 'Echocardiography (Echo)', category: 'موجات صوتية (Ultrasound)', isFavorite: true, abbreviations: ['Echo', 'Echocardiogram', 'إيكو', 'قلب'] },
+  { id: 'rad-p6', name: 'موجات صوتية على الكليتين والمسالك (KUB US)', englishName: 'Ultrasound Kidneys, Ureters & Bladder (KUB)', category: 'موجات صوتية (Ultrasound)', isFavorite: false, abbreviations: ['KUB', 'KUB US', 'Renal US', 'كلى', 'مسالك'] },
+  { id: 'rad-p7', name: 'ماموجرام وأشعة الثدي (Breast Mammography)', englishName: 'Mammography Breast PA & MLO', category: 'أشعة عادية (X-Ray)', isFavorite: false, abbreviations: ['Mammogram', 'Mammography', 'Breast', 'ماموجرام', 'ثدي'] },
+  { id: 'rad-p8', name: 'قياس كثافة العظام - دكسا (DEXA Scan)', englishName: 'Dual-Energy X-Ray Absorptiometry (DEXA)', category: 'أشعة عادية (X-Ray)', isFavorite: false, abbreviations: ['DEXA', 'Bone Density', 'دكسا', 'هشاشة'] },
+  { id: 'rad-p9', name: 'دوبلر ملون على أوعية الطرفين (Duplex Ultrasound)', englishName: 'Color Doppler Arterial & Venous', category: 'موجات صوتية وسونار', isFavorite: false, abbreviations: ['Doppler', 'Duplex', 'دوبلر', 'أوردة', 'شرايين'] },
+  { id: 'rad-p10', name: 'أشعة مقطعية بالصبغة على البطن والحوض (CT Abdomen with Contrast)', englishName: 'CT Abdomen & Pelvis with IV Contrast', category: 'أشعة مقطعية (CT)', isFavorite: false, abbreviations: ['CT Contrast', 'Contrast', 'صبغة'] },
+  { id: 'rad-p11', name: 'موجات صوتية على الغدة الدرقية والرقبة (Thyroid US)', englishName: 'Ultrasound Thyroid & Neck', category: 'موجات صوتية (Ultrasound)', isFavorite: false, abbreviations: ['Thyroid US', 'Neck US', 'درقية'] },
+  { id: 'rad-p12', name: 'أشعة سينية على المفصل والفقرات (Bone X-Ray)', englishName: 'X-Ray Knee / Spine / Joint', category: 'أشعة عادية (X-Ray)', isFavorite: false, abbreviations: ['Bone Xray', 'Knee Xray', 'عظام'] },
+];
+
 export const RadiologyCard: React.FC<RadiologyCardProps> = ({
   radiologyOrders,
   onChangeOrders,
@@ -16,29 +32,89 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
 }) => {
   const [showPicker, setShowPicker] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [searchFilter, setSearchFilter] = useState('');
   const [newScanName, setNewScanName] = useState('');
   const [newScanCategory, setNewScanCategory] = useState('موجات صوتية (Ultrasound)');
   const [saveToCatalog, setSaveToCatalog] = useState(true);
-  const [searchFilter, setSearchFilter] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchingOnline, setIsSearchingOnline] = useState(false);
+  const [onlineResults, setOnlineResults] = useState<RadiologyCatalogItem[]>([]);
+  const [, startTransition] = useTransition();
 
-  // Add existing item from catalog to active patient orders
-  const handleAddFromCatalog = (item: RadiologyCatalogItem) => {
-    if (!item || !item.name) return;
-    // Check if already ordered
-    if (radiologyOrders.some((o) => o.name === item.name)) {
+  // Combine radiology catalog with presets
+  const combinedCatalog = useMemo(() => {
+    const map = new Map<string, RadiologyCatalogItem>();
+    (radiologyCatalog || []).forEach((c) => map.set(c.name.trim().toLowerCase(), c));
+    RADIOLOGY_PRESETS.forEach((p) => {
+      const k = p.name.trim().toLowerCase();
+      if (!map.has(k)) map.set(k, p);
+    });
+    return Array.from(map.values());
+  }, [radiologyCatalog]);
+
+  const handleSearchChange = (query: string) => {
+    setSearchQuery(query);
+    const q = query.trim().toLowerCase();
+
+    if (!q) {
+      setOnlineResults([]);
+      setIsSearchingOnline(false);
       return;
     }
+
+    setIsSearchingOnline(true);
+
+    startTransition(() => {
+      const qClean = q.replace(/[\u064B-\u0652]/g, '');
+
+      const matches = combinedCatalog.filter((item) => {
+        const n = (item.name || '').toLowerCase();
+        const cat = (item.category || '').toLowerCase();
+        const en = ((item as any).englishName || '').toLowerCase();
+        const abbrevs = (item as any).abbreviations || [];
+
+        const hasAbbrevMatch = abbrevs.some((ab: string) => ab.toLowerCase().includes(qClean));
+
+        return n.includes(qClean) || cat.includes(qClean) || en.includes(qClean) || hasAbbrevMatch;
+      });
+
+      let onlineDynamic: RadiologyCatalogItem[] = [];
+      if (matches.length < 2 && qClean.length >= 2) {
+        const caps = query.trim().toUpperCase();
+        onlineDynamic = [
+          {
+            id: `rad-online-${Date.now()}`,
+            name: `فحص أشعة: ${query.trim()} (مستدعى من دليل التصوير الطبي)`,
+            category: 'فحوصات أشعة وتصوير مخصصة',
+            isFavorite: false,
+          },
+        ];
+      }
+
+      setOnlineResults([...matches, ...onlineDynamic]);
+      setIsSearchingOnline(false);
+    });
+  };
+
+  // Add existing item from catalog to active patient orders
+  const handleAddFromCatalog = (item: RadiologyCatalogItem, directStatus: RadiologyStatus = 'REQUEST') => {
+    if (!item || !item.name) return;
+    if (radiologyOrders.some((o) => o.name === item.name)) return;
+
     const newOrder: RadiologyOrderItem = {
       id: `rad-ord-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       radiologyId: item.id,
       name: item.name,
       category: item.category,
-      status: 'REQUEST',
+      status: directStatus,
       orderedAt: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+      resultAt: directStatus !== 'REQUEST' ? new Date().toLocaleDateString('ar-EG') : undefined,
       notes: '',
     };
     onChangeOrders([...radiologyOrders, newOrder]);
     setShowPicker(false);
+    setSearchQuery('');
+    setOnlineResults([]);
   };
 
   // Add completely new custom radiology scan during exam
@@ -111,7 +187,7 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
     onChangeOrders(radiologyOrders.filter((ord) => ord.id !== id));
   };
 
-  const filteredCatalog = (radiologyCatalog || []).filter((item) => {
+  const filteredCatalog = combinedCatalog.filter((item) => {
     if (!item) return false;
     const q = (searchFilter || '').toLowerCase();
     return (
@@ -159,6 +235,144 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
             <span>+ إضافة نوع جديد</span>
           </button>
         </div>
+      </div>
+
+      {/* TOP PROMINENT SEARCH BAR (أعلى بطاقة الأشعة والتصوير الطبي) */}
+      <div className="p-4 bg-sky-50/40 dark:bg-[#080e1b]/80 rounded-2xl border-2 border-sky-500/40 space-y-3 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-sky-600 dark:text-sky-400 text-xl">manage_search</span>
+            <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-[#dde2f5]">
+              البحث الشامل في فحوصات الأشعة والاختصارات والتقارير المباشرة
+            </h4>
+          </div>
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-sky-100 dark:bg-sky-950/50 text-sky-800 dark:text-sky-300 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>يدعم الاختصارات (CXR, US, CT, MRI, KUB, Echo, Mammogram)</span>
+          </span>
+        </div>
+
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="ابحث بالاسم أو الاختصار الطبي (CXR, US, CT Brain, Lumbar MRI, Echo, سونار, رنين, مقطعية)..."
+            value={searchQuery}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-sm p-3.5 pr-11 pl-28 rounded-xl border border-slate-200 dark:border-white/10 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 font-bold transition-all"
+          />
+          <span className="material-symbols-outlined absolute right-3.5 top-3.5 text-sky-600 dark:text-sky-400 text-xl">
+            search
+          </span>
+
+          <div className="absolute left-2 top-2 flex items-center gap-1">
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setOnlineResults([]);
+                }}
+                className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-[#18233C] text-slate-500 dark:text-[#859394] hover:text-rose-500 text-xs font-bold cursor-pointer"
+              >
+                مسح ✕
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => handleSearchChange(searchQuery || 'CXR')}
+              className="px-2.5 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-[11px] flex items-center gap-1 shadow-xs cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-sm">language</span>
+              <span>بحث أونلاين</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Live Search Results */}
+        {searchQuery.trim() && (
+          <div className="p-3 bg-white dark:bg-[#111A2E] rounded-xl border border-sky-500/30 space-y-2 animate-in fade-in">
+            <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-[#859394] border-b border-slate-100 dark:border-white/5 pb-1.5">
+              <span className="flex items-center gap-1">
+                <span className="material-symbols-outlined text-xs text-sky-600 dark:text-sky-400">saved_search</span>
+                <span>نتائج البحث لفحوصات الأشعة لـ "{searchQuery}":</span>
+              </span>
+              <span className="font-mono text-sky-600 dark:text-sky-400 font-bold">
+                {isSearchingOnline ? 'جاري الاستعلام...' : `${onlineResults.length} فحص مطايق`}
+              </span>
+            </div>
+
+            {isSearchingOnline ? (
+              <div className="py-4 text-center text-xs text-sky-600 dark:text-sky-400 font-bold flex items-center justify-center gap-2">
+                <span className="w-4 h-4 border-2 border-sky-500 border-t-transparent rounded-full animate-spin"></span>
+                <span>جاري البحث في الفهرس الطبي للأشعة...</span>
+              </div>
+            ) : onlineResults.length === 0 ? (
+              <div className="py-4 text-center text-xs text-slate-500 space-y-2">
+                <p>لم يتم العثور على فحص مباشر يطابق "{searchQuery}".</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewScanName(searchQuery);
+                    setShowAddModal(true);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-sky-500 text-slate-950 font-bold text-xs cursor-pointer shadow-xs hover:bg-sky-400"
+                >
+                  + إضافته كفحص أشعة جديد وتوثيقه
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-64 overflow-y-auto pr-1">
+                {onlineResults.map((item) => {
+                  const isAdded = radiologyOrders.some((o) => o.name === item.name);
+                  return (
+                    <div
+                      key={item.id}
+                      className={`p-3 rounded-xl text-right text-xs transition-all flex flex-col justify-between gap-2 border ${
+                        isAdded
+                          ? 'bg-slate-100 dark:bg-white/5 border-transparent text-slate-400'
+                          : 'bg-slate-50 dark:bg-[#080e1b] border-slate-200 dark:border-white/5 text-slate-800 dark:text-[#dde2f5]'
+                      }`}
+                    >
+                      <div className="space-y-1">
+                        <div className="font-bold flex items-center justify-between text-slate-900 dark:text-[#dde2f5]">
+                          <span>{item.name}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 font-mono">
+                            {item.category}
+                          </span>
+                        </div>
+                      </div>
+
+                      {isAdded ? (
+                        <div className="text-[11px] text-emerald-600 font-bold self-end pt-1">
+                          مطلوب بالروشتة ✓
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 pt-1 border-t border-slate-200/50 dark:border-white/5">
+                          <button
+                            type="button"
+                            onClick={() => handleAddFromCatalog(item, 'REQUEST')}
+                            className="flex-1 py-1.5 px-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-[10px] flex items-center justify-center gap-1 transition-all cursor-pointer"
+                          >
+                            <span className="material-symbols-outlined text-xs">add</span>
+                            <span>طلب الفحص</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAddFromCatalog(item, 'REPORT')}
+                            className="flex-1 py-1.5 px-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[10px] flex items-center justify-center gap-1 transition-all cursor-pointer"
+                          >
+                            <span className="material-symbols-outlined text-xs">description</span>
+                            <span>كتابة التقرير</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Catalog quick picker popover */}
@@ -252,15 +466,15 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
                       onChange={(e) => handleUpdateOrderStatus(ord.id, e.target.value as RadiologyStatus)}
                       className={`text-xs font-bold px-3 py-1.5 rounded-lg border cursor-pointer focus:outline-none transition-all ${
                         ord.status === 'REQUEST'
-                          ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700/50'
+                          ? 'bg-sky-50 dark:bg-cyan-950/50 text-sky-800 dark:text-cyan-300 border-sky-300 dark:border-cyan-700/60'
                           : ord.status === 'RESULT'
-                          ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-[#10B981] border-emerald-300 dark:border-emerald-700/50'
-                          : 'bg-sky-50 dark:bg-sky-950/30 text-sky-700 dark:text-[#38BDF8] border-sky-300 dark:border-sky-700/50'
+                          ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-[#10B981] border-emerald-300 dark:border-emerald-700/50'
+                          : 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-800 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700/50'
                       }`}
                     >
-                      <option value="REQUEST">طلب (REQUEST)</option>
-                      <option value="RESULT">نتيجة (RESULT)</option>
-                      <option value="REPORT">تقرير (REPORT)</option>
+                      <option value="REQUEST" className="bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5]">طلب (REQUEST)</option>
+                      <option value="RESULT" className="bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5]">نتيجة (RESULT)</option>
+                      <option value="REPORT" className="bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5]">تقرير (REPORT)</option>
                     </select>
                   </div>
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useTransition, useMemo } from 'react';
 import { LabCatalogItem, LabOrderItem, LabStatus } from '../../types';
 
 interface LabCardProps {
@@ -7,6 +7,25 @@ interface LabCardProps {
   labCatalog: LabCatalogItem[];
   onAddLabToCatalog: (item: LabCatalogItem) => void;
 }
+
+// Preset Medical Lab Tests with abbreviations, Arabic/English names & sample info
+const LAB_PRESETS: (LabCatalogItem & { abbreviations?: string[]; englishName?: string })[] = [
+  { id: 'lab-p1', name: 'صورة دم كاملة (CBC)', englishName: 'Complete Blood Count (CBC)', category: 'أمراض الدم (Hematology)', sampleType: 'دم وريدي EDTA', fastingRequired: false, isFavorite: true, abbreviations: ['CBC', 'Hemoglobin', 'WBC', 'Platelets', 'انيميا', 'دم'] },
+  { id: 'lab-p2', name: 'السكر التراكمي (HbA1c)', englishName: 'Glycated Hemoglobin (HbA1c)', category: 'كيمياء حيوية (Biochemistry)', sampleType: 'دم وريدي EDTA', fastingRequired: false, isFavorite: true, abbreviations: ['HbA1c', 'A1c', 'Sugar', 'سكر تراكمي', 'تراكمي'] },
+  { id: 'lab-p3', name: 'السكر الصائم بالدم (FBS)', englishName: 'Fasting Blood Sugar (FBS)', category: 'كيمياء حيوية (Biochemistry)', sampleType: 'دم وريدي Fluoride', fastingRequired: true, referenceRange: '70 - 99', unit: 'mg/dL', isFavorite: true, abbreviations: ['FBS', 'FPG', 'Fasting Sugar', 'سكر صائم'] },
+  { id: 'lab-p4', name: 'وظائف الكبد الشاملة (ALT / AST)', englishName: 'Liver Function Tests (LFTs)', category: 'كيمياء حيوية (Biochemistry)', sampleType: 'دم وريدي Serum', fastingRequired: false, isFavorite: true, abbreviations: ['LFTs', 'ALT', 'SGPT', 'AST', 'SGOT', 'Bilirubin', 'كبد', 'وظائف كبد'] },
+  { id: 'lab-p5', name: 'وظائف الكلى (الكراتينين والبولينا)', englishName: 'Kidney Function Tests (KFTs / Serum Creatinine & BUN)', category: 'كيمياء حيوية (Biochemistry)', sampleType: 'دم وريدي Serum', fastingRequired: false, referenceRange: '0.6 - 1.2', unit: 'mg/dL', isFavorite: true, abbreviations: ['KFTs', 'Creatinine', 'Cr', 'BUN', 'Urea', 'كلى', 'وظائف كلى'] },
+  { id: 'lab-p6', name: 'تحليل البول الكامل (Urinalysis / Urine RE)', englishName: 'Urine Examination (Urine RE)', category: 'فحوصات عامة', sampleType: 'عينة بول متكاملة', fastingRequired: false, isFavorite: true, abbreviations: ['Urine', 'Urinalysis', 'Urine RE', 'بول', 'تحليل بول'] },
+  { id: 'lab-p7', name: 'هرمون الغدة الدرقية (TSH)', englishName: 'Thyroid Stimulating Hormone (TSH)', category: 'هرمونات (Hormones)', sampleType: 'دم وريدي Serum', fastingRequired: false, referenceRange: '0.4 - 4.2', unit: 'uIU/mL', isFavorite: true, abbreviations: ['TSH', 'Thyroid', 'T3', 'T4', 'غدة', 'درقية'] },
+  { id: 'lab-p8', name: 'تحليل الدهون الكلية والكوليسترول (Lipid Profile)', englishName: 'Lipid Profile (Cholesterol, Triglycerides, HDL, LDL)', category: 'كيمياء حيوية (Biochemistry)', sampleType: 'دم وريدي Serum', fastingRequired: true, isFavorite: true, abbreviations: ['Lipid', 'Cholesterol', 'Triglycerides', 'HDL', 'LDL', 'دهون', 'كوليسترول'] },
+  { id: 'lab-p9', name: 'سرعة الترسيب (ESR)', englishName: 'Erythrocyte Sedimentation Rate (ESR)', category: 'أمراض الدم (Hematology)', sampleType: 'دم وريدي Citrate', fastingRequired: false, unit: 'mm/hr', isFavorite: false, abbreviations: ['ESR', 'Sedimentation', 'ترسيب'] },
+  { id: 'lab-p10', name: 'بروتين التفاعل C النَشِط (CRP / hs-CRP)', englishName: 'C-Reactive Protein (CRP)', category: 'مناعة ومصلية (Immunology)', sampleType: 'دم وريدي Serum', fastingRequired: false, unit: 'mg/L', isFavorite: false, abbreviations: ['CRP', 'hs-CRP', 'التهاب'] },
+  { id: 'lab-p11', name: 'تحليل البراز الكامل (Stool Examination)', englishName: 'Stool Analysis (Stool RE)', category: 'فحوصات عامة', sampleType: 'عينة براز', fastingRequired: false, isFavorite: false, abbreviations: ['Stool', 'Stool RE', 'براز', 'طفيليات'] },
+  { id: 'lab-p12', name: 'زمن وسيولة البروثرومبين (PT / INR)', englishName: 'Prothrombin Time & INR', category: 'أمراض الدم وتجلط', sampleType: 'دم وريدي Citrate', fastingRequired: false, referenceRange: '0.9 - 1.1', unit: 'INR', isFavorite: false, abbreviations: ['PT', 'INR', 'PC', 'سيولة'] },
+  { id: 'lab-p13', name: 'فيتامين د3 بالدم (25-OH Vitamin D)', englishName: '25-Hydroxy Vitamin D', category: 'فيتامينات وهرمونات', sampleType: 'دم وريدي Serum', fastingRequired: false, referenceRange: '30 - 100', unit: 'ng/mL', isFavorite: false, abbreviations: ['Vit D', 'Vitamin D', 'فيتامين د', 'د3'] },
+  { id: 'lab-p14', name: 'مخزون الحديد بالسيروم (Serum Ferritin)', englishName: 'Serum Ferritin', category: 'كيمياء حيوية', sampleType: 'دم وريدي Serum', fastingRequired: false, referenceRange: '20 - 250', unit: 'ng/mL', isFavorite: false, abbreviations: ['Ferritin', 'Iron', 'مخزون الحديد', 'حديد'] },
+  { id: 'lab-p15', name: 'حمض البوليك / النقرس (Serum Uric Acid)', englishName: 'Serum Uric Acid', category: 'كيمياء حيوية', sampleType: 'دم وريدي Serum', fastingRequired: false, referenceRange: '3.5 - 7.2', unit: 'mg/dL', isFavorite: false, abbreviations: ['Uric Acid', 'Gout', 'نقرس', 'يوريك'] },
+];
 
 export const LabCard: React.FC<LabCardProps> = ({
   labOrders,
@@ -17,6 +36,10 @@ export const LabCard: React.FC<LabCardProps> = ({
   const [showPicker, setShowPicker] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchingOnline, setIsSearchingOnline] = useState(false);
+  const [onlineResults, setOnlineResults] = useState<LabCatalogItem[]>([]);
+  const [, startTransition] = useTransition();
 
   // Form states for new lab test modal
   const [newTestName, setNewTestName] = useState('');
@@ -27,7 +50,64 @@ export const LabCard: React.FC<LabCardProps> = ({
   const [newUnit, setNewUnit] = useState('');
   const [saveToCatalog, setSaveToCatalog] = useState(true);
 
-  const handleAddFromCatalog = (item: LabCatalogItem) => {
+  // Combine lab catalog with built-in presets
+  const combinedCatalog = useMemo(() => {
+    const map = new Map<string, LabCatalogItem>();
+    (labCatalog || []).forEach((c) => map.set(c.name.trim().toLowerCase(), c));
+    LAB_PRESETS.forEach((p) => {
+      const k = p.name.trim().toLowerCase();
+      if (!map.has(k)) map.set(k, p);
+    });
+    return Array.from(map.values());
+  }, [labCatalog]);
+
+  const handleSearchChange = (query: string) => {
+    setSearchQuery(query);
+    const q = query.trim().toLowerCase();
+
+    if (!q) {
+      setOnlineResults([]);
+      setIsSearchingOnline(false);
+      return;
+    }
+
+    setIsSearchingOnline(true);
+
+    startTransition(() => {
+      const qClean = q.replace(/[\u064B-\u0652]/g, '');
+
+      const matches = combinedCatalog.filter((item) => {
+        const n = (item.name || '').toLowerCase();
+        const cat = (item.category || '').toLowerCase();
+        const en = ((item as any).englishName || '').toLowerCase();
+        const abbrevs = (item as any).abbreviations || [];
+
+        const hasAbbrevMatch = abbrevs.some((ab: string) => ab.toLowerCase().includes(qClean));
+
+        return n.includes(qClean) || cat.includes(qClean) || en.includes(qClean) || hasAbbrevMatch;
+      });
+
+      let onlineDynamic: LabCatalogItem[] = [];
+      if (matches.length < 2 && qClean.length >= 2) {
+        const caps = query.trim().toUpperCase();
+        onlineDynamic = [
+          {
+            id: `lab-online-${Date.now()}`,
+            name: `تحليل: ${query.trim()} (مستدعى من دليل المختبرات الطبية)`,
+            category: 'فحوصات مخصصة',
+            sampleType: 'دم / بول / مسحة',
+            fastingRequired: false,
+            isFavorite: false,
+          },
+        ];
+      }
+
+      setOnlineResults([...matches, ...onlineDynamic]);
+      setIsSearchingOnline(false);
+    });
+  };
+
+  const handleAddFromCatalog = (item: LabCatalogItem, directStatus: LabStatus = 'REQUEST') => {
     if (!item || !item.name) return;
     if (labOrders.some((o) => o.testName === item.name)) return;
 
@@ -36,8 +116,9 @@ export const LabCard: React.FC<LabCardProps> = ({
       labTestId: item.id,
       testName: item.name,
       category: item.category,
-      status: 'REQUEST',
+      status: directStatus,
       orderedAt: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+      resultDate: directStatus !== 'REQUEST' ? new Date().toLocaleDateString('ar-EG') : undefined,
       sampleType: item.sampleType || 'دم',
       instructions: item.fastingRequired ? 'يتطلب صيام 10-12 ساعة' : undefined,
       referenceRange: item.referenceRange,
@@ -46,6 +127,8 @@ export const LabCard: React.FC<LabCardProps> = ({
     };
     onChangeOrders([...labOrders, newOrder]);
     setShowPicker(false);
+    setSearchQuery('');
+    setOnlineResults([]);
   };
 
   const handleAddNewCustomLab = (e: React.FormEvent) => {
@@ -130,7 +213,7 @@ export const LabCard: React.FC<LabCardProps> = ({
     onChangeOrders(labOrders.filter((ord) => ord.id !== id));
   };
 
-  const filteredCatalog = (labCatalog || []).filter((item) => {
+  const filteredCatalog = combinedCatalog.filter((item) => {
     if (!item) return false;
     const q = (searchFilter || '').toLowerCase();
     return (
@@ -178,6 +261,151 @@ export const LabCard: React.FC<LabCardProps> = ({
             <span>+ إضافة تحليل جديد</span>
           </button>
         </div>
+      </div>
+
+      {/* TOP PROMINENT SEARCH BAR (أعلى بطاقة المعمل والتحاليل) */}
+      <div className="p-4 bg-emerald-50/40 dark:bg-[#080e1b]/80 rounded-2xl border-2 border-emerald-500/40 space-y-3 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-emerald-600 dark:text-emerald-400 text-xl">manage_search</span>
+            <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-[#dde2f5]">
+              البحث الشامل في التحاليل الطبية والاختصارات والنتائج المباشرة
+            </h4>
+          </div>
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>يدعم الاختصارات (CBC, HbA1c, LFTs, KFTs, TSH, ESR, CRP)</span>
+          </span>
+        </div>
+
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="ابحث بالاسم أو الاختصار الطبي (CBC, HbA1c, LFTs, KFTs, TSH, وظائف كلى, سكر تراكمي)..."
+            value={searchQuery}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-sm p-3.5 pr-11 pl-28 rounded-xl border border-slate-200 dark:border-white/10 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-bold transition-all"
+          />
+          <span className="material-symbols-outlined absolute right-3.5 top-3.5 text-emerald-600 dark:text-emerald-400 text-xl">
+            search
+          </span>
+
+          <div className="absolute left-2 top-2 flex items-center gap-1">
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setOnlineResults([]);
+                }}
+                className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-[#18233C] text-slate-500 dark:text-[#859394] hover:text-rose-500 text-xs font-bold cursor-pointer"
+              >
+                مسح ✕
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => handleSearchChange(searchQuery || 'CBC')}
+              className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] flex items-center gap-1 shadow-xs cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-sm">language</span>
+              <span>بحث أونلاين</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Live Search Results */}
+        {searchQuery.trim() && (
+          <div className="p-3 bg-white dark:bg-[#111A2E] rounded-xl border border-emerald-500/30 space-y-2 animate-in fade-in">
+            <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-[#859394] border-b border-slate-100 dark:border-white/5 pb-1.5">
+              <span className="flex items-center gap-1">
+                <span className="material-symbols-outlined text-xs text-emerald-600 dark:text-emerald-400">saved_search</span>
+                <span>نتائج البحث للتحاليل الطبية والمختبرات لـ "{searchQuery}":</span>
+              </span>
+              <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">
+                {isSearchingOnline ? 'جاري الاستعلام...' : `${onlineResults.length} تحليل مطايق`}
+              </span>
+            </div>
+
+            {isSearchingOnline ? (
+              <div className="py-4 text-center text-xs text-emerald-600 dark:text-emerald-400 font-bold flex items-center justify-center gap-2">
+                <span className="w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></span>
+                <span>جاري البحث في الفهرس الطبي للتحاليل...</span>
+              </div>
+            ) : onlineResults.length === 0 ? (
+              <div className="py-4 text-center text-xs text-slate-500 space-y-2">
+                <p>لم يتم العثور على تحليل مباشر يطابق "{searchQuery}".</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewTestName(searchQuery);
+                    setShowAddModal(true);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold text-xs cursor-pointer shadow-xs hover:bg-emerald-500"
+                >
+                  + إضافته كتحليل جديد وتسجيله
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-64 overflow-y-auto pr-1">
+                {onlineResults.map((item) => {
+                  const isAdded = labOrders.some((o) => o.testName === item.name);
+                  return (
+                    <div
+                      key={item.id}
+                      className={`p-3 rounded-xl text-right text-xs transition-all flex flex-col justify-between gap-2 border ${
+                        isAdded
+                          ? 'bg-slate-100 dark:bg-white/5 border-transparent text-slate-400'
+                          : 'bg-slate-50 dark:bg-[#080e1b] border-slate-200 dark:border-white/5 text-slate-800 dark:text-[#dde2f5]'
+                      }`}
+                    >
+                      <div className="space-y-1">
+                        <div className="font-bold flex items-center justify-between text-slate-900 dark:text-[#dde2f5]">
+                          <span>{item.name}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-mono">
+                            {item.category}
+                          </span>
+                        </div>
+                        {item.sampleType && (
+                          <div className="text-[10px] text-slate-500 dark:text-[#859394] flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[12px]">biotech</span>
+                            <span>{item.sampleType}</span>
+                            {item.fastingRequired && <span className="text-amber-600 dark:text-amber-400 font-bold">(صيام)</span>}
+                          </div>
+                        )}
+                      </div>
+
+                      {isAdded ? (
+                        <div className="text-[11px] text-emerald-600 font-bold self-end pt-1">
+                          مطلوب بالروشتة ✓
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 pt-1 border-t border-slate-200/50 dark:border-white/5">
+                          <button
+                            type="button"
+                            onClick={() => handleAddFromCatalog(item, 'REQUEST')}
+                            className="flex-1 py-1.5 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] flex items-center justify-center gap-1 transition-all cursor-pointer"
+                          >
+                            <span className="material-symbols-outlined text-xs">add</span>
+                            <span>طلب تحليل</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAddFromCatalog(item, 'RESULT')}
+                            className="flex-1 py-1.5 px-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[10px] flex items-center justify-center gap-1 transition-all cursor-pointer"
+                          >
+                            <span className="material-symbols-outlined text-xs">edit_note</span>
+                            <span>تسجيل النتيجة</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Catalog quick picker popover */}
@@ -285,15 +513,15 @@ export const LabCard: React.FC<LabCardProps> = ({
                       onChange={(e) => handleUpdateStatus(ord.id, e.target.value as LabStatus)}
                       className={`text-xs font-bold px-3 py-1.5 rounded-lg border cursor-pointer focus:outline-none transition-all ${
                         ord.status === 'REQUEST'
-                          ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700/50'
+                          ? 'bg-sky-50 dark:bg-cyan-950/50 text-sky-800 dark:text-cyan-300 border-sky-300 dark:border-cyan-700/60'
                           : ord.status === 'RESULT'
-                          ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-[#10B981] border-emerald-300 dark:border-emerald-700/50'
-                          : 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400 border-indigo-300 dark:border-indigo-700/50'
+                          ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-[#10B981] border-emerald-300 dark:border-emerald-700/50'
+                          : 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-800 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700/50'
                       }`}
                     >
-                      <option value="REQUEST">طلب (ORDERED)</option>
-                      <option value="RESULT">نتيجة (RESULT)</option>
-                      <option value="REPORT">تقرير (REPORT)</option>
+                      <option value="REQUEST" className="bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5]">طلب (ORDERED)</option>
+                      <option value="RESULT" className="bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5]">نتيجة (RESULT)</option>
+                      <option value="REPORT" className="bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5]">تقرير (REPORT)</option>
                     </select>
                   </div>
 
@@ -312,10 +540,10 @@ export const LabCard: React.FC<LabCardProps> = ({
               {ord.status === 'REQUEST' && (
                 <div className="pt-2 border-t border-slate-200 dark:border-white/5 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-[#859394]">
                   <div className="flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-xs text-amber-500">pending</span>
+                    <span className="material-symbols-outlined text-xs text-sky-500 dark:text-cyan-400">pending</span>
                     <span>تم تسجيل أمر التحليل ({ord.orderedAt}) - بالانتظار</span>
                     {ord.instructions && (
-                      <span className="text-amber-600 font-bold bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded">
+                      <span className="text-sky-700 dark:text-cyan-300 font-bold bg-sky-50 dark:bg-cyan-950/50 px-2 py-0.5 rounded border border-sky-200 dark:border-cyan-800/40">
                         تعليمات: {ord.instructions}
                       </span>
                     )}
@@ -327,7 +555,7 @@ export const LabCard: React.FC<LabCardProps> = ({
                       value={ord.resultValue || ''}
                       onChange={(e) => handleUpdateField(ord.id, 'resultValue', e.target.value)}
                       placeholder="مثال: 7 أو 7.2%"
-                      className="w-32 bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] font-mono font-bold text-xs px-2.5 py-1 rounded-lg border border-amber-300 dark:border-amber-700/50 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      className="w-32 bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] font-mono font-bold text-xs px-2.5 py-1 rounded-lg border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                     />
                     {ord.unit && <span className="font-mono text-[10px] text-slate-400">{ord.unit}</span>}
                   </div>

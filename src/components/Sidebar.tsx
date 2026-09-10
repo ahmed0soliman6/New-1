@@ -4,8 +4,6 @@ import { CLINIC_INFO } from '../data/previewClinicData';
 import { usePermissions } from '../context/AuthContext';
 import { ROLE_LABELS } from '../permissions';
 import { SoliMedicalLogo } from './SoliMedicalLogo';
-import { usePWAInstall } from '../hooks/usePWAInstall';
-import { PWAInstallModal } from './PWAInstallModal';
 
 interface SidebarProps {
   activeScreen: ScreenType;
@@ -16,6 +14,8 @@ interface SidebarProps {
   onCloseMobile?: () => void;
   isDark: boolean;
   onToggleTheme: () => void;
+  doctorStatus?: 'available' | 'break';
+  onToggleDoctorStatus?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -27,11 +27,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCloseMobile,
   isDark,
   onToggleTheme,
+  doctorStatus: externalDoctorStatus,
+  onToggleDoctorStatus,
 }) => {
   const { role, userProfile, canAccess } = usePermissions();
-  const [doctorStatus, setDoctorStatus] = useState<'available' | 'break'>('available');
-  const [showPwaModal, setShowPwaModal] = useState(false);
-  const { isInstalled, canInstallPrompt, installApp } = usePWAInstall();
+  const [internalDoctorStatus, setInternalDoctorStatus] = useState<'available' | 'break'>('available');
+  
+  const doctorStatus = externalDoctorStatus || internalDoctorStatus;
+  const handleToggleDoctor = () => {
+    if (onToggleDoctorStatus) {
+      onToggleDoctorStatus();
+    } else {
+      setInternalDoctorStatus((prev) => (prev === 'available' ? 'break' : 'available'));
+    }
+  };
 
   const allNavItems: { id: ScreenType; label: string; icon: string; badge?: number | string }[] = [
     { id: 'dashboard', label: 'لوحة التحكم', icon: 'space_dashboard' },
@@ -149,31 +158,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
         </nav>
 
-        {/* Doctor Availability, PWA Install, User Identity & Logout */}
+        {/* Doctor Availability, User Identity & Logout */}
         <div className="p-3 bg-[#080e1b] border-t border-white/10 space-y-2">
-          {/* PWA Install Quick Button */}
-          <button
-            type="button"
-            onClick={async () => {
-              if (canInstallPrompt) {
-                await installApp();
-              } else {
-                setShowPwaModal(true);
-              }
-            }}
-            className="w-full p-2.5 rounded-xl bg-gradient-to-r from-[#18233C] to-[#121c30] hover:from-[#00c2cb]/20 hover:to-[#18233C] border border-[#00c2cb]/40 text-[#00c2cb] hover:text-[#45dee7] flex items-center justify-between text-xs font-bold transition-all shadow-sm cursor-pointer group"
-          >
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-lg text-[#00c2cb] group-hover:scale-110 transition-transform">
-                download_for_offline
-              </span>
-              <span>{isInstalled ? 'تثبيت التطبيق على جهاز آخر' : 'تثبيت تطبيق العيادة 📲'}</span>
-            </div>
-            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-[#00c2cb]/20 text-[#45dee7] font-semibold border border-[#00c2cb]/30">
-              {isInstalled ? 'مثبّت ✓' : 'تثبيت'}
-            </span>
-          </button>
-
           {role !== 'secretary' && (
             <div className="p-2 rounded-xl bg-[#111A2E] flex items-center justify-between border border-white/10 shadow-xs">
               <div className="flex items-center gap-2">
@@ -189,9 +175,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </span>
               </div>
               <button
-                onClick={() =>
-                  setDoctorStatus((prev) => (prev === 'available' ? 'break' : 'available'))
-                }
+                type="button"
+                onClick={handleToggleDoctor}
                 className="px-2.5 py-1 bg-[#18233C] hover:bg-[#242a38] text-[#cbd5e1] hover:text-white rounded-lg text-xs font-medium transition-colors cursor-pointer border border-white/5"
               >
                 {doctorStatus === 'available' ? 'استراحة' : 'تفعيل'}
@@ -229,9 +214,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
       </aside>
-
-      {/* PWA Installation Modal & Guide */}
-      <PWAInstallModal isOpen={showPwaModal} onClose={() => setShowPwaModal(false)} />
     </>
   );
 };

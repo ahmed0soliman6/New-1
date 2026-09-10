@@ -171,14 +171,20 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
   const [showPrintPreviewModal, setShowPrintPreviewModal] = useState(false);
 
   const handleDirectPrint = () => {
-    printPrescriptionDocument({
-      config: prescriptionConfig,
-      patient,
-      items: activePrescription,
-      diagnoses: patientDiagnoses,
-      lifestyleAdvice,
-      followupDate,
-    });
+    try {
+      printPrescriptionDocument({
+        config: prescriptionConfig,
+        patient,
+        items: activePrescription,
+        diagnoses: patientDiagnoses,
+        lifestyleAdvice,
+        followupDate,
+      });
+    } catch (err) {
+      console.warn('Iframe print error:', err);
+    }
+    // Direct call to native window.print() guarantees browser print dialog opens for the A5 prescription pad
+    window.print();
   };
 
   const handleExportPDF = () => {
@@ -840,35 +846,54 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
       <div className="bg-white dark:bg-[#111A2E] p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs space-y-4">
         <div className="flex flex-col gap-4">
           {/* Patient Details Header */}
-          <div className="flex items-start justify-between gap-3 min-w-0">
-            <div className="flex items-start gap-3.5 min-w-0 flex-1">
+          <div className="flex flex-col md:flex-row md:items-start justify-between gap-3 sm:gap-4 min-w-0">
+            <div className="flex items-start gap-3.5 min-w-0 flex-1 w-full">
               <div className="w-12 h-12 rounded-2xl bg-teal-50 dark:bg-[#00c2cb]/15 text-[#008f97] dark:text-[#00c2cb] flex items-center justify-center font-bold text-lg shadow-xs shrink-0">
                 {(editablePatientName || patient.name || 'م').charAt(0)}
               </div>
 
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1 space-y-2">
                 {!isEditingPatientInfo ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-[#dde2f5] truncate">
-                      {editablePatientName}
-                    </h1>
-                    <span className="px-2 py-0.5 rounded-full bg-teal-100 dark:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#45dee7] text-[11px] font-bold">
-                      ملف رقم: #{patient.fileNumber || 1}
-                    </span>
-                    <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-[#bbc9ca] text-[11px] font-mono">
-                      {patient.medicalCode}
-                    </span>
-                    <span className="text-xs text-slate-500 dark:text-[#859394]">
-                      {editablePatientAge} سنة • {patient.gender === 'female' ? 'أنثى' : 'ذكر'} • فصيلة الدم: <strong className="text-[#008f97] dark:text-[#00c2cb] font-mono font-bold">{patient.bloodType || 'غير محدد'}</strong> • العنوان: <strong className="text-slate-700 dark:text-[#dde2f5]">{patient.address || 'غير محدد'}</strong>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setIsEditingPatientInfo(true)}
-                      className="text-[11px] text-[#008f97] dark:text-[#00c2cb] hover:underline font-bold px-1"
-                      title="تعديل اسم أو سن أو هاتف المريض"
-                    >
-                      [تعديل البيانات الأساسية]
-                    </button>
+                  <div className="space-y-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                      <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-[#dde2f5] truncate max-w-full">
+                        {editablePatientName}
+                      </h1>
+                      <span className="px-2.5 py-0.5 rounded-full bg-teal-100 dark:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#45dee7] text-[11px] font-bold whitespace-nowrap">
+                        ملف رقم: #{patient.fileNumber || 1}
+                      </span>
+                      <span className="px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-[#bbc9ca] text-[11px] font-mono whitespace-nowrap">
+                        {patient.medicalCode}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600 dark:text-[#859394] leading-relaxed">
+                      <span className="whitespace-nowrap">{editablePatientAge} سنة</span>
+                      <span>•</span>
+                      <span className="whitespace-nowrap">{patient.gender === 'female' ? 'أنثى' : 'ذكر'}</span>
+                      <span>•</span>
+                      <span className="whitespace-nowrap">
+                        فصيلة الدم:{' '}
+                        <strong className="text-[#008f97] dark:text-[#00c2cb] font-mono font-bold">
+                          {patient.bloodType || 'غير محدد'}
+                        </strong>
+                      </span>
+                      <span>•</span>
+                      <span>
+                        العنوان:{' '}
+                        <strong className="text-slate-700 dark:text-[#dde2f5]">
+                          {patient.address || 'غير محدد'}
+                        </strong>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingPatientInfo(true)}
+                        className="text-[11px] text-[#008f97] dark:text-[#00c2cb] hover:underline font-bold px-1 inline-block whitespace-nowrap"
+                        title="تعديل اسم أو سن أو هاتف المريض"
+                      >
+                        [تعديل البيانات الأساسية]
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="bg-white dark:bg-[#111A2E] p-4 sm:p-6 rounded-2xl shadow-md border-2 border-[#00c2cb] flex flex-col gap-4 w-full text-right mt-2 animate-in fade-in">
@@ -1004,17 +1029,17 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                 )}
 
                 {/* Badges: Allergies & Chronic Diseases */}
-                <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                <div className="flex flex-wrap items-center gap-2 pt-1">
                   {patient.allergies && patient.allergies.length > 0 && (
                     <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/40 text-rose-700 dark:text-rose-400 text-[11px] font-bold">
-                      <span className="material-symbols-outlined text-sm">warning</span>
-                      <span>حساسية: {patient.allergies.join('، ')}</span>
+                      <span className="material-symbols-outlined text-sm shrink-0">warning</span>
+                      <span className="leading-snug">حساسية: {patient.allergies.join('، ')}</span>
                     </div>
                   )}
 
                   {editablePatientPhone && (
                     <div className="text-[11px] text-slate-500 dark:text-[#859394] flex items-center gap-1 bg-slate-100 dark:bg-white/5 px-2.5 py-1 rounded-lg">
-                      <span className="material-symbols-outlined text-xs text-teal-600">call</span>
+                      <span className="material-symbols-outlined text-xs text-teal-600 shrink-0">call</span>
                       <span className="font-mono">{editablePatientPhone}</span>
                     </div>
                   )}
@@ -1022,8 +1047,23 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
               </div>
             </div>
 
-            {/* Close / Select Another Patient Button */}
-            <div className="flex items-center gap-2 shrink-0">
+            {/* Action Buttons: Medical Dossier & Close / Select Another Patient */}
+            <div className="grid grid-cols-2 md:flex items-center gap-2 w-full md:w-auto shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100 dark:border-white/5">
+              <button
+                type="button"
+                onClick={() => {
+                  if (onSelectPatient && patient) {
+                    onSelectPatient(patient);
+                  }
+                  onNavigate('patients');
+                }}
+                className="w-full md:w-auto px-3 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+                title="فتح وتحميل الملف الطبي الشامل للمريض (PDF)"
+              >
+                <span className="material-symbols-outlined text-sm shrink-0">folder_shared</span>
+                <span className="whitespace-nowrap truncate">الملف الطبي الشامل</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => {
@@ -1031,11 +1071,11 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                     onSelectPatient(null as any);
                   }
                 }}
-                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
+                className="w-full md:w-auto px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
                 title="إغلاق هذا الكشف والعودة لاختيار مريض"
               >
-                <span className="material-symbols-outlined text-sm">close</span>
-                <span>إغلاق الكشف / مريض آخر</span>
+                <span className="material-symbols-outlined text-sm shrink-0">close</span>
+                <span className="whitespace-nowrap truncate">إغلاق الكشف / مريض آخر</span>
               </button>
             </div>
           </div>
@@ -1758,65 +1798,15 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
             </span>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap sm:flex-nowrap">
-            {/* WhatsApp Button on bottom bar */}
-            <button
-              type="button"
-              onClick={() => {
-                if (!patient) {
-                  alert('يرجى ربط الكشف ببيانات مريض أولاً لإرسال الروشتة عبر الواتساب.');
-                  return;
-                }
-                setShowWhatsAppModal(true);
-              }}
-              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
-              title="إرسال الروشتة للمريض عبر واتساب"
-            >
-              <span className="material-symbols-outlined text-base">chat</span>
-              <span>واتساب</span>
-            </button>
-
-            {/* Direct Print Button on bottom bar */}
-            <button
-              type="button"
-              onClick={handleDirectPrint}
-              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-900 dark:bg-slate-700 hover:bg-black dark:hover:bg-slate-600 text-white text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
-              title="الطباعة الفورية مباشرة على الطابعة الموصلة بالجهاز"
-            >
-              <span className="material-symbols-outlined text-base">print</span>
-              <span>طباعة مباشرة</span>
-            </button>
-
-            {/* Preview Button on bottom bar */}
-            <button
-              type="button"
-              onClick={() => setShowPrintPreviewModal(true)}
-              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] hover:bg-slate-200 dark:hover:bg-[#242a38] text-xs font-bold transition-all cursor-pointer border border-slate-200 dark:border-white/5 active:scale-95"
-              title="معاينة شكل التنسيق والهوامش للروشتة"
-            >
-              <span className="material-symbols-outlined text-base">visibility</span>
-              <span>معاينة</span>
-            </button>
-
-            {/* Export PDF Button on bottom bar */}
-            <button
-              type="button"
-              onClick={handleExportPDF}
-              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-950 text-white text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95 dark:bg-slate-800 dark:hover:bg-slate-900"
-              title="تصدير كملف PDF قياس A5 بجودة عالية"
-            >
-              <span className="material-symbols-outlined text-base text-red-400">picture_as_pdf</span>
-              <span>تصدير PDF</span>
-            </button>
-
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             {/* Finish or Next Patient Button */}
             {isExamFinished ? (
               <button
                 type="button"
                 onClick={() => onNavigate('waiting-queue')}
-                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs font-bold shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95"
+                className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-6 py-3 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs sm:text-sm font-bold shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95"
               >
-                <span className="material-symbols-outlined text-base">arrow_forward</span>
+                <span className="material-symbols-outlined text-lg">arrow_forward</span>
                 <span>المريض التالي (الانتظار)</span>
               </button>
             ) : (
@@ -1824,9 +1814,9 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                 <button
                   type="button"
                   onClick={handleFinish}
-                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs font-bold shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95"
+                  className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-6 py-3 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs sm:text-sm font-bold shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95"
                 >
-                  <span className="material-symbols-outlined text-base">task_alt</span>
+                  <span className="material-symbols-outlined text-lg">task_alt</span>
                   <span>إنهاء الكشف وحفظ الزيارة</span>
                 </button>
               </PermissionGate>

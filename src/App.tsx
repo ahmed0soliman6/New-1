@@ -724,10 +724,42 @@ function ClinicApp() {
   const [alertHistory, setAlertHistory] = useState<ClinicAlertPayload[]>([]);
   const [syncStatus, setSyncStatus] = useState<'connected' | 'offline' | 'syncing' | 'error'>(db ? 'connected' : 'offline');
   const [syncErrorDetails, setSyncErrorDetails] = useState<string | null>(null);
+  const [doctorStatus, setDoctorStatus] = useState<'available' | 'break'>('available');
 
   const registerAlert = (alertItem: ClinicAlertPayload) => {
     setCallingBanner(alertItem);
     setAlertHistory((prev) => [alertItem, ...prev.filter((a) => a.id !== alertItem.id)].slice(0, 15));
+  };
+
+  const handleToggleDoctorStatus = () => {
+    setDoctorStatus((prev) => {
+      const next = prev === 'available' ? 'break' : 'available';
+      const alertConfig = loadAlertSettings();
+      if (next === 'break') {
+        if (alertConfig.audioEnabled) {
+          playSingleAlertSound('call');
+        }
+        registerAlert({
+          id: `break-${Date.now()}`,
+          type: 'call',
+          title: 'تنبيه: الطبيب في فترة استراحة ☕',
+          message: 'تم تفعيل وضع الاستراحة للطبيب، يرجى إيقاف تحويل المرضى لغرفة الكشف مؤقتاً لحين عودة الطبيب.',
+          timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+        });
+      } else {
+        if (alertConfig.audioEnabled) {
+          playSingleAlertSound('finish');
+        }
+        registerAlert({
+          id: `avail-${Date.now()}`,
+          type: 'new_visit',
+          title: 'تنبيه: الطبيب متاح للكشف الآن 🟢',
+          message: 'الطبيب جاهز ومستعد لاستقبال وفحص المريض التالي في طابور الانتظار.',
+          timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+        });
+      }
+      return next;
+    });
   };
 
   // Doctor-determined Follow-ups only (from followUps collection & doctor examination schedules)
@@ -1793,6 +1825,8 @@ function ClinicApp() {
         onCloseMobile={() => setIsMobileMenuOpen(false)}
         isDark={theme === 'dark'}
         onToggleTheme={toggleTheme}
+        doctorStatus={doctorStatus}
+        onToggleDoctorStatus={handleToggleDoctorStatus}
       />
 
       {/* Main Content Area */}
@@ -1804,6 +1838,11 @@ function ClinicApp() {
           waitingQueue={queue}
           recentAlerts={alertHistory}
           followUpsList={doctorFollowUpsList}
+          patients={patients}
+          appointments={appointments}
+          transactions={transactions}
+          onSelectPatient={setActiveExamPatient}
+          onStartIntakeFromAppointment={handleStartIntakeFromAppointment}
           onNavigate={handleNavigate}
           onCallPatient={handleCallPatient}
           onRetrySync={() => setSyncRetryCounter((c) => c + 1)}
@@ -1912,6 +1951,9 @@ function ClinicApp() {
                   visits={visitsCanonical}
                   transactions={transactions}
                   followUps={doctorFollowUpsList}
+                  recentAlerts={alertHistory}
+                  doctorStatus={doctorStatus}
+                  activeExamPatientName={activeExamPatient?.name}
                   onConfirmCheckIn={handleConfirmCheckIn}
                   onCallPatient={handleCallPatient}
                   onSelectPatient={setActiveExamPatient}

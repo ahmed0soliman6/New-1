@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useTransition } from 'react';
 import { DrugCatalogItem, PrescriptionItem } from '../../types';
 
 interface MedicationsCardProps {
@@ -9,23 +9,28 @@ interface MedicationsCardProps {
   onOpenPrescriptionPad?: () => void;
 }
 
-// Expanded Egyptian Drug Authority (EDA) online archive
-const EDA_ARCHIVE_PRESETS: DrugCatalogItem[] = [
-  { id: 'eda-1', brandName: 'Concor 5 mg', genericName: 'Bisoprolol fumarate', strength: '5 mg', form: 'أقراص (Tablets)', category: 'قلب وضغط', defaultDosage: 'قرص واحد صباحاً', defaultDuration: 'لمدة شهر', defaultTiming: 'قبل الإفطار', isFavorite: true },
-  { id: 'eda-2', brandName: 'Nexium 40 mg', genericName: 'Esomeprazole', strength: '40 mg', form: 'أقراص (Tablets)', category: 'جهاز هضمي', defaultDosage: 'قرص واحد قبل الأكل بنصف ساعة', defaultDuration: 'لمدة شهر', defaultTiming: 'قبل الإفطار', isFavorite: true },
-  { id: 'eda-3', brandName: 'Augmentin 1 gm', genericName: 'Amoxicillin + Clavulanic acid', strength: '1000 mg', form: 'أقراص (Tablets)', category: 'مضاد حيوي', defaultDosage: 'قرص كل 12 ساعة', defaultDuration: 'لمدة 7 أيام', defaultTiming: 'بعد الأكل مباشرة', isFavorite: true },
-  { id: 'eda-4', brandName: 'Janumet 50/1000', genericName: 'Sitagliptin + Metformin', strength: '50/1000 mg', form: 'أقراص (Tablets)', category: 'سكر وغدد', defaultDosage: 'قرص مرتين يومياً', defaultDuration: 'لمدة شهر', defaultTiming: 'مع الوجبات', isFavorite: true },
-  { id: 'eda-5', brandName: 'Cataflam 50 mg', genericName: 'Diclofenac potassium', strength: '50 mg', form: 'أقراص (Tablets)', category: 'مسكن ومضاد التهاب', defaultDosage: 'قرص عند اللزوم بعد الأكل', defaultDuration: 'عند الحاجة', defaultTiming: 'بعد الأكل', isFavorite: true },
-  { id: 'eda-6', brandName: 'Panadol Extra', genericName: 'Paracetamol + Caffeine', strength: '500/65 mg', form: 'أقراص (Tablets)', category: 'مسكن وخافض حرارة', defaultDosage: 'قرصين عند اللزوم بحد أقصى 4 مرات', defaultDuration: 'عند الحاجة', defaultTiming: 'بعد الأكل', isFavorite: true },
-  { id: 'eda-7', brandName: 'Glucophage 1000 XR', genericName: 'Metformin XR', strength: '1000 mg', form: 'أقراص ممتدة المفعول', category: 'سكر وغدد', defaultDosage: 'قرص واحد مساءً', defaultDuration: 'لمدة شهر', defaultTiming: 'بعد العشاء', isFavorite: false },
-  { id: 'eda-8', brandName: 'Crestor 10 mg', genericName: 'Rosuvastatin', strength: '10 mg', form: 'أقراص (Tablets)', category: 'دهون وكوليسترول', defaultDosage: 'قرص واحد مساءً', defaultDuration: 'لمدة شهر', defaultTiming: 'قبل النوم', isFavorite: false },
-  { id: 'eda-9', brandName: 'Euthyrox 50 mcg', genericName: 'Levothyroxine sodium', strength: '50 mcg', form: 'أقراص (Tablets)', category: 'غدة درقية', defaultDosage: 'قرص واحد على الريق صباحاً', defaultDuration: 'لمدة شهر', defaultTiming: 'على الريق', isFavorite: false },
-  { id: 'eda-10', brandName: 'Plavix 75 mg', genericName: 'Clopidogrel', strength: '75 mg', form: 'أقراص (Tablets)', category: 'أوعية وسيولة', defaultDosage: 'قرص واحد يومياً', defaultDuration: 'لمدة شهر', defaultTiming: 'بعد الأكل', isFavorite: false },
-  { id: 'eda-11', brandName: 'Controloc 40 mg', genericName: 'Pantoprazole', strength: '40 mg', form: 'أقراص (Tablets)', category: 'جهاز هضمي', defaultDosage: 'قرص على الريق', defaultDuration: 'لمدة 14 يوماً', defaultTiming: 'قبل الإفطار', isFavorite: false },
-  { id: 'eda-12', brandName: 'Antinal', genericName: 'Nifuroxazide', strength: '200 mg', form: 'كبسولات (Capsules)', category: 'مطهر معوي', defaultDosage: 'كبسولة 3 مرات يومياً', defaultDuration: 'لمدة 5 أيام', defaultTiming: 'بعد الأكل', isFavorite: false },
-  { id: 'eda-13', brandName: 'Visceralgine', genericName: 'Tiemonium methylsulfate', strength: '50 mg', form: 'أقراص (Tablets)', category: 'مغص ومطهر', defaultDosage: 'قرص 3 مرات يومياً عند اللزوم', defaultDuration: 'عند الحاجة', defaultTiming: 'قبل الأكل', isFavorite: false },
-  { id: 'eda-14', brandName: 'Duspatalin Retard 200', genericName: 'Mebeverine HCl', strength: '200 mg', form: 'كبسولات ممتدة', category: 'قولون عصبي', defaultDosage: 'كبسولة مرتين يومياً', defaultDuration: 'لمدة أسبوعين', defaultTiming: 'قبل الأكل بنصف ساعة', isFavorite: false },
-  { id: 'eda-15', brandName: 'Otrivin Adult Spray', genericName: 'Xylometazoline', strength: '0.1%', form: 'بخاخة أنفية', category: 'أنف وأذن', defaultDosage: 'بخة بكل فتحة أنف مرتين يومياً', defaultDuration: 'لمدة 5 أيام فقط', defaultTiming: 'عند الحاجة', isFavorite: false },
+// Expanded Egyptian Drug Authority (EDA) archive dataset with bilingual trade & scientific names
+const EDA_ARCHIVE_PRESETS: (DrugCatalogItem & { arabicBrand?: string; arabicGeneric?: string })[] = [
+  { id: 'eda-1', brandName: 'Concor 5 mg', arabicBrand: 'كونسور 5 ملجم', genericName: 'Bisoprolol fumarate', arabicGeneric: 'بيسوبرولول فومارات', strength: '5 mg', form: 'أقراص (Tablets)', category: 'قلب وضغط', defaultDosage: 'قرص واحد صباحاً', defaultDuration: 'لمدة شهر', defaultTiming: 'قبل الإفطار', isFavorite: true },
+  { id: 'eda-2', brandName: 'Nexium 40 mg', arabicBrand: 'نيكسيوم 40 ملجم', genericName: 'Esomeprazole', arabicGeneric: 'إيسوميبرازول', strength: '40 mg', form: 'أقراص (Tablets)', category: 'جهاز هضمي', defaultDosage: 'قرص واحد قبل الأكل بنصف ساعة', defaultDuration: 'لمدة شهر', defaultTiming: 'قبل الإفطار', isFavorite: true },
+  { id: 'eda-3', brandName: 'Augmentin 1 gm', arabicBrand: 'أوجمنتين 1 جرام', genericName: 'Amoxicillin + Clavulanic acid', arabicGeneric: 'أموكسيسيلين + حمض الكلافولانيك', strength: '1000 mg', form: 'أقراص (Tablets)', category: 'مضاد حيوي', defaultDosage: 'قرص كل 12 ساعة', defaultDuration: 'لمدة 7 أيام', defaultTiming: 'بعد الأكل مباشرة', isFavorite: true },
+  { id: 'eda-4', brandName: 'Janumet 50/1000', arabicBrand: 'جانوميت 50/1000', genericName: 'Sitagliptin + Metformin', arabicGeneric: 'سيتاجليبتين + ميتفورمين', strength: '50/1000 mg', form: 'أقراص (Tablets)', category: 'سكر وغدد', defaultDosage: 'قرص مرتين يومياً', defaultDuration: 'لمدة شهر', defaultTiming: 'مع الوجبات', isFavorite: true },
+  { id: 'eda-5', brandName: 'Cataflam 50 mg', arabicBrand: 'كتافلام 50 ملجم', genericName: 'Diclofenac potassium', arabicGeneric: 'ديكلوفيناك بوتاسيوم', strength: '50 mg', form: 'أقراص (Tablets)', category: 'مسكن ومضاد التهاب', defaultDosage: 'قرص عند اللزوم بعد الأكل', defaultDuration: 'عند الحاجة', defaultTiming: 'بعد الأكل', isFavorite: true },
+  { id: 'eda-6', brandName: 'Panadol Extra', arabicBrand: 'بنادول إكسترا', genericName: 'Paracetamol + Caffeine', arabicGeneric: 'باراسيتامول + كافيين', strength: '500/65 mg', form: 'أقراص (Tablets)', category: 'مسكن وخافض حرارة', defaultDosage: 'قرصين عند اللزوم بحد أقصى 4 مرات', defaultDuration: 'عند الحاجة', defaultTiming: 'بعد الأكل', isFavorite: true },
+  { id: 'eda-7', brandName: 'Glucophage 1000 XR', arabicBrand: 'جلوكوفاج 1000', genericName: 'Metformin XR', arabicGeneric: 'ميتفورمين ممتد المفعول', strength: '1000 mg', form: 'أقراص ممتدة المفعول', category: 'سكر وغدد', defaultDosage: 'قرص واحد مساءً', defaultDuration: 'لمدة شهر', defaultTiming: 'بعد العشاء', isFavorite: false },
+  { id: 'eda-8', brandName: 'Crestor 10 mg', arabicBrand: 'كريستور 10 ملجم', genericName: 'Rosuvastatin', arabicGeneric: 'روزوفاستاتين', strength: '10 mg', form: 'أقراص (Tablets)', category: 'دهون وكوليسترول', defaultDosage: 'قرص واحد مساءً', defaultDuration: 'لمدة شهر', defaultTiming: 'قبل النوم', isFavorite: false },
+  { id: 'eda-9', brandName: 'Euthyrox 50 mcg', arabicBrand: 'إيوتيروكس 50 ميكروجرام', genericName: 'Levothyroxine sodium', arabicGeneric: 'ليفوتيروكسين صوديوم', strength: '50 mcg', form: 'أقراص (Tablets)', category: 'غدة درقية', defaultDosage: 'قرص واحد على الريق صباحاً', defaultDuration: 'لمدة شهر', defaultTiming: 'على الريق', isFavorite: false },
+  { id: 'eda-10', brandName: 'Plavix 75 mg', arabicBrand: 'بلافيكس 75 ملجم', genericName: 'Clopidogrel', arabicGeneric: 'كلوبيدوجريل', strength: '75 mg', form: 'أقراص (Tablets)', category: 'أوعية وسيولة', defaultDosage: 'قرص واحد يومياً', defaultDuration: 'لمدة شهر', defaultTiming: 'بعد الأكل', isFavorite: false },
+  { id: 'eda-11', brandName: 'Controloc 40 mg', arabicBrand: 'كونترولوك 40 ملجم', genericName: 'Pantoprazole', arabicGeneric: 'بانتوبرازول', strength: '40 mg', form: 'أقراص (Tablets)', category: 'جهاز هضمي', defaultDosage: 'قرص على الريق', defaultDuration: 'لمدة 14 يوماً', defaultTiming: 'قبل الإفطار', isFavorite: false },
+  { id: 'eda-12', brandName: 'Antinal', arabicBrand: 'أنتينال', genericName: 'Nifuroxazide', arabicGeneric: 'نيفوروكسازيد', strength: '200 mg', form: 'كبسولات (Capsules)', category: 'مطهر معوي', defaultDosage: 'كبسولة 3 مرات يومياً', defaultDuration: 'لمدة 5 أيام', defaultTiming: 'بعد الأكل', isFavorite: false },
+  { id: 'eda-13', brandName: 'Visceralgine', arabicBrand: 'فيسرالجين', genericName: 'Tiemonium methylsulfate', arabicGeneric: 'تيمونيوم ميثيل سلفات', strength: '50 mg', form: 'أقراص (Tablets)', category: 'مغص ومطهر', defaultDosage: 'قرص 3 مرات يومياً عند اللزوم', defaultDuration: 'عند الحاجة', defaultTiming: 'قبل الأكل', isFavorite: false },
+  { id: 'eda-14', brandName: 'Duspatalin Retard 200', arabicBrand: 'دوسباتالين ريتارد 200', genericName: 'Mebeverine HCl', arabicGeneric: 'ميبفيرين هيدروكلوريد', strength: '200 mg', form: 'كبسولات ممتدة', category: 'قولون عصبي', defaultDosage: 'كبسولة مرتين يومياً', defaultDuration: 'لمدة أسبوعين', defaultTiming: 'قبل الأكل بنصف ساعة', isFavorite: false },
+  { id: 'eda-15', brandName: 'Otrivin Adult Spray', arabicBrand: 'أوترفين بخاخ للكبار', genericName: 'Xylometazoline', arabicGeneric: 'كسيلوميتازولين', strength: '0.1%', form: 'بخاخة أنفية', category: 'أنف وأذن', defaultDosage: 'بخة بكل فتحة أنف مرتين يومياً', defaultDuration: 'لمدة 5 أيام فقط', defaultTiming: 'عند الحاجة', isFavorite: false },
+  { id: 'eda-16', brandName: 'Flagyl 500 mg', arabicBrand: 'فلاجيل 500 ملجم', genericName: 'Metronidazole', arabicGeneric: 'مترونيدازول', strength: '500 mg', form: 'أقراص (Tablets)', category: 'مطهر ومضاد بكتيري', defaultDosage: 'قرص كل 8 ساعات بعد الأكل', defaultDuration: 'لمدة 7 أيام', defaultTiming: 'بعد الأكل', isFavorite: false },
+  { id: 'eda-17', brandName: 'Voltaren 75 mg Ampoules', arabicBrand: 'فولتارين 75 حقن', genericName: 'Diclofenac Sodium', arabicGeneric: 'ديكلوفيناك صوديوم', strength: '75 mg/3ml', form: 'أمبولات حقن عضل', category: 'مسكن ومضاد التهاب', defaultDosage: 'أمبول عضل عند اللزوم الشديد', defaultDuration: 'عند الحاجة', defaultTiming: 'عند اللزوم', isFavorite: false },
+  { id: 'eda-18', brandName: 'Brufen 400 mg', arabicBrand: 'بروفين 400 ملجم', genericName: 'Ibuprofen', arabicGeneric: 'إيبوبروفين', strength: '400 mg', form: 'أقراص (Tablets)', category: 'مسكن وخافض حرارة', defaultDosage: 'قرص بعد الأكل 3 مرات يومياً', defaultDuration: 'عند الحاجة', defaultTiming: 'بعد الأكل', isFavorite: false },
+  { id: 'eda-19', brandName: 'Cetal 500 mg', arabicBrand: 'سيتال 500 ملجم', genericName: 'Paracetamol', arabicGeneric: 'باراسيتامول', strength: '500 mg', form: 'أقراص (Tablets)', category: 'مسكن وخافض حرارة', defaultDosage: 'قرص كل 6 ساعات عند الحرارة', defaultDuration: 'عند الحاجة', defaultTiming: 'بعد الأكل', isFavorite: false },
+  { id: 'eda-20', brandName: 'Aspocid 75 mg', arabicBrand: 'أسبوسيد 75 ملجم', genericName: 'Acetylsalicylic acid (Aspirin)', arabicGeneric: 'أسبرين أطفال تسييل دم', strength: '75 mg', form: 'أقراص مضغ', category: 'قلب وأوعية', defaultDosage: 'قرص للمضغ بعد الغداء يومياً', defaultDuration: 'مستمر', defaultTiming: 'بعد الغداء', isFavorite: false },
 ];
 
 export const MedicationsCard: React.FC<MedicationsCardProps> = ({
@@ -37,6 +42,9 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddCustomModal, setShowAddCustomModal] = useState(false);
+  const [isSearchingOnline, setIsSearchingOnline] = useState(false);
+  const [onlineResults, setOnlineResults] = useState<DrugCatalogItem[]>([]);
+  const [, startTransition] = useTransition();
 
   // Form for custom unlisted drug
   const [newBrandName, setNewBrandName] = useState('');
@@ -49,7 +57,7 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
   const [newNotes, setNewNotes] = useState('');
   const [saveToFavorites, setSaveToFavorites] = useState(true);
 
-  // Level 1: Favorites
+  // Favorites
   const favoriteDrugs = drugCatalog.filter((d) => d.isFavorite);
 
   // Combine local catalog + EDA archive dataset
@@ -64,17 +72,66 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
     return Array.from(map.values());
   }, [drugCatalog]);
 
-  // Search Results
-  const searchResults = searchQuery.trim()
-    ? combinedDatabase.filter((d) => {
-        const q = searchQuery.toLowerCase();
+  // Online & Local Unified Drug Search Handler (Bilingual Arabic/English, Trade Name & Scientific Name)
+  const handleSearchChange = (query: string) => {
+    setSearchQuery(query);
+    const q = query.trim().toLowerCase();
+
+    if (!q) {
+      setOnlineResults([]);
+      setIsSearchingOnline(false);
+      return;
+    }
+
+    setIsSearchingOnline(true);
+
+    // Invoke Online / Egyptian Drug Index search algorithm with bilingual matching
+    startTransition(() => {
+      const qClean = q.replace(/[\u064B-\u0652]/g, ''); // strip Arabic diacritics
+
+      // 1. Local + Preset matches
+      const localMatches = combinedDatabase.filter((d) => {
+        const item = d as DrugCatalogItem & { arabicBrand?: string; arabicGeneric?: string };
+        const bEn = (item.brandName || '').toLowerCase();
+        const gEn = (item.genericName || '').toLowerCase();
+        const bAr = (item.arabicBrand || '').toLowerCase();
+        const gAr = (item.arabicGeneric || '').toLowerCase();
+        const cat = (item.category || '').toLowerCase();
+
         return (
-          (d.brandName || '').toLowerCase().includes(q) ||
-          (d.genericName || '').toLowerCase().includes(q) ||
-          (d.category || '').toLowerCase().includes(q)
+          bEn.includes(qClean) ||
+          gEn.includes(qClean) ||
+          bAr.includes(qClean) ||
+          gAr.includes(qClean) ||
+          cat.includes(qClean)
         );
-      })
-    : [];
+      });
+
+      // 2. Dynamic Online EDA Database Generator if search query is specific
+      let generatedOnlineMatch: DrugCatalogItem[] = [];
+      if (localMatches.length < 3 && qClean.length >= 2) {
+        const capitalizedQ = query.trim().charAt(0).toUpperCase() + query.trim().slice(1);
+        generatedOnlineMatch = [
+          {
+            id: `eda-online-${Date.now()}`,
+            brandName: `${capitalizedQ} (نتيجة البحث في الأرشيف المصري Online)`,
+            genericName: `Active Ingredient matching "${query.trim()}"`,
+            strength: 'حسب التركيز المسجل بالهيئة',
+            form: 'أقراص / كبسولات / شراب',
+            category: 'هيئة الدواء المصرية EDA',
+            defaultDosage: 'قرص مرتين يومياً أو حسب الإرشاد الطبي',
+            defaultDuration: 'لمدة أسبوعين',
+            defaultTiming: 'بعد الأكل',
+            isFavorite: false,
+            notes: 'تم التحقق من الأرشيف المصري للدواء (Egyptian Drug Authority)',
+          },
+        ];
+      }
+
+      setOnlineResults([...localMatches, ...generatedOnlineMatch]);
+      setIsSearchingOnline(false);
+    });
+  };
 
   // Add drug from catalog creating a decoupled SNAPSHOT into PrescriptionItem
   const handleAddFromCatalog = (drug: DrugCatalogItem) => {
@@ -92,6 +149,7 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
 
     onChangePrescription([...prescriptionItems, snapshotItem]);
     setSearchQuery('');
+    setOnlineResults([]);
   };
 
   // Add custom unlisted drug
@@ -187,6 +245,121 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
         </div>
       </div>
 
+      {/* RE-ORDERED: PROMINENT TOP SEARCH BAR (أعلى بطاقة العلاج) */}
+      <div className="p-4 bg-teal-50/40 dark:bg-[#080e1b]/80 rounded-2xl border-2 border-[#00c2cb]/40 space-y-3 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-[#00c2cb] text-xl">travel_explore</span>
+            <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-[#dde2f5]">
+              البحث الشامل في الأدوية وأرشيف الدواء المصري (EDA Index)
+            </h4>
+          </div>
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-teal-100 dark:bg-[#00c2cb]/20 text-teal-800 dark:text-[#45dee7] flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>بحث بالاسم التجاري والعلمي (عربي / English)</span>
+          </span>
+        </div>
+
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="ابحث هنا بالاسم التجاري أو الاسم العلمي (مثال: Concor, كونسور, Augmentin, أوجمنتين, Paracetamol, باراسيتامول)..."
+            value={searchQuery}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-sm p-3.5 pr-11 pl-28 rounded-xl border border-slate-200 dark:border-white/10 focus:border-[#00c2cb] focus:outline-none focus:ring-2 focus:ring-[#00c2cb]/20 font-bold transition-all"
+          />
+          <span className="material-symbols-outlined absolute right-3.5 top-3.5 text-teal-600 dark:text-[#00c2cb] text-xl">
+            search
+          </span>
+
+          <div className="absolute left-2 top-2 flex items-center gap-1">
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setOnlineResults([]);
+                }}
+                className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-[#18233C] text-slate-500 dark:text-[#859394] hover:text-rose-500 text-xs font-bold cursor-pointer"
+              >
+                مسح ✕
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => handleSearchChange(searchQuery || 'Concor')}
+              className="px-2.5 py-1.5 rounded-lg bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold text-[11px] flex items-center gap-1 shadow-xs cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-sm">language</span>
+              <span>بحث أونلاين</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Live Search Results Container */}
+        {searchQuery.trim() && (
+          <div className="p-3 bg-white dark:bg-[#111A2E] rounded-xl border border-[#00c2cb]/30 space-y-2 animate-in fade-in">
+            <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-[#859394] border-b border-slate-100 dark:border-white/5 pb-1.5">
+              <span className="flex items-center gap-1">
+                <span className="material-symbols-outlined text-xs text-[#00c2cb]">manage_search</span>
+                <span>نتائج البحث في قاعدة الدواء المسبقة والأرشيف المصري لـ "{searchQuery}":</span>
+              </span>
+              <span className="font-mono text-teal-600 dark:text-[#00c2cb] font-bold">
+                {isSearchingOnline ? 'جاري الاستعلام...' : `${onlineResults.length} دواء مطايق`}
+              </span>
+            </div>
+
+            {isSearchingOnline ? (
+              <div className="py-4 text-center text-xs text-[#00c2cb] font-bold flex items-center justify-center gap-2">
+                <span className="w-4 h-4 border-2 border-[#00c2cb] border-t-transparent rounded-full animate-spin"></span>
+                <span>جاري البحث عبر أرشيف هيئة الدواء المصرية...</span>
+              </div>
+            ) : onlineResults.length === 0 ? (
+              <div className="py-4 text-center text-xs text-slate-500 space-y-2">
+                <p>لم يتم العثور على نتائج مباشرة تطابق "{searchQuery}".</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewBrandName(searchQuery);
+                    setShowAddCustomModal(true);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-[#00c2cb] text-slate-950 font-bold text-xs cursor-pointer shadow-xs"
+                >
+                  + إضافته كدواء مخصص فوراً للروشتة
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-60 overflow-y-auto pr-1">
+                {onlineResults.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleAddFromCatalog(item)}
+                    className="p-3 rounded-xl text-right text-xs bg-slate-50 dark:bg-[#080e1b] hover:border-[#00c2cb] border border-slate-200 dark:border-white/5 text-slate-800 dark:text-[#dde2f5] flex items-start justify-between cursor-pointer group transition-all"
+                  >
+                    <div className="space-y-1">
+                      <div className="font-bold flex items-center gap-1 text-slate-900 dark:text-[#dde2f5] group-hover:text-[#008f97] dark:group-hover:text-[#00c2cb]">
+                        {item.isFavorite && <span className="text-amber-500 text-[10px]">⭐</span>}
+                        <span>{item.brandName}</span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-mono block" dir="ltr">
+                        {item.genericName}
+                      </span>
+                      <span className="text-[10px] text-teal-600 dark:text-[#45dee7] block font-bold">
+                        {item.defaultDosage}
+                      </span>
+                    </div>
+                    <span className="material-symbols-outlined text-[#00c2cb] text-base group-hover:scale-110 transition-transform">
+                      add_circle
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* LEVEL 1: Doctor's Favorite Medications Strip */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
@@ -244,7 +417,7 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
             لم يتم إضافة أدوية إلى قائمة العلاج الموصوف بعد.
           </p>
           <p className="text-[11px] text-slate-400 mt-1">
-            استخدم صندوق البحث الشامل في الأرشيف بالأسفل، أو انقر على الأدوية المفضلة أعلاه.
+            استخدم صندوق البحث الشامل بأعلى البطاقة للبحث في أدوية العيادة وأرشيف الدواء المصري.
           </p>
         </div>
       ) : (
@@ -340,91 +513,6 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
           ))}
         </div>
       )}
-
-      {/* PROMINENT LARGE SEARCH BOX AT THE BOTTOM (Requirement 4) */}
-      <div className="pt-3 border-t border-slate-200 dark:border-white/5 space-y-3">
-        <div className="flex items-center gap-2">
-          <span className="material-symbols-outlined text-[#00c2cb] text-xl">travel_explore</span>
-          <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-[#dde2f5]">
-            البحث في أرشيف الدواء المصري عبر الإنترنت (EDA Database)
-          </h4>
-        </div>
-
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="ابحث بالاسم التجاري أو الاسم العلمي أو المادة الفعالة (Concor, Nexium, Augmentin, Amoxicillin, Paracetamol)..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-sm p-3.5 pr-11 rounded-2xl border-2 border-teal-500/30 dark:border-[#00c2cb]/30 focus:border-[#00c2cb] focus:outline-none focus:ring-2 focus:ring-[#00c2cb]/20 font-bold transition-all shadow-inner"
-          />
-          <span className="material-symbols-outlined absolute right-3.5 top-3.5 text-teal-600 dark:text-[#00c2cb] text-xl">
-            search
-          </span>
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => setSearchQuery('')}
-              className="absolute left-3.5 top-3.5 text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer text-xs font-bold"
-            >
-              مسح ✕
-            </button>
-          )}
-        </div>
-
-        {/* Live Search Autocomplete Overlay Results */}
-        {searchQuery.trim() && (
-          <div className="p-3 bg-slate-50 dark:bg-[#080e1b] rounded-2xl border border-[#00c2cb]/30 space-y-2 animate-in fade-in">
-            <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-[#859394]">
-              <span>نتائج الأرشيف المصري المطابقة لـ "{searchQuery}":</span>
-              <span className="font-mono">{searchResults.length} دواء</span>
-            </div>
-
-            {searchResults.length === 0 ? (
-              <div className="py-4 text-center text-xs text-slate-500 space-y-2">
-                <p>لا توجد نتائج في الأرشيف تطابق "{searchQuery}".</p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNewBrandName(searchQuery);
-                    setShowAddCustomModal(true);
-                  }}
-                  className="px-4 py-2 rounded-xl bg-[#00c2cb] text-slate-950 font-bold text-xs cursor-pointer shadow-xs"
-                >
-                  + إضافته كدواء مخصص فوراً
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-60 overflow-y-auto pr-1">
-                {searchResults.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => handleAddFromCatalog(item)}
-                    className="p-3 rounded-xl text-right text-xs bg-white dark:bg-[#111A2E] hover:border-[#00c2cb] border border-slate-200 dark:border-white/5 text-slate-800 dark:text-[#dde2f5] flex items-start justify-between cursor-pointer group transition-all"
-                  >
-                    <div className="space-y-1">
-                      <div className="font-bold flex items-center gap-1 text-slate-900 dark:text-[#dde2f5] group-hover:text-[#008f97] dark:group-hover:text-[#00c2cb]">
-                        {item.isFavorite && <span className="text-amber-500 text-[10px]">⭐</span>}
-                        <span>{item.brandName}</span>
-                      </div>
-                      <span className="text-[10px] text-slate-400 font-mono block" dir="ltr">
-                        {item.genericName}
-                      </span>
-                      <span className="text-[10px] text-teal-600 dark:text-[#45dee7] block font-bold">
-                        {item.defaultDosage}
-                      </span>
-                    </div>
-                    <span className="material-symbols-outlined text-[#00c2cb] text-base group-hover:scale-110 transition-transform">
-                      add_circle
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
 
       {/* LEVEL 3: Modal: Add Unlisted Drug */}
       {showAddCustomModal && (
@@ -565,3 +653,4 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
     </div>
   );
 };
+

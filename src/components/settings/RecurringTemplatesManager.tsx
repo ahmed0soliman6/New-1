@@ -255,7 +255,39 @@ export const RecurringTemplatesManager: React.FC<RecurringTemplatesManagerProps>
             className="px-3.5 py-2 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 text-purple-700 dark:text-purple-300 font-bold text-xs flex items-center gap-1.5 border border-purple-500/30 transition-all cursor-pointer"
           >
             <span className="material-symbols-outlined text-base">menu_book</span>
-            <span>استدعاء من الأدلة والبروتوكولات الطبية</span>
+            <span>استدعاء من الأدلة والبروتوكولات الطبية الجاهزة</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              const current = loadRecurringTemplates();
+              const existingIds = new Set(current.map((t) => t.id));
+              const existingTitles = new Set(current.map((t) => t.title.trim().toLowerCase()));
+              
+              const newToMerge = INITIAL_CLINICAL_GUIDES_TEMPLATES.filter(
+                (guide) => !existingIds.has(guide.id) && !existingTitles.has(guide.title.trim().toLowerCase())
+              );
+
+              if (newToMerge.length === 0) {
+                // If all are already present, force reload/restore full set
+                if (window.confirm('جميع الأدلة والبروتوكولات الطبية محملة مسبقاً. هل تريد إعادة استعادة جميع أدلة التخصصات؟')) {
+                  saveRecurringTemplates(INITIAL_CLINICAL_GUIDES_TEMPLATES);
+                  setTemplates(INITIAL_CLINICAL_GUIDES_TEMPLATES);
+                  onNotify('تمت إعادة تحميل جميع الأدلة والبروتوكولات الطبية لكافة التخصصات بنجاح ✓');
+                }
+              } else {
+                const merged = [...current, ...newToMerge];
+                saveRecurringTemplates(merged);
+                setTemplates(merged);
+                onNotify(`تم دمج واستعادة أدلة التخصصات الطبية بنجاح ✓`);
+              }
+            }}
+            className="px-3 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold text-xs flex items-center gap-1.5 border border-emerald-500/30 transition-all cursor-pointer"
+            title="إعادة دمج واستعادة جميع الأدلة الطبية الجاهزة لكل التخصصات"
+          >
+            <span className="material-symbols-outlined text-base">auto_mode</span>
+            <span>استعادة أدلة جميع التخصصات</span>
           </button>
         </div>
 
