@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { exportPrescriptionToPdf } from '../../utils/exportPrescriptionPdf';
+import { printPrescriptionDocument } from '../../utils/printPrescription';
 import { CLINIC_INFO } from '../../data/previewClinicData';
 import { db } from '../../services/firebase';
 import { saveSettingsDocument, subscribeToPrescriptionSettings } from '../../services/repositories';
@@ -258,7 +260,18 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
   };
 
   const handlePrintTest = () => {
-    window.print();
+    printPrescriptionDocument({
+      config,
+      patient,
+      items,
+      diagnoses: [{ id: 'd1', code: 'I10', nameAr: 'ارتفاع ضغط الدم الأولي', nameEn: 'Essential Hypertension', isPrimary: true }],
+      lifestyleAdvice: 'تقليل الملح في الطعام، ممارسة المشي 30 دقيقة يومياً وشرب الماء بانتظام.',
+      followupDate: '2026-09-24',
+    });
+  };
+
+  const handleExportPDF = () => {
+    exportPrescriptionToPdf('printable-prescription-pad', patient ? patient.name : 'مريض');
   };
 
   const isCustomUrlValid = config.qrType === 'custom' ? isValidUrl(config.qrCustomUrl) : true;
@@ -936,15 +949,40 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
         </div>
 
         {/* Live A5 Canvas Preview Panel (Right 7 Cols) */}
-        <div className="lg:col-span-7 flex flex-col items-center">
-          <div className="w-full flex items-center justify-between mb-2 px-1 text-xs">
-            <span className="font-bold text-slate-700 dark:text-[#dde2f5] flex items-center gap-1.5">
+        <div className="lg:col-span-7 flex flex-col items-center w-full">
+          <div className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3.5 px-1 bg-slate-50 dark:bg-[#111A2E] p-3 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs">
+            <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-[#00c2cb] text-base">visibility</span>
-              <span>معاينة حية لشكل الروشتة (A5 Live Preview)</span>
-            </span>
-            <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-slate-200 dark:bg-white/10 text-slate-600 dark:text-slate-300">
-              148mm × 210mm
-            </span>
+              <span className="text-xs font-bold text-slate-700 dark:text-[#dde2f5]">معاينة حية لشكل الروشتة (A5)</span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-slate-200/60 dark:bg-white/10 text-slate-600 dark:text-slate-300">
+                148mm × 210mm
+              </span>
+            </div>
+
+            {/* Quick Action Toolbar for A5 Sheet */}
+            <div className="flex items-center gap-2 self-end sm:self-auto">
+              {/* Direct Print Button */}
+              <button
+                type="button"
+                onClick={handlePrintTest}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+                title="إرسال أمر الطباعة مباشرة إلى الطابعة المتصلة"
+              >
+                <span className="material-symbols-outlined text-sm font-bold">print</span>
+                <span>طباعة مباشرة</span>
+              </button>
+
+              {/* Export PDF Button */}
+              <button
+                type="button"
+                onClick={handleExportPDF}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95 dark:bg-slate-700 dark:hover:bg-slate-600"
+                title="تصدير كملف PDF بقياس A5 وأبعاد دقيقة"
+              >
+                <span className="material-symbols-outlined text-sm text-red-400">picture_as_pdf</span>
+                <span>تصدير PDF</span>
+              </button>
+            </div>
           </div>
 
           {/* A5 Simulated Sheet */}

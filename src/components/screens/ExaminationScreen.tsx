@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { exportPrescriptionToPdf } from '../../utils/exportPrescriptionPdf';
+import { printPrescriptionDocument } from '../../utils/printPrescription';
 import { CLINIC_INFO } from '../../data/previewClinicData';
 import {
   ScreenType,
@@ -45,6 +47,15 @@ interface ChronicItem {
   category: string;
   color: string;
 }
+
+const MARGIN_VALUES: Record<string, string> = {
+  very_tight: '2mm',
+  tight: '4mm',
+  normal: '7mm',
+  wide: '10mm',
+  very_wide: '14mm',
+  balanced: '7mm',
+};
 
 interface ExaminationScreenProps {
   patient?: PatientListItem | null;
@@ -117,6 +128,62 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
 
   // Display toggles from settings (Vitals, Labs, Radiology)
   const [displaySettings, setDisplaySettings] = useState<ExamDisplaySettings>(loadExamDisplaySettings);
+
+  // Load layout settings for the prescription printing & PDF exporting
+  const [prescriptionConfig] = useState<any>(() => {
+    try {
+      const cached = localStorage.getItem('soli_prescription_settings');
+      if (cached) return JSON.parse(cached);
+    } catch (e) {}
+    return {
+      doctorName: CLINIC_INFO.doctorName,
+      doctorNameEn: 'Dr. Hazem El-Kady',
+      specialtyAr: CLINIC_INFO.doctorTitle,
+      specialtyEn: 'Consultant of Internal Medicine & Cardiology',
+      degreesAr: CLINIC_INFO.doctorCredentials,
+      degreesEn: 'M.D., MRCP (London) • Cairo University',
+      phone: CLINIC_INFO.branches[0]?.mobile || '01092847162',
+      logoUrl: CLINIC_INFO.logoUrl || null,
+      showLogo: true,
+      showHeader: true,
+      showFooter: true,
+      preprintedPaperMode: false,
+      showQr: true,
+      qrType: 'whatsapp',
+      qrWhatsappPhone: '01092847162',
+      qrCustomUrl: 'https://solimedical.com',
+      qrSize: 'medium',
+      footerFontSize: 'regular',
+      outerMargin: 'normal',
+      headerMarginTop: 'balanced',
+      footerMarginBottom: 'balanced',
+      sectionSpacing: 'balanced',
+      contentScale: 'auto_shrink',
+      branches: CLINIC_INFO.branches.map((b, i) => ({
+        id: `b-${i}`,
+        name: b.name,
+        address: b.address,
+        phone: b.mobile,
+      })),
+    };
+  });
+
+  const [showPrintPreviewModal, setShowPrintPreviewModal] = useState(false);
+
+  const handleDirectPrint = () => {
+    printPrescriptionDocument({
+      config: prescriptionConfig,
+      patient,
+      items: activePrescription,
+      diagnoses: patientDiagnoses,
+      lifestyleAdvice,
+      followupDate,
+    });
+  };
+
+  const handleExportPDF = () => {
+    exportPrescriptionToPdf('printable-prescription-pad', patient ? patient.name : 'مريض');
+  };
 
   // Sync display settings on mount and tab focus
   useEffect(() => {
@@ -1627,31 +1694,60 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
             </div>
 
             {/* Bottom buttons inside the completed card */}
-            <div className="pt-4 border-t border-slate-100 dark:border-white/5 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="pt-4 border-t border-slate-100 dark:border-white/5 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
               <span className="text-xs text-slate-500 dark:text-[#859394]">
                 تم حفظ بيانات الزيارة وتحديث رصيد العيادة وقائمة الانتظار بنجاح.
               </span>
-              <div className="flex items-center gap-2.5 w-full sm:w-auto">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* WhatsApp Button */}
                 <button
                   type="button"
                   onClick={() => setShowWhatsAppModal(true)}
-                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all cursor-pointer shadow-xs"
+                  className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+                  title="إرسال عبر الواتساب"
                 >
                   <span className="material-symbols-outlined text-base">chat</span>
                   <span>واتساب الروشتة</span>
                 </button>
+
+                {/* Direct Print Button */}
                 <button
                   type="button"
-                  onClick={() => window.print()}
-                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 text-white text-xs font-bold transition-all cursor-pointer shadow-xs"
+                  onClick={handleDirectPrint}
+                  className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95 dark:bg-slate-700 dark:hover:bg-slate-600"
+                  title="الطباعة الفورية على الطابعة الموصلة"
                 >
                   <span className="material-symbols-outlined text-base">print</span>
-                  <span>طباعة الروشتة</span>
+                  <span>طباعة مباشرة</span>
                 </button>
+
+                {/* Preview Button */}
+                <button
+                  type="button"
+                  onClick={() => setShowPrintPreviewModal(true)}
+                  className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] hover:bg-slate-200 dark:hover:bg-[#242a38] text-xs font-bold transition-all cursor-pointer border border-slate-200 dark:border-white/5"
+                  title="معاينة شكل التنسيق والهوامش للروشتة"
+                >
+                  <span className="material-symbols-outlined text-base">visibility</span>
+                  <span>معاينة الروشتة</span>
+                </button>
+
+                {/* Export PDF Button */}
+                <button
+                  type="button"
+                  onClick={handleExportPDF}
+                  className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-950 text-white text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95 dark:bg-slate-800 dark:hover:bg-slate-900"
+                  title="تصدير كملف PDF بقياس A5 وأبعاد دقيقة"
+                >
+                  <span className="material-symbols-outlined text-base text-red-400">picture_as_pdf</span>
+                  <span>تصدير PDF</span>
+                </button>
+
+                {/* Next Patient Button */}
                 <button
                   type="button"
                   onClick={() => onNavigate('waiting-queue')}
-                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs font-bold transition-all cursor-pointer shadow-md"
+                  className="flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs font-bold transition-all cursor-pointer shadow-md"
                 >
                   <span className="material-symbols-outlined text-base">arrow_forward</span>
                   <span>الانتقال للمريض التالي</span>
@@ -1689,27 +1785,40 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
               title="إرسال الروشتة للمريض عبر واتساب"
             >
               <span className="material-symbols-outlined text-base">chat</span>
-              <span>واتساب الروشتة</span>
+              <span>واتساب</span>
             </button>
 
-            {/* Print Button on bottom bar */}
+            {/* Direct Print Button on bottom bar */}
             <button
               type="button"
-              onClick={() => window.print()}
-              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 text-white text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
-              title="طباعة الروشتة المعتمدة"
+              onClick={handleDirectPrint}
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-900 dark:bg-slate-700 hover:bg-black dark:hover:bg-slate-600 text-white text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+              title="الطباعة الفورية مباشرة على الطابعة الموصلة بالجهاز"
             >
               <span className="material-symbols-outlined text-base">print</span>
-              <span>طباعة الروشتة</span>
+              <span>طباعة مباشرة</span>
             </button>
 
-            {/* Prescription Pad Button */}
+            {/* Preview Button on bottom bar */}
             <button
               type="button"
-              onClick={() => onNavigate('prescription-pad')}
-              className="hidden md:flex items-center justify-center px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] hover:bg-slate-200 dark:hover:bg-[#242a38] text-xs font-bold transition-all cursor-pointer border border-slate-200 dark:border-white/5"
+              onClick={() => setShowPrintPreviewModal(true)}
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] hover:bg-slate-200 dark:hover:bg-[#242a38] text-xs font-bold transition-all cursor-pointer border border-slate-200 dark:border-white/5 active:scale-95"
+              title="معاينة شكل التنسيق والهوامش للروشتة"
             >
-              معاينة الروشتة
+              <span className="material-symbols-outlined text-base">visibility</span>
+              <span>معاينة</span>
+            </button>
+
+            {/* Export PDF Button on bottom bar */}
+            <button
+              type="button"
+              onClick={handleExportPDF}
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-950 text-white text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95 dark:bg-slate-800 dark:hover:bg-slate-900"
+              title="تصدير كملف PDF قياس A5 بجودة عالية"
+            >
+              <span className="material-symbols-outlined text-base text-red-400">picture_as_pdf</span>
+              <span>تصدير PDF</span>
             </button>
 
             {/* Finish or Next Patient Button */}
@@ -2014,6 +2123,441 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                 className="flex-1 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs font-bold shadow-md"
               >
                 الانتقال للطباعة
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* HIDDEN PRINT-ONLY A5 PRESCRIPTION CONTAINER */}
+      <div className="hidden print:block absolute top-0 left-0 right-0 w-full" dir="rtl">
+        <div
+          id="printable-prescription-pad"
+          style={{
+            padding: MARGIN_VALUES[prescriptionConfig.outerMargin] || '7mm',
+            paddingTop: prescriptionConfig.preprintedPaperMode ? '25mm' : MARGIN_VALUES[prescriptionConfig.headerMarginTop] || '7mm',
+            paddingBottom: prescriptionConfig.preprintedPaperMode ? '20mm' : MARGIN_VALUES[prescriptionConfig.footerMarginBottom] || '7mm',
+          }}
+          className="w-[148mm] h-[210mm] min-h-[210mm] bg-white text-slate-900 flex flex-col justify-between p-[7mm]"
+        >
+          {/* Header Area */}
+          {!prescriptionConfig.preprintedPaperMode && prescriptionConfig.showHeader ? (
+            <div className="border-b-2 border-[#00c2cb] pb-3">
+              <div className="flex items-start justify-between gap-3">
+                {/* Arabic Doctor Info */}
+                <div className="text-right flex-1">
+                  <h2 className="text-base font-bold text-slate-950 leading-tight">
+                    {prescriptionConfig.doctorName || CLINIC_INFO.doctorName}
+                  </h2>
+                  <div className="text-xs font-bold text-[#008f97] mt-0.5">
+                    {prescriptionConfig.specialtyAr || CLINIC_INFO.doctorTitle}
+                  </div>
+                  <div className="text-[10px] text-slate-600 leading-snug mt-0.5 whitespace-pre-line">
+                    {prescriptionConfig.degreesAr || CLINIC_INFO.doctorCredentials}
+                  </div>
+                </div>
+
+                {/* Logo Center */}
+                {prescriptionConfig.showLogo && (
+                  <div className="flex flex-col items-center shrink-0">
+                    {prescriptionConfig.logoUrl ? (
+                      <img
+                        src={prescriptionConfig.logoUrl}
+                        alt="Clinic Logo"
+                        className="w-12 h-12 object-contain"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-xl bg-slate-950 text-[#00c2cb] flex items-center justify-center font-bold">
+                        <span className="material-symbols-outlined text-xl">medical_services</span>
+                      </div>
+                    )}
+                    <span className="text-[8px] font-bold text-slate-400 mt-0.5 uppercase tracking-wider">
+                      SOLI CLINIC
+                    </span>
+                  </div>
+                )}
+
+                {/* English Info */}
+                <div className="text-left flex-1" dir="ltr">
+                  <h2 className="text-sm font-bold text-slate-950 leading-tight">
+                    {prescriptionConfig.doctorNameEn || 'Dr. Hazem El-Kady'}
+                  </h2>
+                  <div className="text-[11px] font-bold text-[#008f97] mt-0.5">
+                    {prescriptionConfig.specialtyEn || 'Consultant Cardiology'}
+                  </div>
+                  <div className="text-[10px] text-slate-600 leading-snug mt-0.5 whitespace-pre-line">
+                    {prescriptionConfig.degreesEn || 'M.D., MRCP (London)'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {/* Patient Meta Strip */}
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 my-2.5 text-[11px] flex items-center justify-between gap-2 text-slate-900" dir="rtl">
+            <div className="flex items-center gap-1">
+              <span className="font-bold text-slate-600">اسم المريض:</span>
+              <span className="font-bold text-slate-900">{patient ? patient.name : 'مريض غير محدد'}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="font-bold text-slate-600">السن:</span>
+              <span className="font-bold text-slate-900">{patient ? `${patient.age} سنة` : '-'}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="font-bold text-slate-600">التاريخ:</span>
+              <span className="font-mono text-slate-900">{new Date().toLocaleDateString('ar-EG')}</span>
+            </div>
+          </div>
+
+          {/* Prescription Body */}
+          <div
+            className={`flex-1 space-y-2.5 py-1 ${
+              prescriptionConfig.sectionSpacing === 'compact'
+                ? 'space-y-1.5'
+                : prescriptionConfig.sectionSpacing === 'comfortable'
+                ? 'space-y-4'
+                : 'space-y-2.5'
+            }`}
+          >
+            <div className="flex items-center gap-2 border-b border-slate-200 pb-1" dir="rtl">
+              <span className="text-2xl font-serif font-black text-[#008f97] italic">℞</span>
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">العلاج الموصوف</span>
+            </div>
+
+            {/* Items List */}
+            <div className="space-y-2 text-slate-900" dir="rtl">
+              {activePrescription && activePrescription.length > 0 ? (
+                activePrescription.map((item, idx) => (
+                  <div key={item.id || idx} className="p-2 rounded-lg bg-slate-50/80 border border-slate-100 flex items-start justify-between gap-2 text-xs">
+                    <div className="text-right">
+                      <div className="font-bold text-slate-900">
+                        {idx + 1}. {item.drugName} {item.strength || ''} {item.dosageForm || ''} {item.scientificName ? `(${item.scientificName})` : ''}
+                      </div>
+                      <div className="text-[11px] text-teal-700 font-medium">
+                        {item.dosageInstructions || item.dosage || ''} {item.timing ? `• ${item.timing}` : ''} {item.duration ? `• لمدة ${item.duration}` : ''}
+                      </div>
+                      {item.notes && (
+                        <div className="text-[10px] text-slate-500 italic mt-0.5">توجيهات إضافية: {item.notes}</div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 text-slate-400 text-xs">
+                  لا توجد أدوية مضافة للروشتة حالياً.
+                </div>
+              )}
+            </div>
+
+            {/* Diagnosis / Notes in print */}
+            {patientDiagnoses && patientDiagnoses.length > 0 && (
+              <div className="p-2 rounded-lg bg-slate-50 border border-slate-100 text-[10px] text-slate-800 text-right leading-relaxed" dir="rtl">
+                <span className="font-bold text-slate-600">التشخيص:</span> {patientDiagnoses.map((d) => d.nameAr).join('، ')}
+              </div>
+            )}
+
+            {/* Lifestyle advice / notes */}
+            {lifestyleAdvice && (
+              <div className="p-2 rounded-lg bg-teal-50/40 border border-teal-100 text-[10px] text-teal-900 text-right leading-relaxed" dir="rtl">
+                <span className="font-bold">تعليمات طبية:</span> {lifestyleAdvice}
+              </div>
+            )}
+
+            {/* Follow-up date */}
+            {followupDate && (
+              <div className="p-2 rounded-lg bg-amber-50/40 border border-amber-100 text-[10px] text-amber-900 text-right font-bold" dir="rtl">
+                موعد الاستشارة القادمة: {followupDate}
+              </div>
+            )}
+          </div>
+
+          {/* Footer Area */}
+          {!prescriptionConfig.preprintedPaperMode && prescriptionConfig.showFooter ? (
+            <div className="border-t-2 border-[#00c2cb] pt-2.5 mt-2">
+              <div className="flex items-end justify-between gap-3">
+                {/* Branches & Info */}
+                <div
+                  className={`flex-1 space-y-1 text-right ${
+                    prescriptionConfig.footerFontSize === 'small'
+                      ? 'text-[8px]'
+                      : prescriptionConfig.footerFontSize === 'large'
+                      ? 'text-[11px]'
+                      : 'text-[9.5px]'
+                  } text-slate-600`}
+                  dir="rtl"
+                >
+                  {prescriptionConfig.branches.map((b: any, i: number) => (
+                    <div key={b.id || i} className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-bold text-slate-900">{b.name}:</span>
+                      <span>{b.address || ''}</span>
+                      <span className="font-mono text-teal-700 font-bold">{b.phone}</span>
+                    </div>
+                  ))}
+                  <div className="text-slate-500 pt-0.5">
+                    رقم الحجز والاستعلام: <span className="font-mono font-bold text-slate-800">{prescriptionConfig.phone}</span>
+                  </div>
+                </div>
+
+                {/* QR Code Render in Footer */}
+                {prescriptionConfig.showQr && (
+                  <div className="flex flex-col items-center shrink-0">
+                    <div className="w-[50px] h-[50px] bg-white p-1 rounded-lg border border-slate-300 flex items-center justify-center">
+                      <svg viewBox="0 0 100 100" className="w-full h-full text-slate-900" fill="currentColor">
+                        <path d="M10 10h30v30h-30zM15 15v20h20v-20zM22 22h6v6h-6zM60 10h30v30h-30zM65 15v20h20v-20zM72 22h6v6h-6zM10 60h30v30h-30zM15 65v20h20v-20zM22 72h6v6h-6zM60 60h10v10h-10zM80 60h10v10h-10zM70 70h10v10h-10zM60 80h10v10h-10zM80 80h10v10h-10zM45 10h10v80h-10z" />
+                      </svg>
+                    </div>
+                    <span className="text-[7.5px] font-bold text-slate-500 mt-0.5">
+                      {prescriptionConfig.qrType === 'whatsapp' ? 'واتساب العيادة' : 'موقع العيادة'}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      {/* Interactive Print Preview Modal */}
+      {showPrintPreviewModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-100 dark:bg-[#0B132B] border border-slate-200 dark:border-white/10 rounded-3xl w-full max-w-[640px] shadow-2xl overflow-hidden flex flex-col my-8 animate-in fade-in zoom-in duration-250">
+            {/* Modal Header */}
+            <div className="bg-white dark:bg-[#111A2E] px-6 py-4 border-b border-slate-200 dark:border-white/10 flex items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-teal-50 dark:bg-[#00c2cb]/15 text-[#008f97] dark:text-[#00c2cb] flex items-center justify-center shrink-0">
+                  <span className="material-symbols-outlined text-lg">visibility</span>
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">معاينة وتصدير الروشتة (Rx Print Preview)</h3>
+                  <p className="text-[10px] text-slate-500 dark:text-[#859394]">قياس A5 متجاوب بالكامل مع ترويسة وهامش العيادة</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPrintPreviewModal(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 cursor-pointer font-bold animate-pulse"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Scrollable Preview Canvas Area */}
+            <div className="p-6 overflow-y-auto flex justify-center bg-slate-200/50 dark:bg-[#080e1b]/60 flex-1">
+              <div className="shadow-2xl rounded-2xl overflow-hidden border border-slate-300">
+                {/* Embedded Sheet Container (Matches EXACT layout configuration) */}
+                <div
+                  style={{
+                    width: '100%',
+                    maxWidth: '480px',
+                    minWidth: '380px',
+                    padding: MARGIN_VALUES[prescriptionConfig.outerMargin] || '7mm',
+                    paddingTop: prescriptionConfig.preprintedPaperMode ? '25mm' : MARGIN_VALUES[prescriptionConfig.headerMarginTop] || '7mm',
+                    paddingBottom: prescriptionConfig.preprintedPaperMode ? '20mm' : MARGIN_VALUES[prescriptionConfig.footerMarginBottom] || '7mm',
+                  }}
+                  className="bg-white text-slate-900 min-h-[580px] flex flex-col justify-between p-6 leading-relaxed select-none"
+                  dir="rtl"
+                >
+                  {/* Header Area */}
+                  {!prescriptionConfig.preprintedPaperMode && prescriptionConfig.showHeader ? (
+                    <div className="border-b-2 border-[#00c2cb] pb-3">
+                      <div className="flex items-start justify-between gap-2">
+                        {/* Arabic Doctor Info */}
+                        <div className="text-right flex-1">
+                          <h2 className="text-sm font-bold text-slate-950 leading-tight">
+                            {prescriptionConfig.doctorName || CLINIC_INFO.doctorName}
+                          </h2>
+                          <div className="text-[11px] font-bold text-[#008f97] mt-0.5">
+                            {prescriptionConfig.specialtyAr || CLINIC_INFO.doctorTitle}
+                          </div>
+                          <div className="text-[9px] text-slate-600 leading-snug mt-0.5 whitespace-pre-line">
+                            {prescriptionConfig.degreesAr || CLINIC_INFO.doctorCredentials}
+                          </div>
+                        </div>
+
+                        {/* Logo Center */}
+                        {prescriptionConfig.showLogo && (
+                          <div className="flex flex-col items-center shrink-0">
+                            {prescriptionConfig.logoUrl ? (
+                              <img
+                                src={prescriptionConfig.logoUrl}
+                                alt="Clinic Logo"
+                                className="w-10 h-10 object-contain"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <div className="w-8 h-8 rounded-lg bg-slate-950 text-[#00c2cb] flex items-center justify-center font-bold text-sm">
+                                <span className="material-symbols-outlined text-base">medical_services</span>
+                              </div>
+                            )}
+                            <span className="text-[7px] font-bold text-slate-400 mt-0.5 uppercase tracking-wider">
+                              SOLI CLINIC
+                            </span>
+                          </div>
+                        )}
+
+                        {/* English Info */}
+                        <div className="text-left flex-1" dir="ltr">
+                          <h2 className="text-xs font-bold text-slate-950 leading-tight">
+                            {prescriptionConfig.doctorNameEn || 'Dr. Hazem El-Kady'}
+                          </h2>
+                          <div className="text-[10px] font-bold text-[#008f97] mt-0.5">
+                            {prescriptionConfig.specialtyEn || 'Consultant Cardiology'}
+                          </div>
+                          <div className="text-[9px] text-slate-600 leading-snug mt-0.5 whitespace-pre-line">
+                            {prescriptionConfig.degreesEn || 'M.D., MRCP (London)'}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* Patient Meta Strip */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 my-2 text-[10px] flex items-center justify-between gap-2 text-slate-900">
+                    <div className="flex items-center gap-1">
+                      <span className="font-bold text-slate-600">المريض:</span>
+                      <span className="font-bold text-slate-900 truncate max-w-[120px]">{patient ? patient.name : 'مريض غير محدد'}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="font-bold text-slate-600">السن:</span>
+                      <span className="font-bold text-slate-900">{patient ? `${patient.age} سنة` : '-'}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="font-bold text-slate-600">التاريخ:</span>
+                      <span className="font-mono text-slate-900">{new Date().toLocaleDateString('ar-EG')}</span>
+                    </div>
+                  </div>
+
+                  {/* Prescription Body */}
+                  <div
+                    className={`flex-1 space-y-2 py-1 ${
+                      prescriptionConfig.sectionSpacing === 'compact'
+                        ? 'space-y-1'
+                        : prescriptionConfig.sectionSpacing === 'comfortable'
+                        ? 'space-y-3'
+                        : 'space-y-2'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1 border-b border-slate-200 pb-0.5">
+                      <span className="text-xl font-serif font-black text-[#008f97] italic">℞</span>
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">العلاج الموصوف</span>
+                    </div>
+
+                    {/* Items List */}
+                    <div className="space-y-1.5 text-slate-900">
+                      {activePrescription && activePrescription.length > 0 ? (
+                        activePrescription.map((item, idx) => (
+                          <div key={item.id || idx} className="p-1.5 rounded-lg bg-slate-50/80 border border-slate-100 flex items-start justify-between gap-2 text-[11px]">
+                            <div className="text-right">
+                              <div className="font-bold text-slate-900">
+                                {idx + 1}. {item.drugName} {item.strength || ''} {item.dosageForm || ''} {item.scientificName ? `(${item.scientificName})` : ''}
+                              </div>
+                              <div className="text-[10px] text-teal-700 font-medium">
+                                {item.dosageInstructions || item.dosage || ''} {item.timing ? `• ${item.timing}` : ''} {item.duration ? `• لمدة ${item.duration}` : ''}
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-center py-6 text-slate-400 text-[11px]">
+                          لا توجد أدوية مضافة للروشتة حالياً.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Diagnosis */}
+                    {patientDiagnoses && patientDiagnoses.length > 0 && (
+                      <div className="p-1.5 rounded-lg bg-slate-50 border border-slate-100 text-[9px] text-slate-800 text-right leading-relaxed">
+                        <span className="font-bold text-slate-600">التشخيص:</span> {patientDiagnoses.map((d) => d.nameAr).join('، ')}
+                      </div>
+                    )}
+
+                    {/* Advice */}
+                    {lifestyleAdvice && (
+                      <div className="p-1.5 rounded-lg bg-teal-50/40 border border-teal-100 text-[9px] text-teal-900 text-right leading-relaxed">
+                        <span className="font-bold">تعليمات:</span> {lifestyleAdvice}
+                      </div>
+                    )}
+
+                    {/* Follow up */}
+                    {followupDate && (
+                      <div className="p-1.5 rounded-lg bg-amber-50/40 border border-amber-100 text-[9px] text-amber-950 text-right font-bold">
+                        الاستشارة القادمة: {followupDate}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Footer Area */}
+                  {!prescriptionConfig.preprintedPaperMode && prescriptionConfig.showFooter ? (
+                    <div className="border-t border-[#00c2cb] pt-2 mt-2">
+                      <div className="flex items-end justify-between gap-3">
+                        {/* Branches & Info */}
+                        <div
+                          className={`flex-1 space-y-0.5 text-right ${
+                            prescriptionConfig.footerFontSize === 'small'
+                              ? 'text-[8px]'
+                              : prescriptionConfig.footerFontSize === 'large'
+                              ? 'text-[10px]'
+                              : 'text-[9px]'
+                          } text-slate-500`}
+                        >
+                          {prescriptionConfig.branches.slice(0, 2).map((b: any, i: number) => (
+                            <div key={b.id || i} className="flex items-center gap-1 flex-wrap">
+                              <span className="font-bold text-slate-800">{b.name}:</span>
+                              <span>{b.address || ''}</span>
+                              <span className="font-mono text-teal-700 font-bold">{b.phone}</span>
+                            </div>
+                          ))}
+                          <div className="text-slate-400 text-[8.5px]">
+                            الاستعلام: <span className="font-mono font-bold text-slate-700">{prescriptionConfig.phone}</span>
+                          </div>
+                        </div>
+
+                        {/* QR Code */}
+                        {prescriptionConfig.showQr && (
+                          <div className="flex flex-col items-center shrink-0">
+                            <div className="w-[42px] h-[42px] bg-white p-0.5 rounded border border-slate-300 flex items-center justify-center">
+                              <svg viewBox="0 0 100 100" className="w-full h-full text-slate-900" fill="currentColor">
+                                <path d="M10 10h30v30h-30zM15 15v20h20v-20zM22 22h6v6h-6zM60 10h30v30h-30zM65 15v20h20v-20zM72 22h6v6h-6zM10 60h30v30h-30zM15 65v20h20v-20zM22 72h6v6h-6zM60 60h10v10h-10zM80 60h10v10h-10zM70 70h10v10h-10zM60 80h10v10h-10zM80 80h10v10h-10zM45 10h10v80h-10z" />
+                              </svg>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="bg-white dark:bg-[#111A2E] px-6 py-4 border-t border-slate-200 dark:border-white/10 flex items-center justify-end gap-2.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowPrintPreviewModal(false)}
+                className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-slate-300 font-bold text-xs cursor-pointer"
+              >
+                إلغاء المعاينة
+              </button>
+
+              {/* PDF Download inside modal */}
+              <button
+                type="button"
+                onClick={handleExportPDF}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white dark:bg-slate-700 dark:hover:bg-slate-600 font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-sm text-red-400">picture_as_pdf</span>
+                <span>تحميل PDF</span>
+              </button>
+
+              {/* Direct Print inside modal */}
+              <button
+                type="button"
+                onClick={handleDirectPrint}
+                className="px-5 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-[#00c2cb]/20"
+              >
+                <span className="material-symbols-outlined text-sm font-bold">print</span>
+                <span>طباعة الروشتة الآن</span>
               </button>
             </div>
           </div>

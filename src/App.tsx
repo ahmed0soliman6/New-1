@@ -1096,6 +1096,38 @@ function ClinicApp() {
     }
   };
 
+  // Update patient record
+  const handleUpdatePatient = async (updated: Partial<Patient> & { patientId: string }) => {
+    const timestamp = new Date().toISOString();
+    setPatientsCanonical((prev) =>
+      prev.map((p) => {
+        if (p.patientId === updated.patientId) {
+          return {
+            ...p,
+            ...updated,
+            updatedAt: timestamp,
+          };
+        }
+        return p;
+      })
+    );
+
+    if (db) {
+      try {
+        await setDoc(
+          doc(db, 'patients', updated.patientId),
+          {
+            ...updated,
+            updatedAt: timestamp,
+          },
+          { merge: true }
+        );
+      } catch (err) {
+        console.warn('Error updating patient in Firestore:', err);
+      }
+    }
+  };
+
   // Add invoice / transaction safely
   const handleAddTransaction = async (newTx: TransactionRecord) => {
     // 1. Find or resolve patient
@@ -1941,9 +1973,11 @@ function ClinicApp() {
               {activeScreen === 'patient-records' && (
                 <PatientListItemsScreen
                   patients={patients}
+                  patientsCanonical={patientsCanonical}
                   onNavigate={handleNavigate}
                   onSelectPatientForExam={(p) => setActiveExamPatient(p)}
                   onDeletePatient={handleDeletePatient}
+                  onUpdatePatient={handleUpdatePatient}
                   visits={visitsCanonical}
                   invoices={invoicesCanonical}
                   prescriptions={prescriptionsCanonical}
