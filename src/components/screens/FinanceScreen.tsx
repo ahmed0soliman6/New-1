@@ -13,10 +13,6 @@ import {
   ExpenseCategoryItem,
   ClinicExpenseRecord,
 } from '../../utils/financeManager';
-import {
-  generateHistoricalTransactions,
-  BASE_FINANCIAL_METRICS,
-} from '../../utils/historicalFinanceData';
 
 interface FinanceScreenProps {
   transactions: TransactionRecord[];
@@ -40,22 +36,19 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
   const [expenseCategories, setExpenseCategories] = useState<ExpenseCategoryItem[]>(loadExpenseCategories);
   const [expenses, setExpenses] = useState<ClinicExpenseRecord[]>(loadClinicExpenses);
 
-  // Historical deterministic records seed
-  const historicalRecords = useMemo(() => generateHistoricalTransactions(), []);
-
   // Filter & Search states
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTimeframe, setSelectedTimeframe] = useState<TimeframeOption>('month'); // Default Month as requested
+  const [selectedTimeframe, setSelectedTimeframe] = useState<TimeframeOption>('all');
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const PAGE_SIZE = 40; // 40 items per page as requested
+  const PAGE_SIZE = 40; // 40 items per page
 
-  // Month & Year Filter for Top Statistical Cards (بجوار بطاقة وارد سبتمبر)
-  const [selectedYear, setSelectedYear] = useState<string>('2026');
-  const [selectedMonth, setSelectedMonth] = useState<string>('9'); // Default September 2026
+  // Month & Year Filter for Top Statistical Cards
+  const [selectedYear, setSelectedYear] = useState<string>('all');
+  const [selectedMonth, setSelectedMonth] = useState<string>('all');
 
-  // Month & Year Filter for Visits/Inflow Records Table (في سجلات الزيارات)
-  const [tableFilterYear, setTableFilterYear] = useState<string>('2026');
-  const [tableFilterMonth, setTableFilterMonth] = useState<string>('9');
+  // Month & Year Filter for Visits/Inflow Records Table
+  const [tableFilterYear, setTableFilterYear] = useState<string>('all');
+  const [tableFilterMonth, setTableFilterMonth] = useState<string>('all');
 
   // Reset page when filters change
   useEffect(() => {
@@ -111,38 +104,10 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
     }
   };
 
-  // Combine Live Transactions with Historical Records
+  // Live System Inflow Transactions
   const allInflowRecords = useMemo(() => {
-    const map = new Map<string, TransactionRecord>();
-    // Live first
-    transactions
-      .filter((t) => t.type !== 'out')
-      .forEach((t) => map.set(t.id, t));
-
-    // Historical next
-    historicalRecords.forEach((t) => {
-      if (!map.has(t.id)) {
-        map.set(t.id, t);
-      }
-    });
-
-    return Array.from(map.values());
-  }, [transactions, historicalRecords]);
-
-  // Live session delta calculations
-  const liveInflowDelta = useMemo(() => {
-    return transactions
-      .filter((t) => t.type !== 'out')
-      .reduce((sum, t) => sum + (t.paidAmount || t.amount || t.totalAmount || 0), 0);
+    return transactions.filter((t) => t.type !== 'out');
   }, [transactions]);
-
-  const liveOutflowDelta = useMemo(() => {
-    const txOut = transactions
-      .filter((t) => t.type === 'out')
-      .reduce((sum, t) => sum + (t.amount || 0), 0);
-    const clinicExp = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-    return txOut + clinicExp;
-  }, [transactions, expenses]);
 
   // Month Names in Arabic
   const MONTH_NAMES_AR: Record<string, string> = {
@@ -162,7 +127,8 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
 
   // Helper to extract year, month, and day safely
   const extractDateParts = (dateStr?: string) => {
-    if (!dateStr) return { year: 2026, month: 9, day: 8 };
+    const now = new Date();
+    if (!dateStr) return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() };
     const match = dateStr.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
     if (match) {
       return {
@@ -179,7 +145,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
         day: d.getDate(),
       };
     }
-    return { year: 2026, month: 9, day: 8 };
+    return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() };
   };
 
   // Selected period label for top statistics cards
@@ -191,10 +157,25 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
     return selectedYear === 'all' ? `شهر ${monthName}` : `${monthName} ${selectedYear}`;
   }, [selectedMonth, selectedYear]);
 
-  // 6 Metric Values Calculations (Dynamically responsive to selected month & year)
+  // 6 Metric Values Calculations (Dynamically calculated directly from live system transactions & expenses)
   const metrics = useMemo(() => {
-    const totalInflowAll = BASE_FINANCIAL_METRICS.totalInflowAllPeriods + liveInflowDelta;
-    const totalOutflowAll = BASE_FINANCIAL_METRICS.totalOutflowAllPeriods + liveOutflowDelta;
+    let totalInflowAll = 0;
+    transactions
+      .filter((t) => t.type !== 'out')
+      .forEach((t) => {
+        totalInflowAll += (t.paidAmount ?? t.amount ?? t.totalAmount ?? 0);
+      });
+
+    let totalOutflowAll = 0;
+    expenses.forEach((exp) => {
+      totalOutflowAll += (exp.amount || 0);
+    });
+    transactions
+      .filter((t) => t.type === 'out')
+      .forEach((tx) => {
+        totalOutflowAll += (tx.amount || 0);
+      });
+
     const actualNetDrawer = totalInflowAll - totalOutflowAll;
 
     // Calculate Inflow for the selected period (الشهر / السنة المختارة)
@@ -215,26 +196,14 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
       periodOutflow += (exp.amount || 0);
     });
 
-    transactions.filter((t) => t.type === 'out').forEach((tx) => {
-      const parts = extractDateParts(tx.date);
-      if (selectedYear !== 'all' && parts.year !== Number(selectedYear)) return;
-      if (selectedMonth !== 'all' && parts.month !== Number(selectedMonth)) return;
-      periodOutflow += (tx.amount || 0);
-    });
-
-    // Historical baseline adjustment for 2026
-    if (selectedYear === '2026') {
-      if (selectedMonth === '9') {
-        periodOutflow += (BASE_FINANCIAL_METRICS.outflowSeptember2026 - 700);
-      } else if (selectedMonth === 'all') {
-        periodOutflow += (BASE_FINANCIAL_METRICS.totalOutflowAllPeriods - 700);
-      } else {
-        const m = Number(selectedMonth);
-        if (m >= 1 && m <= 8) {
-          periodOutflow += 4620;
-        }
-      }
-    }
+    transactions
+      .filter((t) => t.type === 'out')
+      .forEach((tx) => {
+        const parts = extractDateParts(tx.date);
+        if (selectedYear !== 'all' && parts.year !== Number(selectedYear)) return;
+        if (selectedMonth !== 'all' && parts.month !== Number(selectedMonth)) return;
+        periodOutflow += (tx.amount || 0);
+      });
 
     const periodBalance = periodInflow - periodOutflow;
 
@@ -246,7 +215,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
       periodOutflow,
       periodBalance,
     };
-  }, [allInflowRecords, expenses, transactions, liveInflowDelta, liveOutflowDelta, selectedYear, selectedMonth]);
+  }, [allInflowRecords, expenses, transactions, selectedYear, selectedMonth]);
 
   // Format currency with 2 decimals
   const formatCurrency = (val: number) => {
@@ -262,12 +231,20 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
       // 1. Timeframe Filter
       if (selectedTimeframe !== 'all') {
         const parts = extractDateParts(rec.date);
+        const now = new Date();
+        const todayYear = now.getFullYear();
+        const todayMonth = now.getMonth() + 1;
+        const todayDay = now.getDate();
+
         if (selectedTimeframe === 'day') {
-          const isToday = (parts.year === 2026 && parts.month === 9 && parts.day === 8) || rec.time?.includes('اليوم');
+          const isToday =
+            (parts.year === todayYear && parts.month === todayMonth && parts.day === todayDay) ||
+            rec.time?.includes('اليوم');
           if (!isToday) return false;
         } else if (selectedTimeframe === 'week') {
-          // Week of Sept 1 - 8, 2026
-          if (parts.year !== 2026 || parts.month !== 9 || parts.day > 8) return false;
+          const txDate = new Date(rec.date);
+          const diffDays = Math.abs(now.getTime() - txDate.getTime()) / (1000 * 60 * 60 * 24);
+          if (diffDays > 7) return false;
         } else if (selectedTimeframe === 'month') {
           if (tableFilterYear !== 'all' && parts.year !== Number(tableFilterYear)) return false;
           if (tableFilterMonth !== 'all' && parts.month !== Number(tableFilterMonth)) return false;

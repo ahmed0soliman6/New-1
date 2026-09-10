@@ -111,106 +111,112 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
   // Follow-ups search state
   const [followupSearch, setFollowupSearch] = useState('');
 
-  // Sample initial appointments with strictly the 3 statuses
-  const [customAppointments, setCustomAppointments] = useState<AppointmentListItem[]>([
-    {
-      id: 'app-sample-1',
-      patientName: 'جمال على محمد',
-      phone: '01029384751',
-      medicalCode: 'EG-102',
-      timeSlot: '09:00 ص',
-      time: '09:00 ص',
-      date: '2026-09-08',
-      branch: 'الفرع الرئيسي',
-      visitType: 'متابعة',
-      expectedFee: 150,
-      status: 'مجدول',
-      notes: 'متابعة كشف واستشارة دورية',
-    },
-    {
-      id: 'app-sample-2',
-      patientName: 'سارة إبراهيم محمود',
-      phone: '01145829103',
-      medicalCode: 'EG-103',
-      timeSlot: '09:30 ص',
-      time: '09:30 ص',
-      date: '2026-09-08',
-      branch: 'الفرع الرئيسي',
-      visitType: 'كشف',
-      expectedFee: 300,
-      status: 'مجدول',
-      notes: 'كشف باطنة جديد',
-    },
-    {
-      id: 'app-sample-3',
-      patientName: 'خالد مصطفى العوضي',
-      phone: '01284910293',
-      medicalCode: 'EG-104',
-      timeSlot: '10:15 ص',
-      time: '10:15 ص',
-      date: '2026-09-08',
-      branch: 'الفرع الرئيسي',
-      visitType: 'كشف',
-      expectedFee: 300,
-      status: 'مجدول',
-      notes: 'حجز موعد جديد',
-    },
-    // Archived Appointments (حضر المريض / ملغى)
-    {
-      id: 'app-archived-1',
-      patientName: 'أحمد محمود رضوان',
-      phone: '01019283746',
-      medicalCode: 'EG-088',
-      timeSlot: '08:00 ص',
-      time: '08:00 ص',
-      date: '2026-09-08',
-      branch: 'الفرع الرئيسي',
-      visitType: 'كشف',
-      expectedFee: 300,
-      status: 'فى الانتظار حضر المريض',
-      notes: 'حضر للعيادة وسجل زيارة',
-    },
-    {
-      id: 'app-archived-2',
-      patientName: 'مروة كمال الشناوي',
-      phone: '01129384756',
-      medicalCode: 'EG-091',
-      timeSlot: '08:30 ص',
-      time: '08:30 ص',
-      date: '2026-09-08',
-      branch: 'الفرع الرئيسي',
-      visitType: 'متابعة',
-      expectedFee: 150,
-      status: 'فى الانتظار حضر المريض',
-      notes: 'حضرت وسددت الرسوم',
-    },
-    {
-      id: 'app-archived-3',
-      patientName: 'ياسر عبد العزيز',
-      phone: '01594837261',
-      medicalCode: 'EG-095',
-      timeSlot: '08:45 ص',
-      time: '08:45 ص',
-      date: '2026-09-08',
-      branch: 'الفرع الرئيسي',
-      visitType: 'كشف',
-      expectedFee: 300,
-      status: 'ملغى',
-      notes: 'اعتذر المريض عن الحضور وتم الإلغاء',
-    },
-  ]);
+  const isDbInit = typeof window !== 'undefined' && localStorage.getItem('soli_clinic_db_initialized') === 'true';
+
+  // Sample initial appointments with strictly the 3 statuses (only if DB not initialized)
+  const [customAppointments, setCustomAppointments] = useState<AppointmentListItem[]>(() => {
+    if (isDbInit) return [];
+    return [
+      {
+        id: 'app-sample-1',
+        patientName: 'جمال على محمد',
+        phone: '01029384751',
+        medicalCode: 'EG-102',
+        timeSlot: '09:00 ص',
+        time: '09:00 ص',
+        date: '2026-09-08',
+        branch: 'الفرع الرئيسي',
+        visitType: 'متابعة',
+        expectedFee: 150,
+        status: 'مجدول',
+        notes: 'متابعة كشف واستشارة دورية',
+      },
+      {
+        id: 'app-sample-2',
+        patientName: 'سارة إبراهيم محمود',
+        phone: '01145829103',
+        medicalCode: 'EG-103',
+        timeSlot: '09:30 ص',
+        time: '09:30 ص',
+        date: '2026-09-08',
+        branch: 'الفرع الرئيسي',
+        visitType: 'كشف',
+        expectedFee: 300,
+        status: 'مجدول',
+        notes: 'كشف باطنة جديد',
+      },
+      {
+        id: 'app-sample-3',
+        patientName: 'خالد مصطفى العوضي',
+        phone: '01284910293',
+        medicalCode: 'EG-104',
+        timeSlot: '10:15 ص',
+        time: '10:15 ص',
+        date: '2026-09-08',
+        branch: 'الفرع الرئيسي',
+        visitType: 'كشف',
+        expectedFee: 300,
+        status: 'مجدول',
+        notes: 'حجز موعد جديد',
+      },
+      // Archived Appointments (حضر المريض / ملغى)
+      {
+        id: 'app-archived-1',
+        patientName: 'أحمد محمود رضوان',
+        phone: '01019283746',
+        medicalCode: 'EG-088',
+        timeSlot: '08:00 ص',
+        time: '08:00 ص',
+        date: '2026-09-08',
+        branch: 'الفرع الرئيسي',
+        visitType: 'كشف',
+        expectedFee: 300,
+        status: 'فى الانتظار حضر المريض',
+        notes: 'حضر للعيادة وسجل زيارة',
+      },
+      {
+        id: 'app-archived-2',
+        patientName: 'مروة كمال الشناوي',
+        phone: '01129384756',
+        medicalCode: 'EG-091',
+        timeSlot: '08:30 ص',
+        time: '08:30 ص',
+        date: '2026-09-08',
+        branch: 'الفرع الرئيسي',
+        visitType: 'متابعة',
+        expectedFee: 150,
+        status: 'فى الانتظار حضر المريض',
+        notes: 'حضرت وسددت الرسوم',
+      },
+      {
+        id: 'app-archived-3',
+        patientName: 'ياسر عبد العزيز',
+        phone: '01594837261',
+        medicalCode: 'EG-095',
+        timeSlot: '08:45 ص',
+        time: '08:45 ص',
+        date: '2026-09-08',
+        branch: 'الفرع الرئيسي',
+        visitType: 'كشف',
+        expectedFee: 300,
+        status: 'ملغى',
+        notes: 'اعتذر المريض عن الحضور وتم الإلغاء',
+      },
+    ];
+  });
 
   // Merge canonical appointments from props if available
   const allAppointments = useMemo(() => {
-    const list = [...customAppointments];
     if (appointments && appointments.length > 0) {
-      appointments.forEach((app) => {
+      const list = [...appointments];
+      customAppointments.forEach((app) => {
         if (!list.some((existing) => existing.id === app.id || existing.patientName === app.patientName)) {
           list.push(app);
         }
       });
+      return list;
     }
-    return list;
+    return customAppointments;
   }, [customAppointments, appointments]);
 
   // Count of archived appointments (فى الانتظار حضر المريض / ملغى)
@@ -284,6 +290,9 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
   const activeFollowUps = useMemo(() => {
     if (followUps && followUps.length > 0) {
       return followUps;
+    }
+    if (isDbInit) {
+      return [];
     }
     return [
       {

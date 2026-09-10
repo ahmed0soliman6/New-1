@@ -200,7 +200,7 @@ export function loadClinicExpenses(): ClinicExpenseRecord[] {
   } catch (e) {
     console.warn('Failed to load clinic expenses from localStorage', e);
   }
-  return DEFAULT_CLINIC_EXPENSES;
+  return [];
 }
 
 export function saveClinicExpenses(expenses: ClinicExpenseRecord[]) {

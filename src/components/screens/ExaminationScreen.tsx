@@ -295,19 +295,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
       }
     }
 
-    // Special check for mock pat-1 previous visit if present in canonical records
-    if (!latestVisitWithRx && patient.id === 'pat-1') {
-      const rx = (prescriptions || []).find((p) => p.visitId === 'vis-prev-101');
-      if (rx && rx.items && rx.items.length > 0) {
-        const mockPrev = (visits || []).find((v) => v.visitId === 'vis-prev-101');
-        if (mockPrev) {
-          latestVisitWithRx = mockPrev;
-          registeredRx = rx;
-        }
-      }
-    }
-
-    // STRICT RULE: Only show the previous visit card if there is a previous visit AND a registered prescription
+    // STRICT RULE: Only show the previous visit card if there is a real previous visit AND a registered prescription
     if (!latestVisitWithRx || !registeredRx) {
       return {
         hasPreviousVisit: false,

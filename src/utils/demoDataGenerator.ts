@@ -286,6 +286,11 @@ export async function generateOneYearDemoData(db: Firestore | null): Promise<voi
 export async function clearAllDatabaseCollections(db: Firestore | null): Promise<void> {
   // Clear local storage expenses
   saveClinicExpenses([]);
+  try {
+    localStorage.setItem('soli_clinic_db_initialized', 'true');
+  } catch {
+    // Ignore storage issues in private modes
+  }
 
   if (!db) return;
 
@@ -298,7 +303,9 @@ export async function clearAllDatabaseCollections(db: Firestore | null): Promise
     'followUps',
     'prescriptions',
     'labOrders',
-    'radiologyOrders'
+    'radiologyOrders',
+    'expenses',
+    'transactions'
   ];
 
   for (const colName of collectionsToClear) {

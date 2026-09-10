@@ -219,6 +219,14 @@ function ClinicApp() {
 
   const handleClearAllData = async () => {
     try {
+      try {
+        localStorage.setItem('soli_clinic_db_initialized', 'true');
+        localStorage.setItem('soli_clinic_expenses', '[]');
+        window.dispatchEvent(new CustomEvent('soli_clinic_expenses_updated'));
+      } catch {
+        // Storage fallback
+      }
+
       const { clearAllDatabaseCollections } = await import('./utils/demoDataGenerator');
       await clearAllDatabaseCollections(db);
       
@@ -231,8 +239,10 @@ function ClinicApp() {
       setPrescriptionsCanonical([]);
       setLabOrdersCanonical([]);
       setRadiologyOrdersCanonical([]);
+      setActiveExamPatient(null);
+      setActivePrescription([]);
 
-      alert('تم مسح سجلات المرضى والزيارات والفواتير التجريبية والبدء من جديد مع بقاء الإعدادات والأدلة الطبية الثابتة ✓');
+      alert('تم مسح سجلات المرضى والزيارات وقوائم الانتظار والمواعيد والفواتير بالكامل والبدء من جديد مع بقاء الإعدادات والأدلة الطبية الثابتة ✓');
     } catch (err) {
       console.error(err);
       alert('حدث خطأ أثناء مسح البيانات.');
@@ -241,6 +251,14 @@ function ClinicApp() {
 
   const handleClearBrowserVisitsOnly = async () => {
     try {
+      try {
+        localStorage.setItem('soli_clinic_db_initialized', 'true');
+        localStorage.setItem('soli_clinic_expenses', '[]');
+        window.dispatchEvent(new CustomEvent('soli_clinic_expenses_updated'));
+      } catch {
+        // Storage fallback
+      }
+
       setPatientsCanonical([]);
       setVisitsCanonical([]);
       setInvoicesCanonical([]);
@@ -250,11 +268,13 @@ function ClinicApp() {
       setPrescriptionsCanonical([]);
       setLabOrdersCanonical([]);
       setRadiologyOrdersCanonical([]);
+      setActiveExamPatient(null);
+      setActivePrescription([]);
 
       // Force-reload / Re-fetch the registered database records from Firestore cloud
       setSyncRetryCounter((c) => c + 1);
 
-      alert('تم مسح المرضى، الزيارات والفواتير من ذاكرة المتصفح محلياً، وإعادة استدعاء وجلب البيانات المسجلة على السحابة (Firestore) بنجاح ✓');
+      alert('تم تفريغ ذاكرة المتصفح محلياً وتحميل البيانات الفعلية الموجودة على السحابة (Firestore) فقط ✓');
     } catch (err) {
       console.error(err);
       alert('حدث خطأ أثناء مسح المتصفح وإعادة الاستدعاء.');
@@ -263,6 +283,14 @@ function ClinicApp() {
 
   const handleClearAllBrowserAndCloud = async () => {
     try {
+      try {
+        localStorage.setItem('soli_clinic_db_initialized', 'true');
+        localStorage.setItem('soli_clinic_expenses', '[]');
+        window.dispatchEvent(new CustomEvent('soli_clinic_expenses_updated'));
+      } catch {
+        // Storage fallback
+      }
+
       const { clearAllDatabaseCollections } = await import('./utils/demoDataGenerator');
       await clearAllDatabaseCollections(db);
       
@@ -275,8 +303,10 @@ function ClinicApp() {
       setPrescriptionsCanonical([]);
       setLabOrdersCanonical([]);
       setRadiologyOrdersCanonical([]);
+      setActiveExamPatient(null);
+      setActivePrescription([]);
 
-      alert('تم حذف وتدمير سجلات المرضى والزيارات بالكامل من المتصفح ومن قاعدة بيانات السحابة (Firestore)، مع الاحتفاظ بالإعدادات والأدلة الطبية والروشتة دون تأثر ✓');
+      alert('تم حذف وتدمير سجلات المرضى والزيارات والمواعيد بالكامل من المتصفح ومن قاعدة بيانات السحابة (Firestore) نهائياً ✓');
     } catch (err) {
       console.error(err);
       alert('حدث خطأ أثناء تدمير ومسح بيانات السحابة.');
@@ -296,60 +326,38 @@ function ClinicApp() {
   const [clinicLocations] = useState<ClinicLocation[]>(INITIAL_CLINIC_LOCATIONS);
   const [services] = useState<ServiceItem[]>(INITIAL_SERVICES);
 
-  const [patientsCanonical, setPatientsCanonical] = useState<Patient[]>(INITIAL_PATIENTS);
-  const [appointmentsCanonical, setAppointmentsCanonical] = useState<Appointment[]>(INITIAL_APPOINTMENTS);
-  const [visitsCanonical, setVisitsCanonical] = useState<Visit[]>(INITIAL_VISITS);
-  const [invoicesCanonical, setInvoicesCanonical] = useState<Invoice[]>(INITIAL_INVOICES);
-  const [paymentsCanonical, setPaymentsCanonical] = useState<Payment[]>(INITIAL_PAYMENTS);
-  const [followUpsCanonical, setFollowUpsCanonical] = useState<FollowUp[]>(INITIAL_FOLLOWUPS);
-  const [prescriptionsCanonical, setPrescriptionsCanonical] = useState<Prescription[]>(INITIAL_PRESCRIPTIONS);
+  const [patientsCanonical, setPatientsCanonical] = useState<Patient[]>([]);
+  const [appointmentsCanonical, setAppointmentsCanonical] = useState<Appointment[]>([]);
+  const [visitsCanonical, setVisitsCanonical] = useState<Visit[]>([]);
+  const [invoicesCanonical, setInvoicesCanonical] = useState<Invoice[]>([]);
+  const [paymentsCanonical, setPaymentsCanonical] = useState<Payment[]>([]);
+  const [followUpsCanonical, setFollowUpsCanonical] = useState<FollowUp[]>([]);
+  const [prescriptionsCanonical, setPrescriptionsCanonical] = useState<Prescription[]>([]);
   const [medicationsCanonical, setMedicationsCanonical] = useState<Medication[]>(INITIAL_MEDICATIONS);
   const [labTestsCanonical, setLabTestsCanonical] = useState<LabTest[]>(INITIAL_LAB_TESTS);
-  const [labOrdersCanonical, setLabOrdersCanonical] = useState<LabOrder[]>(INITIAL_LAB_ORDERS);
+  const [labOrdersCanonical, setLabOrdersCanonical] = useState<LabOrder[]>([]);
   const [radiologyTypesCanonical, setRadiologyTypesCanonical] = useState<RadiologyType[]>(INITIAL_RADIOLOGY_TYPES);
-  const [radiologyOrdersCanonical, setRadiologyOrdersCanonical] = useState<RadiologyOrder[]>(INITIAL_RADIOLOGY_ORDERS);
+  const [radiologyOrdersCanonical, setRadiologyOrdersCanonical] = useState<RadiologyOrder[]>([]);
   const [diagnosesCanonical, setDiagnosesCanonical] = useState<Diagnosis[]>(INITIAL_DIAGNOSES);
   const [symptomsCanonical, setSymptomsCanonical] = useState<Symptom[]>(INITIAL_SYMPTOMS);
   const [chronicDiseasesCanonical, setChronicDiseasesCanonical] = useState<ChronicDisease[]>(INITIAL_CHRONIC_DISEASES);
   const [doctorSettingsCanonical, setDoctorSettingsCanonical] = useState<DoctorSettings>(INITIAL_DOCTOR_SETTINGS_CANONICAL);
   const [systemSettingsCanonical] = useState<SystemSettings>(INITIAL_SYSTEM_SETTINGS_CANONICAL);
 
-  // Auto-seed Firestore if empty
+  // Auto-seed Firestore catalog references if empty on first-ever install (never seed mock patients/visits)
   useEffect(() => {
     if (!db) return;
     const checkAndSeed = async () => {
       try {
-        const querySnapshot = await getDocs(collection(db, 'patients'));
+        const alreadyInitialized = localStorage.getItem('soli_clinic_db_initialized');
+        if (alreadyInitialized) {
+          return;
+        }
+
+        const querySnapshot = await getDocs(collection(db, 'medications'));
         if (querySnapshot.empty) {
-          console.log('Firestore is empty. Seeding initial collections...');
+          console.log('Firestore catalogs empty on first setup. Seeding reference catalogs...');
           const batch = writeBatch(db);
-          INITIAL_PATIENTS.forEach((p) => {
-            batch.set(doc(db, 'patients', p.patientId), p);
-          });
-          INITIAL_APPOINTMENTS.forEach((app) => {
-            batch.set(doc(db, 'appointments', app.appointmentId), app);
-          });
-          INITIAL_VISITS.forEach((v) => {
-            batch.set(doc(db, 'visits', v.visitId), v);
-          });
-          INITIAL_INVOICES.forEach((inv) => {
-            batch.set(doc(db, 'invoices', inv.invoiceId), inv);
-          });
-          INITIAL_PAYMENTS.forEach((p) => {
-            batch.set(doc(db, 'payments', p.paymentId), p);
-          });
-          INITIAL_PRESCRIPTIONS.forEach((pr) => {
-            batch.set(doc(db, 'prescriptions', pr.prescriptionId), pr);
-          });
-          INITIAL_FOLLOWUPS.forEach((f) => {
-            batch.set(doc(db, 'followUps', f.followUpId), f);
-          });
-          INITIAL_LAB_ORDERS.forEach((lo) => {
-            batch.set(doc(db, 'labOrders', lo.labOrderId), lo);
-          });
-          INITIAL_RADIOLOGY_ORDERS.forEach((ro) => {
-            batch.set(doc(db, 'radiologyOrders', ro.radiologyOrderId), ro);
-          });
           INITIAL_MEDICATIONS.forEach((med) => {
             batch.set(doc(db, 'medications', med.medicationId), med);
           });
@@ -369,10 +377,13 @@ function ClinicApp() {
             batch.set(doc(db, 'chronicDiseases', cd.diseaseId), cd);
           });
           await batch.commit();
-          console.log('Database successfully seeded to Firestore!');
+          localStorage.setItem('soli_clinic_db_initialized', 'true');
+          console.log('Reference catalogs successfully seeded to Firestore!');
+        } else {
+          localStorage.setItem('soli_clinic_db_initialized', 'true');
         }
       } catch (err) {
-        console.warn('Error during Firestore seeding:', err);
+        console.warn('Error during Firestore catalog seeding:', err);
       }
     };
     checkAndSeed();
@@ -529,7 +540,7 @@ function ClinicApp() {
       seenPaymentIds.add(p.paymentId);
       const pat = patientsCanonical.find((pt) => pt.patientId === p.patientId);
       const inv = invoicesCanonical.find((i) => i.invoiceId === p.invoiceId);
-      const serviceName = inv?.items?.[0]?.description || 'كشف واستشارة طبية';
+      const serviceName = inv?.items?.[0]?.nameAr || inv?.items?.[0]?.description || 'كشف واستشارة طبية';
       const totalAmount = inv?.total || p.amount;
       const discountAmount = inv?.discount || 0;
       const paidAmount = p.amount;
@@ -560,7 +571,7 @@ function ClinicApp() {
       const hasPayment = paymentsCanonical.some((p) => p.invoiceId === inv.invoiceId);
       if (!hasPayment) {
         const pat = patientsCanonical.find((pt) => pt.patientId === inv.patientId);
-        const serviceName = inv.items?.[0]?.description || 'كشف واستشارة طبية';
+        const serviceName = inv.items?.[0]?.nameAr || inv.items?.[0]?.description || 'كشف واستشارة طبية';
         list.push({
           id: inv.invoiceId,
           receiptNo: `INV-${inv.invoiceId.slice(-5)}`,
@@ -583,7 +594,11 @@ function ClinicApp() {
       }
     });
 
-    return list;
+    return list.sort((a, b) => {
+      const timeA = new Date(`${a.date} ${a.time || '00:00'}`).getTime();
+      const timeB = new Date(`${b.date} ${b.time || '00:00'}`).getTime();
+      return isNaN(timeB) || isNaN(timeA) ? 0 : timeB - timeA;
+    });
   }, [paymentsCanonical, invoicesCanonical, patientsCanonical]);
 
   // Catalogs derived
@@ -1130,6 +1145,11 @@ function ClinicApp() {
 
   // Add invoice / transaction safely
   const handleAddTransaction = async (newTx: TransactionRecord) => {
+    if (newTx.type === 'out') {
+      // Clinic expenses are tracked via expense storage and events
+      return;
+    }
+
     // 1. Find or resolve patient
     let targetPatientId = patientsCanonical.find(
       (p) => p.fullName.trim() === newTx.patientName.trim()
@@ -1137,9 +1157,10 @@ function ClinicApp() {
 
     if (!targetPatientId && newTx.patientName.trim()) {
       targetPatientId = `pat-${Date.now()}`;
+      const maxNum = patientsCanonical.reduce((max, p) => (p.fileNumber && p.fileNumber > max ? p.fileNumber : max), 0);
       const newPat: Patient = {
         patientId: targetPatientId,
-        fileNumber: `F-${Math.floor(1000 + Math.random() * 9000)}`,
+        fileNumber: maxNum + 1,
         fullName: newTx.patientName.trim(),
         phone: '',
         gender: 'male',
@@ -1158,6 +1179,9 @@ function ClinicApp() {
     const discountAmount = newTx.discountAmount ?? 0;
     const finalTotal = Math.max(0, totalAmount - discountAmount);
     const paidAmount = newTx.paidAmount ?? (newTx.status === 'مدفوعة' ? finalTotal : (newTx.amount ?? 0));
+    const txDateIso = newTx.date
+      ? `${newTx.date}T${new Date().toISOString().split('T')[1] || '12:00:00.000Z'}`
+      : new Date().toISOString();
 
     const newInvoice: Invoice = {
       invoiceId,
@@ -1179,8 +1203,8 @@ function ClinicApp() {
       paidAmount: paidAmount > 0 ? paidAmount : (newTx.status === 'مدفوعة' ? finalTotal : 0),
       remainingAmount: Math.max(0, finalTotal - (paidAmount > 0 ? paidAmount : (newTx.status === 'مدفوعة' ? finalTotal : 0))),
       status: (newTx.status === 'مدفوعة' || paidAmount >= finalTotal) ? 'PAID' : 'UNPAID',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: txDateIso,
+      updatedAt: txDateIso,
     };
 
     const newPayment: Payment = {
@@ -1193,7 +1217,7 @@ function ClinicApp() {
       method: (newTx.paymentMethod || newTx.method) === 'فيزا / كارت' ? 'CARD' : 'CASH',
       status: 'PAID',
       receiptNumber: newTx.receiptNo || `REC-${Math.floor(10000 + Math.random() * 90000)}`,
-      paidAt: new Date().toISOString(),
+      paidAt: txDateIso,
       receivedBy: 'doc-1',
     };
 
@@ -1885,8 +1909,15 @@ function ClinicApp() {
                   onNavigate={handleNavigate}
                   appointments={appointments}
                   queue={queue}
+                  visits={visitsCanonical}
+                  transactions={transactions}
+                  followUps={doctorFollowUpsList}
                   onConfirmCheckIn={handleConfirmCheckIn}
                   onCallPatient={handleCallPatient}
+                  onSelectPatient={setActiveExamPatient}
+                  onStartIntakeFromAppointment={handleStartIntakeFromAppointment}
+                  patients={patients}
+                  onAddTransaction={handleAddTransaction}
                 />
               )}
 
@@ -1990,8 +2021,9 @@ function ClinicApp() {
               {(activeScreen === 'finance' || activeScreen === 'billing-payments') && (
                 <FinanceScreen
                   transactions={transactions}
-                  onAddTransaction={() => {}}
+                  onAddTransaction={handleAddTransaction}
                   onDeleteTransaction={handleDeleteTransaction}
+                  patients={patients}
                 />
               )}
 
