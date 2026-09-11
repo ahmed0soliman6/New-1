@@ -1,4 +1,4 @@
-const CACHE_NAME = 'soli-medical-v3';
+const CACHE_NAME = 'soli-medical-v4';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
