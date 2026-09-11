@@ -491,14 +491,23 @@ function ClinicApp() {
         const pat = patientsCanonical.find((p) => p.patientId === v.patientId);
         const invoice = invoicesCanonical.find((i) => i.visitId === v.visitId);
         const payment = paymentsCanonical.find((p) => p.visitId === v.visitId);
+
+        const birthYear = pat?.dateOfBirth ? new Date(pat.dateOfBirth).getFullYear() : undefined;
+        const calculatedAge = birthYear ? Math.max(1, new Date().getFullYear() - birthYear) : 30;
+
         return {
           id: v.visitId,
+          patientId: v.patientId,
           ticketNumber: `#0${v.queueNumber || 1}`,
           patientName: pat?.fullName || 'مريض غير مسجل',
           medicalCode: pat?.medicalCode || `EG-${v.patientId.replace(/\D/g, '')}`,
           fileNumber: pat?.fileNumber || v.queueNumber || 1,
           phone: pat?.phone || '',
-          age: 38,
+          age: calculatedAge,
+          gender: pat?.gender || '',
+          address: pat?.address || pat?.governorate || '',
+          bloodType: pat?.bloodType || 'غير محدد',
+          chronicConditions: pat?.chronicDiseases || v.receptionistData?.chronicDiseases || [],
           visitType: v.visitType === 'NEW' ? 'كشف جديد' : 'استشارة / متابعة',
           arrivalTime: new Date(v.createdAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
           elapsedMinutes: Math.max(1, Math.floor((Date.now() - new Date(v.createdAt).getTime()) / 60000)),
@@ -698,22 +707,49 @@ function ClinicApp() {
 
   // Pre-filled intake data when transitioning from appointment «حضر المريض»
   const [intakeInitialData, setIntakeInitialData] = useState<{
+    patientId?: string;
     patientName?: string;
     phone?: string;
     visitType?: string;
     notes?: string;
     appointmentId?: string;
     fee?: number;
+    age?: number;
+    gender?: 'male' | 'female' | '';
+    address?: string;
+    bloodType?: string;
+    chronicConditions?: string[];
   } | null>(null);
 
   const handleStartIntakeFromAppointment = (app: AppointmentListItem) => {
+    const cleanPhone = (app.phone || '').trim().replace(/[^0-9]/g, '');
+    const cleanName = (app.patientName || '').trim().toLowerCase();
+
+    const matchedPatient = patientsCanonical.find((p) => {
+      const pPhone = (p.phone || '').trim().replace(/[^0-9]/g, '');
+      const pName = (p.fullName || '').trim().toLowerCase();
+      const phoneMatch = cleanPhone.length >= 7 && pPhone.includes(cleanPhone);
+      const nameMatch = pName !== '' && cleanName !== '' && pName === cleanName;
+      return phoneMatch || nameMatch;
+    });
+
+    const calculatedAge = matchedPatient?.dateOfBirth
+      ? Math.max(1, new Date().getFullYear() - new Date(matchedPatient.dateOfBirth).getFullYear())
+      : undefined;
+
     setIntakeInitialData({
-      patientName: app.patientName,
-      phone: app.phone,
+      patientId: matchedPatient?.patientId,
+      patientName: matchedPatient?.fullName || app.patientName,
+      phone: matchedPatient?.phone || app.phone,
       visitType: app.visitType,
       notes: app.notes,
       appointmentId: app.id,
       fee: app.expectedFee,
+      age: calculatedAge,
+      gender: matchedPatient?.gender === 'female' ? 'female' : matchedPatient?.gender === 'male' ? 'male' : undefined,
+      address: matchedPatient?.address || matchedPatient?.governorate || undefined,
+      bloodType: matchedPatient?.bloodType || undefined,
+      chronicConditions: matchedPatient?.chronicDiseases || undefined,
     });
     if (db && app.id) {
       setDoc(doc(db, 'appointments', app.id), { status: 'ARRIVED' }, { merge: true }).catch((err) => {
@@ -1405,13 +1441,14 @@ function ClinicApp() {
       medicalCode: basePatient?.medicalCode || `EG-${targetVisit.patientId.slice(0, 5)}`,
       fileNumber: basePatient?.fileNumber || targetVisit.queueNumber || 1,
       name: basePatient?.name || name,
-      age: basePatient?.age || 38,
+      age: basePatient?.age || 30,
       gender: basePatient?.gender || 'male',
       phone: basePatient?.phone || '',
       governorate: basePatient?.governorate || 'القاهرة',
+      address: basePatient?.address || '',
       allergies: basePatient?.allergies || [],
       chronicConditions: registeredChronic,
-      bloodGroup: basePatient?.bloodGroup || 'O+',
+      bloodGroup: basePatient?.bloodType || basePatient?.bloodGroup || 'غير محدد',
       visitsCount: basePatient?.visitsCount || 1,
       chiefComplaint: registeredComplaint,
       intakeSymptoms: registeredSymptoms,
@@ -1480,34 +1517,45 @@ function ClinicApp() {
     const cleanPhone = (item.phone || '').trim();
     const cleanName = (item.patientName || '').trim();
 
-    // Look up existing patient strictly by valid non-empty phone or exact name match
-    const basePat = patientsCanonical.find((p) => {
-      const pPhone = (p.phone || '').trim();
-      const pName = (p.fullName || '').trim().toLowerCase();
-      const phoneMatches = cleanPhone !== '' && pPhone !== '' && pPhone === cleanPhone;
-      const nameMatches = cleanName !== '' && pName !== '' && pName === cleanName.toLowerCase();
-      return phoneMatches || nameMatches;
-    });
+    // Look up existing patient strictly by patientId, valid non-empty phone, or exact name match
+    const basePat = item.patientId
+      ? patientsCanonical.find((p) => p.patientId === item.patientId)
+      : patientsCanonical.find((p) => {
+          const pPhone = (p.phone || '').trim();
+          const pName = (p.fullName || '').trim().toLowerCase();
+          const phoneMatches = cleanPhone !== '' && pPhone !== '' && pPhone === cleanPhone;
+          const nameMatches = cleanName !== '' && pName !== '' && pName === cleanName.toLowerCase();
+          return phoneMatches || nameMatches;
+        });
     
     // Convert entered age to a valid dateOfBirth so the age calculation is perfectly synchronized and correct
-    const calculatedDOB = new Date(new Date().getFullYear() - (Number(item.age) || 30), 0, 1).toISOString().split('T')[0];
+    const calculatedDOB = item.age && Number(item.age) > 0
+      ? new Date(new Date().getFullYear() - Number(item.age), 0, 1).toISOString().split('T')[0]
+      : null;
+
+    const patientGender: 'male' | 'female' = item.gender === 'female'
+      ? 'female'
+      : item.gender === 'male'
+      ? 'male'
+      : (basePat?.gender === 'female' ? 'female' : 'male');
 
     const patient: Patient = basePat
       ? {
           ...basePat,
           fullName: cleanName || basePat.fullName,
           phone: cleanPhone || basePat.phone,
+          gender: patientGender,
           chronicDiseases: Array.from(new Set([...(basePat.chronicDiseases || []), ...(item.chronicConditions || [])])),
           address: item.address || basePat.address || basePat.governorate || '',
           bloodType: item.bloodType && item.bloodType !== 'غير محدد' ? item.bloodType : (basePat.bloodType || 'غير محدد'),
-          dateOfBirth: basePat.dateOfBirth || calculatedDOB,
+          dateOfBirth: calculatedDOB || basePat.dateOfBirth || null,
           updatedAt: timestamp,
         }
       : {
           patientId: `pat-${Date.now()}`,
           fullName: cleanName || 'مريض جديد',
           phone: cleanPhone,
-          gender: item.gender === 'female' ? 'female' : 'male',
+          gender: patientGender,
           fileNumber: typeof item.fileNumber === 'number' ? item.fileNumber : parseInt(String(item.fileNumber), 10) || nextFileNumber,
           medicalCode: item.medicalCode || `EG-${Math.floor(Math.random() * 90000) + 10000}`,
           chronicDiseases: item.chronicConditions || [],

@@ -128,7 +128,14 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
     } else {
       setName(initialName);
       setPhone(initialPhone);
-      setAutoFilledPatientId(null);
+      if (initialData.age) setAge(String(initialData.age));
+      if (initialData.gender) setGender(initialData.gender);
+      if (initialData.address) setAddress(initialData.address);
+      if (initialData.bloodType) setBloodType(initialData.bloodType);
+      if (initialData.chronicConditions && Array.isArray(initialData.chronicConditions)) {
+        setChronicSelected(initialData.chronicConditions);
+      }
+      setAutoFilledPatientId(initialData.patientId || null);
       setToastMessage(`تم تحويل الموعد (${initialName}). يرجى استكمال باقي بيانات المريض مثل السن والعنوان والأمراض`);
     }
 

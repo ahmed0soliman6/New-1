@@ -238,22 +238,24 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
   const [copiedWhatsAppText, setCopiedWhatsAppText] = useState(false);
 
   const handleOpenExamForQueuePatient = (item: QueueItem) => {
-    const matched = availablePatients.find((p) => p.id === item.id || p.name === item.patientName);
+    const matched = availablePatients.find((p) => p.id === item.patientId || p.id === item.id || p.name === item.patientName);
     if (matched) {
       if (onSelectPatient) onSelectPatient(matched);
     } else {
       const fallback: PatientListItem = {
-        id: item.id,
+        id: item.patientId || item.id,
         name: item.patientName,
         medicalCode: item.medicalCode || 'EG-NEW',
         fileNumber: item.fileNumber || 1,
         phone: item.phone || '',
-        age: item.age || 38,
-        gender: 'male',
+        age: item.age || 30,
+        gender: (item.gender === 'female' || item.gender === 'male') ? item.gender : 'male',
         governorate: 'القاهرة',
+        address: item.address || '',
         allergies: [],
         chronicConditions: item.chronicConditions || [],
-        bloodGroup: item.bloodType || 'O+',
+        bloodType: item.bloodType || 'غير محدد',
+        bloodGroup: item.bloodType || 'غير محدد',
         visitsCount: 1,
         chiefComplaint: item.complaint || '',
         intakeSymptoms: item.complaint ? [item.complaint] : [],

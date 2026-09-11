@@ -64,6 +64,7 @@ export interface QueueItem {
   address?: string;
   bloodType?: string;
   chronicConditions?: string[];
+  patientId?: string;
 }
 
 export interface AppointmentListItem {

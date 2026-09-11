@@ -1056,11 +1056,11 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
             <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 my-2.5 text-[11px] flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <span className="font-bold text-slate-600">اسم المريض:</span>
-                <span className="font-bold text-slate-900">{patient ? patient.name : 'أحمد محمد الشناوي'}</span>
+                <span className="font-bold text-slate-900">{patient ? patient.name : '—'}</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="font-bold text-slate-600">السن:</span>
-                <span className="font-bold text-slate-900">{patient ? `${patient.age} سنة` : '38 سنة'}</span>
+                <span className="font-bold text-slate-900">{patient ? `${patient.age} سنة` : '—'}</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="font-bold text-slate-600">التاريخ:</span>
