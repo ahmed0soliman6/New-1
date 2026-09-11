@@ -35,7 +35,9 @@ export interface PatientListItem {
     relation: string;
   };
   lastVisitDate?: string;
+  lastVisitTime?: string;
   registrationDate?: string;
+  registrationTime?: string;
   accountBalance?: number;
   visitsCount: number;
   totalPaid?: number;

@@ -55,9 +55,9 @@ service cloud.firestore {
         : r == 'doctor' ? (
             (screen in ['dashboard', 'clinical-reports'] && action == 'view') ||
             (screen in ['waiting-queue'] && (action in ['view', 'update'])) ||
-            (screen in ['clinical-exam', 'upcoming-followups', 'appointments'] && (action in ['view', 'create', 'update', 'delete'])) ||
+            (screen in ['clinical-exam', 'upcoming-followups', 'appointments', 'medicalCatalogs', 'settings', 'system-settings'] && (action in ['view', 'create', 'update', 'delete'])) ||
             (screen in ['new-visit', 'visits', 'patient-records', 'patients', 'prescription-pad', 'prescriptions'] && (action in ['view', 'create', 'update'])) ||
-            (screen in ['billing-payments', 'finance', 'system-settings', 'settings', 'medicalCatalogs'] && action == 'view')
+            (screen in ['billing-payments', 'finance'] && action == 'view')
           )
         : ( // secretary defaults
             (screen in ['dashboard', 'clinical-reports'] && action == 'view') ||
@@ -156,10 +156,10 @@ service cloud.firestore {
     // 4. PATIENT RECORDS (EMR)
     // =============================================================
     match /patients/{patientId} {
-      allow read: if hasPermission('patient-records', 'view') || hasPermission('patients', 'view') || hasPermission('new-visit', 'view');
+      allow read: if hasPermission('patient-records', 'view') || hasPermission('patients', 'view') || hasPermission('new-visit', 'view') || hasPermission('clinical-exam', 'view') || hasPermission('prescription-pad', 'view');
       allow create: if hasPermission('patient-records', 'create') || hasPermission('patients', 'create') || hasPermission('new-visit', 'create');
-      allow update: if hasPermission('patient-records', 'update') || hasPermission('patients', 'update') || hasPermission('new-visit', 'update');
-      allow delete: if hasPermission('patient-records', 'delete') || hasPermission('patients', 'delete');
+      allow update: if hasPermission('patient-records', 'update') || hasPermission('patients', 'update') || hasPermission('new-visit', 'update') || hasPermission('clinical-exam', 'update') || hasPermission('prescription-pad', 'update') || isDoctor() || isAdmin();
+      allow delete: if hasPermission('patient-records', 'delete') || hasPermission('patients', 'delete') || isAdmin();
     }
 
     // =============================================================

@@ -151,6 +151,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'reports.view',
     'reports.clinical',
     'settings.view',
+    'settings.edit',
   ],
 
   // SECRETARY: New visit registration, queue management, appointments, patient files, billing/payments/expenses, printing receipts.

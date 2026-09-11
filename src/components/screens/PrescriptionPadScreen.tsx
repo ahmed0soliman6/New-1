@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { doc, setDoc } from 'firebase/firestore';
 import { exportPrescriptionToPdf } from '../../utils/exportPrescriptionPdf';
 import { printPrescriptionDocument } from '../../utils/printPrescription';
 import { CLINIC_INFO } from '../../data/previewClinicData';
@@ -12,6 +13,7 @@ interface PrescriptionPadScreenProps {
   patient?: PatientListItem | null;
   items?: PrescriptionItem[];
   onChangeItems?: (items: PrescriptionItem[]) => void;
+  onUpdatePatient?: (updated: { patientId: string; fullName: string; dateOfBirth?: string; age?: number }) => void;
 }
 
 export interface PrescriptionLayoutSettings {
@@ -108,8 +110,63 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
   patient,
   items = [],
   onChangeItems,
+  onUpdatePatient,
 }) => {
   const { assertPermission } = usePermissions();
+
+  // Editing patient state from Prescription Pad
+  const [isEditingPatient, setIsEditingPatient] = useState(false);
+  const [editName, setEditName] = useState(patient?.name || '');
+  const [editAge, setEditAge] = useState<number | string>(patient?.age || '');
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState('');
+  const [isSavingPatient, setIsSavingPatient] = useState(false);
+
+  useEffect(() => {
+    if (patient) {
+      setEditName(patient.name);
+      setEditAge(patient.age);
+    }
+  }, [patient]);
+
+  const handleSavePatientName = async () => {
+    if (!patient || !editName.trim()) return;
+    setIsSavingPatient(true);
+    try {
+      const trimmedName = editName.trim();
+      const numAge = Number(editAge) || patient.age;
+      const birthYear = editAge ? new Date().getFullYear() - Number(editAge) : 1988;
+      const calculatedDOB = `${birthYear}-01-01`;
+
+      if (db) {
+        await setDoc(
+          doc(db, 'patients', patient.id),
+          {
+            fullName: trimmedName,
+            dateOfBirth: calculatedDOB,
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      }
+
+      onUpdatePatient?.({
+        patientId: patient.id,
+        fullName: trimmedName,
+        dateOfBirth: calculatedDOB,
+        age: numAge,
+      });
+
+      setIsEditingPatient(false);
+      setSaveSuccessMsg('تم حفظ وتحديث بيانات المريض بنجاح ونشرها لجميع المستخدمين');
+      setTimeout(() => setSaveSuccessMsg(''), 4000);
+    } catch (err) {
+      console.error('Failed to update patient from prescription screen:', err);
+      alert('حدث خطأ أثناء حفظ التعديلات');
+    } finally {
+      setIsSavingPatient(false);
+    }
+  };
+
   const [config, setConfig] = useState<PrescriptionLayoutSettings>(() => {
     const cached = localStorage.getItem('soli_prescription_settings');
     if (cached) {
@@ -1053,19 +1110,92 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
             ) : null}
 
             {/* Patient Meta Strip */}
-            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 my-2.5 text-[11px] flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-slate-600">اسم المريض:</span>
-                <span className="font-bold text-slate-900">{patient ? patient.name : '—'}</span>
+            {saveSuccessMsg && (
+              <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg p-2 text-xs font-bold text-center mb-1.5 print:hidden">
+                {saveSuccessMsg}
               </div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-slate-600">السن:</span>
-                <span className="font-bold text-slate-900">{patient ? `${patient.age} سنة` : '—'}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-slate-600">التاريخ:</span>
-                <span className="font-mono text-slate-900">{new Date().toLocaleDateString('ar-EG')}</span>
-              </div>
+            )}
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 my-2.5 text-[11px]">
+              {isEditingPatient ? (
+                <div className="space-y-2 print:hidden">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-700 mb-0.5">اسم المريض:</label>
+                      <input
+                        type="text"
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs text-slate-900 focus:outline-none focus:border-[#008f97]"
+                        placeholder="اسم المريض بالكامل"
+                        autoFocus
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-700 mb-0.5">السن (بالسنوات):</label>
+                      <input
+                        type="number"
+                        value={editAge}
+                        onChange={(e) => setEditAge(e.target.value)}
+                        className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-xs text-slate-900 focus:outline-none focus:border-[#008f97]"
+                        placeholder="السن"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingPatient(false)}
+                      disabled={isSavingPatient}
+                      className="px-2.5 py-1 text-xs rounded border border-slate-300 bg-white text-slate-600 hover:bg-slate-100 cursor-pointer"
+                    >
+                      إلغاء
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSavePatientName}
+                      disabled={isSavingPatient || !editName.trim()}
+                      className="px-3 py-1 text-xs rounded bg-[#008f97] hover:bg-[#007b82] text-white font-bold cursor-pointer flex items-center gap-1 shadow-2xs"
+                    >
+                      {isSavingPatient ? 'جاري الحفظ...' : 'حفظ ونشر التعديل ✓'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-600">اسم المريض:</span>
+                    <span className="font-bold text-slate-900">{patient ? patient.name : '—'}</span>
+                    {patient && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditName(patient.name);
+                          setEditAge(patient.age);
+                          setIsEditingPatient(true);
+                        }}
+                        className="p-1 hover:bg-slate-200 rounded text-slate-500 hover:text-[#008f97] transition-colors print:hidden cursor-pointer"
+                        title="تعديل اسم المريض وبياناته"
+                      >
+                        <span className="material-symbols-outlined text-[13px]">edit</span>
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-600">السن:</span>
+                    <span className="font-bold text-slate-900">{patient ? `${patient.age} سنة` : '—'}</span>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-x-3 gap-y-0.5 font-mono text-slate-900">
+                    <div className="flex items-center gap-1">
+                      <span className="font-bold text-slate-600">التاريخ:</span>
+                      <span>{new Date().toLocaleDateString('ar-EG')}</span>
+                    </div>
+                    <div className="flex items-center gap-1 text-[#008f97] font-bold">
+                      <span className="material-symbols-outlined text-[13px]">schedule</span>
+                      <span>الساعة: {new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Prescription Body */}

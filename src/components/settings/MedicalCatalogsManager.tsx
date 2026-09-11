@@ -169,7 +169,6 @@ export const MedicalCatalogsManager: React.FC<MedicalCatalogsManagerProps> = ({
 
   const [diagNameAr, setDiagNameAr] = useState('');
   const [diagNameEn, setDiagNameEn] = useState('');
-  const [diagCode, setDiagCode] = useState('');
   const [diagCat, setDiagCat] = useState('الجهاز الهضمي');
   const [diagFav, setDiagFav] = useState(true);
 
@@ -237,19 +236,25 @@ export const MedicalCatalogsManager: React.FC<MedicalCatalogsManagerProps> = ({
 
   const handleAddDiagSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!diagNameAr.trim()) return;
+    const nameAr = diagNameAr.trim();
+    const nameEn = diagNameEn.trim();
+    if (!nameAr && !nameEn) return;
+    
+    // If Arabic is empty, use English name, and vice-versa
+    const finalNameAr = nameAr || nameEn;
+    const finalNameEn = nameEn || nameAr;
+
     onAddDiagnosis({
       id: `diag-${Date.now()}`,
-      code: diagCode.trim() || 'ICD-10',
-      nameAr: diagNameAr.trim(),
-      nameEn: diagNameEn.trim(),
+      code: 'ICD-10',
+      nameAr: finalNameAr,
+      nameEn: finalNameEn,
       category: diagCat,
       isFavorite: diagFav,
       active: true,
     });
     setDiagNameAr('');
     setDiagNameEn('');
-    setDiagCode('');
   };
 
   const handleAddSymSubmit = (e: React.FormEvent) => {
@@ -1002,11 +1007,10 @@ export const MedicalCatalogsManager: React.FC<MedicalCatalogsManagerProps> = ({
                 + إضافة تشخيص إكلينيكي جديد إلى الدليل:
               </span>
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
-                <div className="sm:col-span-5">
+                <div className="sm:col-span-6">
                   <input
                     type="text"
-                    required
-                    placeholder="التشخيص بالعربية (مثال: قرحة المعدة والتهاب الاثنى عشر)..."
+                    placeholder="التشخيص بالعربية (مثال: قرحة المعدة والارتجاع المريئي)..."
                     value={diagNameAr}
                     onChange={(e) => setDiagNameAr(e.target.value)}
                     className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-amber-500"
@@ -1015,23 +1019,16 @@ export const MedicalCatalogsManager: React.FC<MedicalCatalogsManagerProps> = ({
                 <div className="sm:col-span-4">
                   <input
                     type="text"
-                    placeholder="الاسم الإنجليزي / العلمي (اختياري)..."
+                    placeholder="الاسم الإنجليزي / العلمي (GERD / Gastritis)..."
                     value={diagNameEn}
                     onChange={(e) => setDiagNameEn(e.target.value)}
                     className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none"
                   />
                 </div>
-                <div className="sm:col-span-3 flex items-center gap-2">
-                  <input
-                    type="text"
-                    placeholder="كود ICD (K21.9)..."
-                    value={diagCode}
-                    onChange={(e) => setDiagCode(e.target.value)}
-                    className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/10 font-mono focus:outline-none"
-                  />
+                <div className="sm:col-span-2 flex items-center justify-end">
                   <button
                     type="submit"
-                    className="py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs whitespace-nowrap transition-all cursor-pointer shadow-xs"
+                    className="w-full py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs whitespace-nowrap transition-all cursor-pointer shadow-xs"
                   >
                     حفظ
                   </button>

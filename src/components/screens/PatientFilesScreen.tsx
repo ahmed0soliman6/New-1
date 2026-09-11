@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { PatientListItem, ScreenType } from '../../types';
 import { usePermissions } from '../../context/AuthContext';
 import { PatientDetailFullScreen } from './PatientDetailFullScreen';
@@ -95,16 +95,26 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
     );
   }
 
-  const filteredPatients = patients.filter((p) => {
-    if (!search.trim()) return true;
-    const q = search.toLowerCase();
-    return (
-      (p.name || '').toLowerCase().includes(q) ||
-      (p.phone || '').includes(q) ||
-      String(p.fileNumber || '').includes(q) ||
-      (p.medicalCode || '').toLowerCase().includes(q)
-    );
-  });
+  const filteredPatients = useMemo(() => {
+    return patients
+      .filter((p) => {
+        if (!search.trim()) return true;
+        const q = search.toLowerCase();
+        return (
+          (p.name || '').toLowerCase().includes(q) ||
+          (p.phone || '').includes(q) ||
+          String(p.fileNumber || '').includes(q) ||
+          (p.medicalCode || '').toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) => {
+        // Newest registered or highest file number at the top
+        const numB = Number(b.fileNumber) || 0;
+        const numA = Number(a.fileNumber) || 0;
+        if (numB !== numA) return numB - numA;
+        return (b.id || '').localeCompare(a.id || '');
+      });
+  }, [patients, search]);
 
   return (
     <div className="flex flex-col w-full pb-16 space-y-6 text-slate-800 dark:text-[#dde2f5]" id="patient-files-screen">
@@ -228,6 +238,28 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
                         <span className="text-purple-600 dark:text-[#d0bcff]">
                           {pPrescriptionsCount} روشتات
                         </span>
+                      </div>
+
+                      {/* Registration and Last Visit Date & Time */}
+                      <div className="text-[11px] text-slate-500 dark:text-[#859394] flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 font-mono">
+                        <div className="flex items-center gap-1 text-slate-700 dark:text-slate-300">
+                          <span className="material-symbols-outlined text-[13px] text-[#008f97] dark:text-[#00c2cb]">calendar_today</span>
+                          <span>تاريخ التسجيل: {p.registrationDate || '—'}</span>
+                          {p.registrationTime && (
+                            <span className="text-[#008f97] dark:text-[#00c2cb] font-bold">
+                              الساعة {p.registrationTime}
+                            </span>
+                          )}
+                        </div>
+                        {p.lastVisitDate && (
+                          <div className="flex items-center gap-1 text-teal-700 dark:text-teal-400">
+                            <span className="material-symbols-outlined text-[13px]">history</span>
+                            <span>آخر زيارة: {p.lastVisitDate}</span>
+                            {p.lastVisitTime && (
+                              <span className="font-bold">الساعة {p.lastVisitTime}</span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

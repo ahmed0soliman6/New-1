@@ -1172,14 +1172,23 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
                     {/* Visit Header */}
                     <div className="flex items-center justify-between gap-3 flex-wrap pb-3 border-b border-slate-100 dark:border-white/5">
                       <div>
-                        <div className="text-xs font-mono text-[#008f97] dark:text-[#00c2cb] font-bold">
-                          {new Date(v.createdAt).toLocaleDateString('ar-EG', {
-                            year: 'numeric',
-                            month: 'long',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
+                        <div className="text-xs font-mono text-[#008f97] dark:text-[#00c2cb] font-bold flex flex-wrap items-center gap-2">
+                          <span className="flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[13px]">calendar_today</span>
+                            {new Date(v.createdAt).toLocaleDateString('ar-EG', {
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric',
+                            })}
+                          </span>
+                          <span className="text-slate-400">•</span>
+                          <span className="flex items-center gap-1 text-slate-600 dark:text-slate-300">
+                            <span className="material-symbols-outlined text-[13px]">schedule</span>
+                            الساعة: {new Date(v.createdAt).toLocaleTimeString('ar-EG', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
                         </div>
                         <div className="font-extrabold text-sm text-slate-900 dark:text-white mt-0.5">
                           {v.visitType === 'NEW' ? 'كشف أول مرة (جديد)' : 'استشارة / متابعة'} —{' '}
@@ -1560,8 +1569,15 @@ ${pr.notes ? `📝 *إرشادات الطبيب:* ${pr.notes}\n\n` : ''}مع ت�
                     <span className="font-extrabold text-slate-900 dark:text-white block">
                       فاتورة كشف وزيارة بالعيادة
                     </span>
-                    <span className="text-[10px] text-slate-400 font-mono mt-0.5 block">
-                      {new Date(inv.createdAt).toLocaleDateString('ar-EG')} • #{inv.invoiceId.slice(0, 8)}
+                    <span className="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center gap-1.5 flex-wrap">
+                      <span>{new Date(inv.createdAt).toLocaleDateString('ar-EG')}</span>
+                      <span>•</span>
+                      <span className="text-[#008f97] dark:text-[#00c2cb] font-bold flex items-center gap-0.5">
+                        <span className="material-symbols-outlined text-[11px]">schedule</span>
+                        <span>الساعة: {new Date(inv.createdAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</span>
+                      </span>
+                      <span>•</span>
+                      <span>#{inv.invoiceId.slice(0, 8)}</span>
                     </span>
                   </div>
                   <div className="text-left font-mono">

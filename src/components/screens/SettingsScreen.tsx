@@ -9,6 +9,8 @@ import {
 import { MedicalCatalogsManager } from '../settings/MedicalCatalogsManager';
 import { UserManagementPanel } from '../settings/UserManagementPanel';
 import { RecurringTemplatesManager } from '../settings/RecurringTemplatesManager';
+import { ChangePasswordCard } from '../settings/ChangePasswordCard';
+import { APP_VERSION } from '../../constants/version';
 import { usePermissions } from '../../context/AuthContext';
 import { PermissionGate } from '../auth/PermissionGate';
 import { loadAlertSettings, saveAlertSettings, playSingleAlertSound, AlertSettings } from '../../utils/alertManager';
@@ -121,7 +123,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onClearBrowserVisitsOnly = () => {},
   onClearAllBrowserAndCloud = async () => {},
 }) => {
-  const { hasPermission, assertPermission } = usePermissions();
+  const { hasPermission, assertPermission, role } = usePermissions();
+  const isAdmin = role === 'admin';
   const [activeSettingsSection, setActiveSettingsSection] = useState<
     'general' | 'catalogs' | 'users'
   >('general');
@@ -129,6 +132,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   // Accordion Collapsible Open States
   const [openCards, setOpenCards] = useState<Record<string, boolean>>({
     pricing: true,
+    password: false,
     services: false,
     expenses: false,
     alerts: false,
@@ -136,6 +140,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     templates: false,
     version: false,
     demoData: false,
+    backup: false,
   });
 
   const [isGeneratingDemo, setIsGeneratingDemo] = useState(false);
@@ -186,14 +191,17 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     };
   }, []);
 
-  // If user cannot view users but tab was selected, fallback to catalogs
+  // If user cannot view users or is not admin, fallback to general
   useEffect(() => {
-    if (activeSettingsSection === 'users' && !hasPermission('users.view')) {
-      setActiveSettingsSection('catalogs');
+    if (activeSettingsSection === 'users' && (!isAdmin || !hasPermission('users.view'))) {
+      setActiveSettingsSection('general');
     }
-  }, [activeSettingsSection, hasPermission]);
+  }, [activeSettingsSection, isAdmin, hasPermission]);
 
-  const [freeFollowupDays, setFreeFollowupDays] = useState(14);
+  const [freeFollowupDays, setFreeFollowupDays] = useState<number>(() => {
+    const saved = localStorage.getItem('soli_free_followup_days');
+    return saved ? Number(saved) : 14;
+  });
   const [alertConfig, setAlertConfig] = useState<AlertSettings>(loadAlertSettings);
   const [examDisplayConfig, setExamDisplayConfig] = useState<ExamDisplaySettings>(loadExamDisplaySettings);
   const [savedToast, setSavedToast] = useState<string | null>(null);
@@ -211,7 +219,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       name: newVisitName.trim(),
       fee: Number(newVisitFee) || 0,
     });
-    setSavedToast(`تمت إضافة نوع الزيارة: "${newVisitName.trim()}" بنجاح ✓`);
+    setSavedToast(`تم حفظ وإضافة نوع الزيارة: "${newVisitName.trim()}" تلقائياً ✓`);
     setNewVisitName('');
     setNewVisitFee(250);
     setShowAddVisitModal(false);
@@ -228,7 +236,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       showRadiology: 'الأشعة والتصوير',
     };
     setSavedToast(
-      `تم تحديث شاشة الكشف: ${value ? 'إظهار' : 'إخفاء'} قسم ${names[key]} بنجاح ✓`
+      `تم الحفظ التلقائي: ${value ? 'إظهار' : 'إخفاء'} قسم ${names[key]} ✓`
     );
     setTimeout(() => setSavedToast(null), 2500);
   };
@@ -237,8 +245,52 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     const updated = { ...alertConfig, [key]: value };
     setAlertConfig(updated);
     saveAlertSettings(updated);
-    setSavedToast('تم تحديث إعدادات التنبيهات والأصوات بنجاح ✓');
+    setSavedToast('تم حفظ وتطبيق إعدادات التنبيهات والأصوات تلقائياً ✓');
     setTimeout(() => setSavedToast(null), 2500);
+  };
+
+  const handleUpdateFollowupDays = (days: number) => {
+    setFreeFollowupDays(days);
+    localStorage.setItem('soli_free_followup_days', String(days));
+    setSavedToast(`تم حفظ مدة الاستشارة (${days} يوم) تلقائياً ✓`);
+    setTimeout(() => setSavedToast(null), 2500);
+  };
+
+  const handleExportBackup = () => {
+    try {
+      const backupData = {
+        exportedAt: new Date().toISOString(),
+        appName: 'Soli Medical Clinic System',
+        version: 'v2.6.0',
+        visitTypes: visitTypesList,
+        freeFollowupDays,
+        medicalServices: medicalServicesList,
+        expenseCategories: expenseCategoriesList,
+        alertConfig,
+        examDisplayConfig,
+        recurringTemplates: savedTemplates,
+        radiologyCatalog,
+        labCatalog,
+        drugCatalog,
+        diagnosesCatalog,
+        symptomsCatalog,
+        chronicConditions: presetChronicConditions,
+      };
+
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `soli_clinic_backup_${new Date().toISOString().slice(0, 10)}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+
+      setSavedToast('تم تحميل وتصدير ملف النسخة الاحتياطية JSON بنجاح ✓');
+      setTimeout(() => setSavedToast(null), 3000);
+    } catch (e) {
+      console.error(e);
+      alert('حدث خطأ أثناء تصدير ملف النسخة الاحتياطية.');
+    }
   };
 
   const handleTestAlertSound = (type: 'new_visit' | 'call' | 'finish' = 'new_visit') => {
@@ -277,30 +329,28 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           <span>&gt;</span>
           <span className="text-[#008f97] dark:text-[#00c2cb]">إعدادات النظام</span>
         </div>
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 min-w-0">
-          <h1 className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2.5 flex-wrap min-w-0">
+        <div className="flex flex-wrap items-center gap-4 min-w-0">
+          <h1 className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2 shrink-0">
             <span>إعدادات النظام</span>
-            <span className="text-xs bg-[#00c2cb]/15 text-[#008f97] dark:text-[#45dee7] font-bold px-3 py-1 rounded-full border border-[#00c2cb]/20">
-              صلاحية المدير والطبيب
+            <span className="text-xs px-2 py-0.5 rounded-lg bg-teal-500/15 text-teal-700 dark:text-[#45dee7] border border-teal-500/30 font-mono font-bold">
+              {APP_VERSION}
             </span>
           </h1>
 
-          {/* 3 Main Navigation Tabs: System Settings, Catalogs, Users */}
+          {/* 3 Main Navigation Tabs: System Settings, Catalogs, Users placed directly next to the title */}
           <div className="flex flex-wrap items-center gap-1.5 bg-white dark:bg-[#111A2E] p-1 rounded-2xl border border-slate-200 dark:border-white/5 shadow-2xs max-w-full overflow-x-auto min-w-0">
-            <PermissionGate permission="settings.edit">
-              <button
-                type="button"
-                onClick={() => setActiveSettingsSection('general')}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  activeSettingsSection === 'general'
-                    ? 'bg-[#00c2cb] text-slate-950 shadow-xs'
-                    : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
-                }`}
-              >
-                <span className="material-symbols-outlined text-base">tune</span>
-                <span>إعدادات النظام</span>
-              </button>
-            </PermissionGate>
+            <button
+              type="button"
+              onClick={() => setActiveSettingsSection('general')}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeSettingsSection === 'general'
+                  ? 'bg-[#00c2cb] text-slate-950 shadow-xs'
+                  : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
+              }`}
+            >
+              <span className="material-symbols-outlined text-base">tune</span>
+              <span>إعدادات النظام</span>
+            </button>
 
             <button
               type="button"
@@ -315,26 +365,28 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <span>الأدلة الطبية</span>
             </button>
 
-            <PermissionGate permission="users.view">
-              <button
-                type="button"
-                onClick={() => setActiveSettingsSection('users')}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  activeSettingsSection === 'users'
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
-                }`}
-              >
-                <span className="material-symbols-outlined text-base">manage_accounts</span>
-                <span>المستخدمون والصلاحيات</span>
-              </button>
-            </PermissionGate>
+            {isAdmin && (
+              <PermissionGate permission="users.view">
+                <button
+                  type="button"
+                  onClick={() => setActiveSettingsSection('users')}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    activeSettingsSection === 'users'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-base">manage_accounts</span>
+                  <span>المستخدمون والصلاحيات</span>
+                </button>
+              </PermissionGate>
+            )}
           </div>
         </div>
       </div>
 
-      {/* USER MANAGEMENT TAB */}
-      {activeSettingsSection === 'users' && <UserManagementPanel />}
+      {/* USER MANAGEMENT TAB (ADMIN ONLY) */}
+      {isAdmin && activeSettingsSection === 'users' && <UserManagementPanel />}
 
       {/* MEDICAL CATALOGS TAB */}
       {activeSettingsSection === 'catalogs' && (
@@ -364,11 +416,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         />
       )}
 
-      {/* SYSTEM SETTINGS TAB (COLLAPSIBLE ACCORDION CARDS) */}
+      {/* SYSTEM SETTINGS TAB (SINGLE COLUMN LAYOUT WITH AUTO-SAVE) */}
       {activeSettingsSection === 'general' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Main Column (8 Cols) */}
-          <div className="lg:col-span-8 flex flex-col gap-4">
+        <div className="w-full max-w-4xl mx-auto flex flex-col gap-4">
             
             {/* ACCORDION CARD 1: Visit Pricing & Types (تسعير الكشوفات وأنواع الزيارات) */}
             <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
@@ -389,7 +439,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                       </span>
                     </h2>
                     <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
-                      إضافة وحذف وتعديل أسعار الزيارات وتنعكس فوراً بصفحة تسجيل الحضور بالاستقبال
+                      إضافة وحذف وتعديل أسعار الزيارات (يحفظ تلقائياً وينعكس فوراً بصفحة الاستقبال)
                     </p>
                   </div>
                 </div>
@@ -433,7 +483,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                             <input
                               type="number"
                               value={vt.fee}
-                              onChange={(e) => onUpdateVisitTypeFee(vt.id, Number(e.target.value))}
+                              onChange={(e) => {
+                                const fee = Number(e.target.value);
+                                onUpdateVisitTypeFee(vt.id, fee);
+                                setSavedToast(`تم حفظ سعر ${vt.name} (${fee} ج.م) تلقائياً ✓`);
+                                setTimeout(() => setSavedToast(null), 2500);
+                              }}
                               className="w-20 bg-white dark:bg-[#18233C] px-2 py-1 rounded-lg border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white font-mono font-bold text-xs text-center"
                             />
                             <span>ج.م</span>
@@ -448,7 +503,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                                 onClick={() => {
                                   onRemoveVisitType(vt.id);
                                   setDeleteConfirmVisitId(null);
-                                  setSavedToast(`تم حذف نوع الزيارة "${vt.name}" بنجاح ✓`);
+                                  setSavedToast(`تم حذف نوع الزيارة "${vt.name}" وحفظ التغيير تلقائياً ✓`);
                                   setTimeout(() => setSavedToast(null), 3000);
                                 }}
                                 className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-[10px] rounded cursor-pointer transition-all"
@@ -485,14 +540,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                         مدة المتابعة المسموحة (بالأيام):
                       </span>
                       <p className="text-[11px] text-slate-500 dark:text-[#859394] mt-0.5">
-                        أي زيارة مريض خلال هذه الفترة المحددة تعتبر متابعة.
+                        أي زيارة مريض خلال هذه الفترة المحددة تعتبر متابعة (تحفظ تلقائياً).
                       </p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <input
                         type="number"
                         value={freeFollowupDays}
-                        onChange={(e) => setFreeFollowupDays(Number(e.target.value))}
+                        onChange={(e) => handleUpdateFollowupDays(Number(e.target.value))}
                         className="w-20 bg-white dark:bg-[#18233C] p-2 rounded-xl border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white font-mono font-bold text-xs text-center"
                       />
                       <span className="text-xs font-bold text-slate-600 dark:text-slate-400">يوماً</span>
@@ -502,7 +557,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               )}
             </div>
 
-            {/* ACCORDION CARD 2: Medical Services & Pricing (خدمات وبنود الوارد والتسعير) */}
+            {/* ACCORDION CARD 2: Change Password Card (تغيير كلمة المرور للمستخدمين) */}
+            <ChangePasswordCard
+              isOpen={!!openCards.password}
+              onToggle={() => toggleCard('password')}
+            />
+
+            {/* ACCORDION CARD 3: Medical Services & Pricing (خدمات وبنود الوارد والتسعير) */}
             <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
               <button
                 type="button"
@@ -515,13 +576,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                      <span>2. خدمات وبنود الوارد (الخدمات الطبية والتسعير)</span>
+                      <span>3. خدمات وبنود الوارد (الخدمات الطبية والتسعير)</span>
                       <span className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20 font-bold">
                         {medicalServicesList.length} خدمة طبية
                       </span>
                     </h2>
                     <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
-                      تظهر هذه الخدمات في قائمة الفواتير عند تسجيل كشف أو إجراء طبي للمريض
+                      تظهر هذه الخدمات في قائمة الفواتير عند تسجيل كشف أو إجراء طبي للمريض (تحفظ تلقائياً)
                     </p>
                   </div>
                 </div>
@@ -675,7 +736,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               )}
             </div>
 
-            {/* ACCORDION CARD 3: Expense Categories (بنود المنصرف - مصروفات العيادة) */}
+            {/* ACCORDION CARD 4: Expense Categories (بنود المنصرف - مصروفات العيادة) */}
             <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
               <button
                 type="button"
@@ -688,13 +749,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                      <span>3. بنود المنصرف (مصروفات العيادة)</span>
+                      <span>4. بنود المنصرف (مصروفات العيادة)</span>
                       <span className="text-[10px] bg-rose-500/10 text-rose-600 dark:text-rose-400 px-2 py-0.5 rounded-full border border-rose-500/20 font-bold">
                         {expenseCategoriesList.length} بنود مصروفات
                       </span>
                     </h2>
                     <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
-                      هذه البنود تظهر في القائمة المنسدلة عند تسجيل مصروف جديد بقسم 'الفواتير والمالية'.
+                      هذه البنود تظهر في القائمة المنسدلة عند تسجيل مصروف جديد بقسم 'الفواتير والمالية' (تحفظ تلقائياً).
                     </p>
                   </div>
                 </div>
@@ -800,7 +861,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               )}
             </div>
 
-            {/* ACCORDION CARD 4: Notifications & Sounds (نظام التنبيهات والأصوات المتقدم) */}
+            {/* ACCORDION CARD 5: Notifications & Sounds (نظام التنبيهات والأصوات المتقدم) */}
             <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
               <button
                 type="button"
@@ -813,13 +874,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                      <span>4. نظام التنبيهات والأصوات المتقدم</span>
+                      <span>5. نظام التنبيهات والأصوات المتقدم</span>
                       <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20 font-bold">
                         {alertConfig.audioEnabled ? 'الصوت يعمل ✓' : 'الصوت صامت'}
                       </span>
                     </h2>
                     <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
-                      تخصيص التنبيهات المرئية والصوتية للسكرتارية وغرفة الكشف فور تسجيل المريض
+                      تخصيص التنبيهات المرئية والصوتية للسكرتارية وغرفة الكشف فور تسجيل المريض (تحفظ تلقائياً)
                     </p>
                   </div>
                 </div>
@@ -1027,7 +1088,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               )}
             </div>
 
-            {/* ACCORDION CARD 5: Examination Display Customization (تخصيص أقسام شاشة الكشف الطبي) */}
+            {/* ACCORDION CARD 6: Examination Display Customization (تخصيص أقسام شاشة الكشف الطبي) */}
             <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
               <button
                 type="button"
@@ -1040,10 +1101,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">
-                      5. تخصيص أقسام شاشة الكشف الطبي (عرض وإخفاء)
+                      6. تخصيص أقسام شاشة الكشف الطبي (عرض وإخفاء)
                     </h2>
                     <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
-                      إظهار أو إخفاء أقسام العلامات الحيوية والتحاليل والأشعة بغرفة الكشف
+                      إظهار أو إخفاء أقسام العلامات الحيوية والتحاليل والأشعة بغرفة الكشف (تحفظ تلقائياً)
                     </p>
                   </div>
                 </div>
@@ -1179,7 +1240,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               )}
             </div>
 
-            {/* ACCORDION CARD 6: Recurring Prescription Templates & Clinical Guides (القوائم المتكررة وبروتوكولات الروشتة) */}
+            {/* ACCORDION CARD 7: Recurring Prescription Templates & Clinical Guides (القوائم المتكررة وبروتوكولات الروشتة) */}
             <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
               <button
                 type="button"
@@ -1192,7 +1253,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                      <span>6. القوائم المتكررة وبروتوكولات الروشتة</span>
+                      <span>7. القوائم المتكررة وبروتوكولات الروشتة</span>
                       <span className="px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-bold text-[10px]">
                         {savedTemplates.length} قائمة وبروتوكول
                       </span>
@@ -1224,7 +1285,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               )}
             </div>
 
-            {/* ACCORDION CARD 7: Version & Updates Info (معلومات وإصدار النظام) */}
+            {/* ACCORDION CARD 8: Version & Updates Info (معلومات وإصدار النظام) */}
             <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
               <button
                 type="button"
@@ -1237,7 +1298,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                      <span>7. رقم الإصدار والتحديثات الحالية</span>
+                      <span>8. رقم الإصدار والتحديثات الحالية</span>
                       <span className="px-2.5 py-0.5 rounded-full bg-[#00c2cb]/20 text-[#008f97] dark:text-[#00c2cb] font-black text-[11px] border border-[#00c2cb]/30">
                         v2.6.0 Stable
                       </span>
@@ -1263,15 +1324,16 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <ul className="list-disc list-inside space-y-1 text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
                     <li>اعتماد الشعار الرسمي وتوحيد الهوية البصرية (Soli Medical Clinic).</li>
-                    <li>إدارة وتسعيرة ديناميكية متغيرة لجميع أنواع الزيارات وإضافة/حذف الكشوفات.</li>
-                    <li>نقل إعدادات طابعات الإيصالات والروشتات إلى صفحة الروشتة.</li>
-                    <li>تحويل كافة بطاقات وقوائم الإعدادات إلى قوائم منسدلة أنيقة.</li>
+                    <li>إدارة وتسعيرة ديناميكية متغيرة لجميع أنواع الزيارات وإضافة/حذف الكشوفات تلقائياً.</li>
+                    <li>تصميم عمود واحد موحد لكافة بطاقات الإعدادات وحفظ التغييرات تلقائياً.</li>
+                    <li>إضافة بطاقة خاصة بتغيير كلمة المرور وتأمين صلاحيات المستخدمين.</li>
+                    <li>نقل بطاقة النسخ الاحتياطي السحابي في أسفل صفحة الإعدادات.</li>
                   </ul>
                 </div>
               )}
             </div>
 
-            {/* ACCORDION CARD 8: Demo Data & Database Management (إدارة البيانات والبيانات التجريبية للتوضيح) */}
+            {/* ACCORDION CARD 9: Demo Data & Database Management (إدارة البيانات والبيانات التجريبية للتوضيح) */}
             <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
               <button
                 type="button"
@@ -1284,7 +1346,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                      <span>8. إدارة البيانات والبيانات التجريبية</span>
+                      <span>9. إدارة البيانات والبيانات التجريبية</span>
                       <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-[#F59E0B] px-2 py-0.5 rounded-full border border-amber-500/20 font-bold">
                         أدوات المطورين والتهيئة
                       </span>
@@ -1437,45 +1499,64 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
                 </div>
               )}
-            </div>
-
-          </div>
-
-          {/* Action / Save Sidebar (4 Cols) */}
-          <div className="lg:col-span-4 flex flex-col gap-4">
-            <div className="bg-white dark:bg-[#111A2E] p-5 sm:p-6 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs space-y-4">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                <span className="material-symbols-outlined text-[#00c2cb] text-lg">save</span>
-                <span>حفظ وتطبيق إعدادات النظام</span>
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-[#bbc9ca] leading-relaxed">
-                تطبق أي تغييرات في أنواع الزيارات أو الأسعار أو التنبيهات مباشرة على كافة أجهزة العيادة وغرفة الكشف.
-              </p>
+            {/* ACCORDION CARD 10: Cloud Backup & Data Export (النسخ الاحتياطي السحابي وتصدير البيانات) */}
+            <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
               <button
                 type="button"
-                onClick={handleSave}
-                className="w-full py-3.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] font-bold text-xs shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95"
+                onClick={() => toggleCard('backup')}
+                className="w-full p-5 flex items-center justify-between text-right cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
               >
-                حفظ كافة التغييرات
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-cyan-50 dark:bg-cyan-950/40 text-cyan-600 dark:text-cyan-400 flex items-center justify-center font-bold">
+                    <span className="material-symbols-outlined text-xl">cloud_sync</span>
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
+                      <span>10. النسخ الاحتياطي السحابي وتصدير البيانات</span>
+                      <span className="text-[10px] bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 px-2 py-0.5 rounded-full border border-cyan-500/20 font-bold">
+                        Firestore Cloud Sync
+                      </span>
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
+                      تصدير وحفظ نسخة احتياطية كاملة من قاعدة بيانات العيادة والإعدادات بصيغة JSON
+                    </p>
+                  </div>
+                </div>
+                <span
+                  className="material-symbols-outlined text-slate-400 text-2xl transition-transform duration-200"
+                  style={{ transform: openCards.backup ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                >
+                  expand_more
+                </span>
               </button>
+
+              {openCards.backup && (
+                <div className="p-5 pt-0 border-t border-slate-100 dark:border-white/5 space-y-4 text-xs pt-4">
+                  <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-emerald-500 text-xl">verified</span>
+                      <span className="font-bold text-slate-800 dark:text-[#dde2f5]">
+                        المزامنة السحابية الحية (Firestore Cloud Sync) نشطة
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-[#859394] leading-relaxed">
+                      يتم حفظ وتحديث كافة بيانات العيادة والمرضى والزيارات والأدلة الطبية لحظياً بالسحابة المشفرة، مع إمكانية تصدير نسخة احتياطية محلية بصيغة JSON في أي وقت.
+                    </p>
+                    <div className="flex flex-wrap items-center gap-3 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleExportBackup}
+                        className="px-4 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-xs active:scale-95"
+                      >
+                        <span className="material-symbols-outlined text-base">download</span>
+                        <span>تصدير وتحميل نسخة احتياطية JSON</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className="bg-white dark:bg-[#111A2E] p-5 sm:p-6 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs space-y-3">
-              <h3 className="text-xs font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-emerald-600 text-base">cloud_sync</span>
-                <span>النسخ الاحتياطي السحابي</span>
-              </h3>
-              <p className="text-[11px] text-slate-500 dark:text-[#859394]">
-                البيانات محفوظة ومزامن مع نظام Firestore السحابي لعيادات سولي الطبية.
-              </p>
-              <button
-                type="button"
-                onClick={() => alert('تم تصدير نسخة احتياطية من قاعدة بيانات العيادة بنجاح')}
-                className="w-full py-2.5 rounded-xl bg-slate-100 dark:bg-[#18233C] hover:bg-slate-200 dark:hover:bg-[#242a38] text-slate-800 dark:text-[#dde2f5] text-xs font-medium border border-slate-200 dark:border-white/5 transition-colors cursor-pointer"
-              >
-                تحميل نسخة احتياطية JSON
-              </button>
-            </div>
           </div>
         </div>
       )}

@@ -1,4 +1,6 @@
 import React, { useState, useMemo } from 'react';
+import { doc, setDoc } from 'firebase/firestore';
+import { db } from '../../services/firebase';
 import { CLINIC_INFO } from '../../data/previewClinicData';
 import { AppointmentListItem, ScreenType, PatientListItem } from '../../types';
 import { usePermissions } from '../../context/AuthContext';
@@ -205,18 +207,32 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
     ];
   });
 
-  // Merge canonical appointments from props if available
+  // Merge canonical appointments from props if available and sort newest first
   const allAppointments = useMemo(() => {
+    let list: AppointmentListItem[] = [];
     if (appointments && appointments.length > 0) {
-      const list = [...appointments];
+      list = appointments.map((a) => {
+        // If local customAppointments has a status override (e.g. ARRIVED / حضر المريض), use it
+        const override = customAppointments.find((c) => c.id === a.id);
+        return override ? { ...a, status: override.status } : a;
+      });
+      // Also include any new appointment created locally that hasn't synced yet
       customAppointments.forEach((app) => {
-        if (!list.some((existing) => existing.id === app.id || existing.patientName === app.patientName)) {
+        if (!list.some((existing) => existing.id === app.id)) {
           list.push(app);
         }
       });
-      return list;
+    } else {
+      list = [...customAppointments];
     }
-    return customAppointments;
+
+    // Sort newest first by scheduled date & time descending
+    return list.sort((a, b) => {
+      const timeA = new Date(`${a.date || '2026-01-01'} ${a.time || '00:00'}`).getTime();
+      const timeB = new Date(`${b.date || '2026-01-01'} ${b.time || '00:00'}`).getTime();
+      if (!isNaN(timeB) && !isNaN(timeA) && timeB !== timeA) return timeB - timeA;
+      return (b.id || '').localeCompare(a.id || '');
+    });
   }, [customAppointments, appointments]);
 
   // Count of archived appointments (فى الانتظار حضر المريض / ملغى)
@@ -224,32 +240,40 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
     return allAppointments.filter(
       (app) =>
         app.status === 'فى الانتظار حضر المريض' ||
+        app.status === 'حضر وسدد' ||
         app.status === 'فى الانتظار' ||
         app.status === 'في الانتظار' ||
+        app.status === 'ARRIVED' ||
         app.status === 'ملغى' ||
         app.status === 'ملغي' ||
+        app.status === 'CANCELLED' ||
         app.status === 'اكتمل  الكشف' ||
         app.status === 'مكتمل'
     ).length;
   }, [allAppointments]);
 
-  // Filter appointments according to status & archive toggle
+  // Filter appointments according to status & archive toggle:
+  // When an appointment changes to "حضر المريض" / "فى الانتظار حضر المريض", it MUST DISAPPEAR from scheduled appointments
   const displayedAppointments = useMemo(() => {
     return allAppointments.filter((app) => {
       const isArchived =
         app.status === 'فى الانتظار حضر المريض' ||
+        app.status === 'حضر وسدد' ||
         app.status === 'فى الانتظار' ||
         app.status === 'في الانتظار' ||
+        app.status === 'ARRIVED' ||
         app.status === 'ملغى' ||
         app.status === 'ملغي' ||
+        app.status === 'CANCELLED' ||
         app.status === 'اكتمل  الكشف' ||
         app.status === 'مكتمل';
 
-      // If archive mode is OFF, show only active scheduled appointments ("مجدول")
+      // If archive mode is OFF, strictly show ONLY active scheduled appointments ("مجدول")
+      // Once attended or arrived, it disappears completely from this view!
       if (!showArchive && isArchived && statusFilter === 'all') {
         return false;
       }
-      // If archive mode is ON, show only attended/cancelled appointments
+      // If archive mode is ON, show attended/cancelled appointments
       if (showArchive && !isArchived && statusFilter === 'all') {
         return false;
       }
@@ -257,16 +281,19 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
       // Filter by status dropdown
       if (statusFilter !== 'all') {
         if (statusFilter === 'مجدول') {
+          if (isArchived) return false;
           if (app.status !== 'مجدول' && app.status !== 'بانتظار التأكيد') return false;
         } else if (statusFilter === 'فى الانتظار حضر المريض') {
           if (
             app.status !== 'فى الانتظار حضر المريض' &&
+            app.status !== 'حضر وسدد' &&
             app.status !== 'فى الانتظار' &&
-            app.status !== 'في الانتظار'
+            app.status !== 'في الانتظار' &&
+            app.status !== 'ARRIVED'
           )
             return false;
         } else if (statusFilter === 'ملغى') {
-          if (app.status !== 'ملغى' && app.status !== 'ملغي') return false;
+          if (app.status !== 'ملغى' && app.status !== 'ملغي' && app.status !== 'CANCELLED') return false;
         } else if (app.status !== statusFilter) {
           return false;
         }
@@ -372,6 +399,15 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
       setToastMessage(`تم تسجيل حضور المريض "${app.patientName}" وجارٍ فتح صفحة تسجيل الزيارة`);
       setTimeout(() => setToastMessage(null), 3500);
 
+      // Persist to Firestore immediately
+      if (db && app.id) {
+        setDoc(
+          doc(db, 'appointments', app.id),
+          { status: 'ARRIVED', updatedAt: new Date().toISOString() },
+          { merge: true }
+        ).catch((err) => console.warn('Failed to update appointment status in Firestore:', err));
+      }
+
       // 2. Automatically launch intake screen
       if (onStartIntakeFromAppointment) {
         onStartIntakeFromAppointment({ ...app, status: 'فى الانتظار حضر المريض' });
@@ -388,6 +424,14 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
       );
       setToastMessage(`تم إلغاء موعد "${app.patientName}" ونقله تلقائياً إلى الأرشيف`);
       setTimeout(() => setToastMessage(null), 3500);
+
+      if (db && app.id) {
+        setDoc(
+          doc(db, 'appointments', app.id),
+          { status: 'CANCELLED', updatedAt: new Date().toISOString() },
+          { merge: true }
+        ).catch((err) => console.warn('Failed to cancel appointment in Firestore:', err));
+      }
       return;
     }
 
@@ -397,6 +441,14 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
     );
     setToastMessage(`تم تحديث حالة موعد "${app.patientName}" إلى: مجدول`);
     setTimeout(() => setToastMessage(null), 3500);
+
+    if (db && app.id) {
+      setDoc(
+        doc(db, 'appointments', app.id),
+        { status: 'SCHEDULED', updatedAt: new Date().toISOString() },
+        { merge: true }
+      ).catch((err) => console.warn('Failed to reschedule appointment in Firestore:', err));
+    }
   };
 
   // Check-in / «حضر المريض» Flow:
@@ -407,6 +459,15 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
     setCustomAppointments((prev) =>
       prev.map((item) => (item.id === app.id ? { ...item, status: 'فى الانتظار حضر المريض' } : item))
     );
+
+    // Persist to Firestore immediately
+    if (db && app.id) {
+      setDoc(
+        doc(db, 'appointments', app.id),
+        { status: 'ARRIVED', updatedAt: new Date().toISOString() },
+        { merge: true }
+      ).catch((err) => console.warn('Failed to update appointment status in Firestore:', err));
+    }
 
     setToastMessage(`تم تسجيل حضور المريض "${app.patientName}" وجارٍ فتح صفحة تسجيل الزيارة`);
     setTimeout(() => setToastMessage(null), 3500);
@@ -917,11 +978,15 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
                 >
                   {/* Right Details: Time + Name + Status Badge + Meta */}
                   <div className="flex items-center gap-3 min-w-0 flex-1">
-                    {/* Time Box */}
-                    <div className="px-3 py-2 rounded-xl bg-white dark:bg-[#111A2E] border border-slate-200 dark:border-white/5 text-center shrink-0 min-w-[70px] shadow-2xs">
-                      <span className="font-mono font-black text-xs text-[#008f97] dark:text-[#00c2cb]">
-                        {app.timeSlot || '09:00 ص'}
-                      </span>
+                    {/* Date & Time Box */}
+                    <div className="px-3 py-1.5 rounded-xl bg-white dark:bg-[#111A2E] border border-slate-200 dark:border-white/5 text-center shrink-0 min-w-[85px] shadow-2xs">
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                        {app.date || 'اليوم'}
+                      </div>
+                      <div className="font-mono font-black text-xs text-[#008f97] dark:text-[#00c2cb] flex items-center justify-center gap-1 mt-0.5">
+                        <span className="material-symbols-outlined text-[12px]">schedule</span>
+                        <span>{app.timeSlot || app.time || '09:00 ص'}</span>
+                      </div>
                     </div>
 
                     {/* Patient Info */}

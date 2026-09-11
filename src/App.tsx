@@ -348,6 +348,26 @@ function ClinicApp() {
   const [doctorSettingsCanonical, setDoctorSettingsCanonical] = useState<DoctorSettings>(INITIAL_DOCTOR_SETTINGS_CANONICAL);
   const [systemSettingsCanonical] = useState<SystemSettings>(INITIAL_SYSTEM_SETTINGS_CANONICAL);
 
+  // Keep activeExamPatient in sync with real-time patient canonical changes
+  useEffect(() => {
+    if (activeExamPatient) {
+      const live = patientsCanonical.find((p) => p.patientId === activeExamPatient.id);
+      if (live && (live.fullName !== activeExamPatient.name || live.phone !== activeExamPatient.phone || live.address !== activeExamPatient.address)) {
+        const birthYear = live.dateOfBirth ? new Date(live.dateOfBirth).getFullYear() : 1988;
+        const calculatedAge = Math.max(1, new Date().getFullYear() - birthYear);
+        setActiveExamPatient((prev) => prev ? {
+          ...prev,
+          name: live.fullName,
+          phone: live.phone || '',
+          address: live.address || live.governorate || '',
+          age: calculatedAge,
+          bloodType: live.bloodType || 'غير محدد',
+          bloodGroup: live.bloodType || 'غير محدد',
+        } : null);
+      }
+    }
+  }, [patientsCanonical, activeExamPatient]);
+
   // Auto-seed Firestore catalog references if empty on first-ever install (never seed mock patients/visits)
   useEffect(() => {
     if (!db) return;
@@ -449,7 +469,15 @@ function ClinicApp() {
   // DERIVED STATE (Canonical State -> Derived State -> UI)
   // =========================================================================
   const patients: PatientListItem[] = useMemo(() => {
-    return patientsCanonical.map((p) => {
+    // Sort canonical patients newest first (by createdAt desc, then fileNumber desc)
+    const sortedPatients = [...patientsCanonical].sort((a, b) => {
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      if (timeB !== timeA) return timeB - timeA;
+      return (Number(b.fileNumber) || 0) - (Number(a.fileNumber) || 0);
+    });
+
+    return sortedPatients.map((p) => {
       const pVisits = visitsCanonical.filter((v) => v.patientId === p.patientId);
       const pPayments = paymentsCanonical.filter((pm) => pm.patientId === p.patientId);
       const totalPaid = pPayments.reduce((acc, pm) => acc + (pm.amount || 0), 0);
@@ -458,6 +486,10 @@ function ClinicApp() {
       
       const birthYear = p.dateOfBirth ? new Date(p.dateOfBirth).getFullYear() : 1988;
       const calculatedAge = Math.max(1, new Date().getFullYear() - birthYear);
+
+      const createdDateObj = p.createdAt ? new Date(p.createdAt) : new Date();
+      const registrationDate = createdDateObj.toLocaleDateString('ar-EG');
+      const registrationTime = createdDateObj.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
 
       return {
         id: p.patientId,
@@ -475,7 +507,9 @@ function ClinicApp() {
         bloodGroup: p.bloodType || 'غير محدد',
         emergencyContact: p.emergencyContact,
         lastVisitDate: lastVisit ? new Date(lastVisit.createdAt).toLocaleDateString('ar-EG') : undefined,
-        registrationDate: new Date(p.createdAt || Date.now()).toLocaleDateString('ar-EG'),
+        lastVisitTime: lastVisit ? new Date(lastVisit.createdAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : undefined,
+        registrationDate,
+        registrationTime,
         visitsCount: pVisits.length,
         totalPaid,
         lastDiagnosis: lastDiag,
@@ -520,7 +554,15 @@ function ClinicApp() {
   }, [visitsCanonical, patientsCanonical, invoicesCanonical, paymentsCanonical]);
 
   const appointments: AppointmentListItem[] = useMemo(() => {
-    return appointmentsCanonical.map((a) => {
+    // Sort canonical appointments newest first
+    const sortedAppts = [...appointmentsCanonical].sort((a, b) => {
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      if (timeB !== timeA) return timeB - timeA;
+      return (b.scheduledDate || '').localeCompare(a.scheduledDate || '');
+    });
+
+    return sortedAppts.map((a) => {
       const pat = patientsCanonical.find((p) => p.patientId === a.patientId);
       const matchingVisitType = visitTypesList.find(
         (vt) => vt.name.trim().toLowerCase() === (a.visitType || '').trim().toLowerCase(),
@@ -540,7 +582,7 @@ function ClinicApp() {
         time: a.scheduledTime,
         timeSlot: a.scheduledTime || '05:00 م',
         visitType: a.visitType,
-        status: a.status === 'ARRIVED' ? 'حضر وسدد' : a.status === 'CANCELLED' ? 'ملغي' : 'مجدول',
+        status: a.status === 'ARRIVED' ? 'فى الانتظار حضر المريض' : a.status === 'CANCELLED' ? 'ملغي' : 'مجدول',
         expectedFee: dynamicFee,
         notes: a.notes,
       };
@@ -548,7 +590,7 @@ function ClinicApp() {
   }, [appointmentsCanonical, patientsCanonical, visitTypesList]);
 
   const transactions: TransactionRecord[] = useMemo(() => {
-    const list: TransactionRecord[] = [];
+    const list: (TransactionRecord & { rawTimestamp: string })[] = [];
     const seenPaymentIds = new Set<string>();
 
     paymentsCanonical.forEach((p) => {
@@ -559,6 +601,7 @@ function ClinicApp() {
       const totalAmount = inv?.total || p.amount;
       const discountAmount = inv?.discount || 0;
       const paidAmount = p.amount;
+      const rawIso = p.paidAt || p.createdAt || new Date().toISOString();
 
       list.push({
         id: p.paymentId,
@@ -575,8 +618,9 @@ function ClinicApp() {
         paymentMethod: (p.method === 'CARD' ? 'فيزا / كارت' : 'نقدي'),
         method: (p.method === 'CARD' ? 'فيزا / كارت' : 'نقدي'),
         status: (inv?.status === 'PAID' || paidAmount >= totalAmount) ? 'مدفوعة' : 'غير مدفوعة',
-        time: new Date(p.paidAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
-        date: p.paidAt ? (p.paidAt.includes('T') ? p.paidAt.split('T')[0] : p.paidAt) : new Date().toISOString().split('T')[0],
+        time: new Date(rawIso).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+        date: rawIso.includes('T') ? rawIso.split('T')[0] : rawIso,
+        rawTimestamp: rawIso,
         category: 'كشوفات وخدمات طبية',
       });
     });
@@ -587,6 +631,7 @@ function ClinicApp() {
       if (!hasPayment) {
         const pat = patientsCanonical.find((pt) => pt.patientId === inv.patientId);
         const serviceName = inv.items?.[0]?.nameAr || inv.items?.[0]?.description || 'كشف واستشارة طبية';
+        const rawIso = inv.createdAt || new Date().toISOString();
         list.push({
           id: inv.invoiceId,
           receiptNo: `INV-${inv.invoiceId.slice(-5)}`,
@@ -602,17 +647,20 @@ function ClinicApp() {
           paymentMethod: 'نقدي',
           method: 'نقدي',
           status: inv.status === 'PAID' ? 'مدفوعة' : 'غير مدفوعة',
-          time: new Date(inv.createdAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
-          date: inv.createdAt ? (inv.createdAt.includes('T') ? inv.createdAt.split('T')[0] : inv.createdAt) : new Date().toISOString().split('T')[0],
+          time: new Date(rawIso).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+          date: rawIso.includes('T') ? rawIso.split('T')[0] : rawIso,
+          rawTimestamp: rawIso,
           category: 'فواتير كشوفات',
         });
       }
     });
 
+    // Exact ISO timestamp descending sort: newest at the top
     return list.sort((a, b) => {
-      const timeA = new Date(`${a.date} ${a.time || '00:00'}`).getTime();
-      const timeB = new Date(`${b.date} ${b.time || '00:00'}`).getTime();
-      return isNaN(timeB) || isNaN(timeA) ? 0 : timeB - timeA;
+      const timeA = new Date(a.rawTimestamp).getTime();
+      const timeB = new Date(b.rawTimestamp).getTime();
+      if (!isNaN(timeB) && !isNaN(timeA) && timeB !== timeA) return timeB - timeA;
+      return (b.id || '').localeCompare(a.id || '');
     });
   }, [paymentsCanonical, invoicesCanonical, patientsCanonical]);
 
@@ -1020,33 +1068,53 @@ function ClinicApp() {
     ) + 1;
 
   // =========================================================================
-  // CATALOG MUTATION HANDLERS (Direct Firestore Persistence & Live Sync)
+  // CATALOG MUTATION HANDLERS (Direct Firestore Persistence & Live Sync & Optimistic Updates)
   // =========================================================================
   const handleAddRadiologyToCatalog = async (item: RadiologyCatalogItem) => {
-    if (!db) return;
-    try {
-      await saveCatalogItem(db, 'radiologyTypes', item.id, {
-        radiologyId: item.id,
-        nameAr: item.name,
-        category: item.category,
-        isFavorite: !!item.isFavorite,
-        active: true,
-      });
-    } catch (err) {
-      console.warn('Failed to save radiology to catalog', err);
+    const rawItem: RadiologyType = {
+      radiologyId: item.id,
+      nameAr: item.name,
+      nameEn: '',
+      category: item.category,
+      active: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    setRadiologyTypesCanonical((prev) => {
+      const filtered = prev.filter((r) => r.radiologyId !== item.id);
+      return [rawItem, ...filtered];
+    });
+
+    if (db) {
+      try {
+        await saveCatalogItem(db, 'radiologyTypes', item.id, {
+          radiologyId: item.id,
+          nameAr: item.name,
+          category: item.category,
+          isFavorite: !!item.isFavorite,
+          active: true,
+        });
+      } catch (err) {
+        console.warn('Failed to save radiology to catalog', err);
+      }
     }
   };
 
   const handleRemoveRadiologyFromCatalog = async (id: string) => {
-    if (!db) return;
-    try {
-      await removeCatalogItem(db, 'radiologyTypes', id);
-    } catch (err) {
-      console.warn('Failed to remove radiology', err);
+    setRadiologyTypesCanonical((prev) => prev.filter((r) => r.radiologyId !== id));
+    if (db) {
+      try {
+        await removeCatalogItem(db, 'radiologyTypes', id);
+      } catch (err) {
+        console.warn('Failed to remove radiology', err);
+      }
     }
   };
 
   const handleToggleRadiologyFavorite = async (id: string) => {
+    setRadiologyTypesCanonical((prev) =>
+      prev.map((r) => (r.radiologyId === id ? { ...r, isFavorite: !r.isFavorite } : r))
+    );
     if (!db) return;
     const current = radiologyCatalog.find((r) => r.id === id);
     if (!current) return;
@@ -1060,34 +1128,57 @@ function ClinicApp() {
   };
 
   const handleAddLabToCatalog = async (item: LabCatalogItem) => {
-    if (!db) return;
-    try {
-      await saveCatalogItem(db, 'labTests', item.id, {
-        labTestId: item.id,
-        nameAr: item.name,
-        category: item.category,
-        sampleType: item.sampleType || 'دم',
-        fastingRequired: !!item.fastingRequired,
-        referenceRange: item.referenceRange || '',
-        unit: item.unit || '',
-        isFavorite: !!item.isFavorite,
-        active: true,
-      });
-    } catch (err) {
-      console.warn('Failed to save lab to catalog', err);
+    const rawItem: LabTest = {
+      labTestId: item.id,
+      nameAr: item.name,
+      nameEn: '',
+      category: item.category,
+      sampleType: item.sampleType || 'دم',
+      fastingRequired: !!item.fastingRequired,
+      referenceRange: item.referenceRange || '',
+      active: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    setLabTestsCanonical((prev) => {
+      const filtered = prev.filter((l) => l.labTestId !== item.id);
+      return [rawItem, ...filtered];
+    });
+
+    if (db) {
+      try {
+        await saveCatalogItem(db, 'labTests', item.id, {
+          labTestId: item.id,
+          nameAr: item.name,
+          category: item.category,
+          sampleType: item.sampleType || 'دم',
+          fastingRequired: !!item.fastingRequired,
+          referenceRange: item.referenceRange || '',
+          unit: item.unit || '',
+          isFavorite: !!item.isFavorite,
+          active: true,
+        });
+      } catch (err) {
+        console.warn('Failed to save lab to catalog', err);
+      }
     }
   };
 
   const handleRemoveLabFromCatalog = async (id: string) => {
-    if (!db) return;
-    try {
-      await removeCatalogItem(db, 'labTests', id);
-    } catch (err) {
-      console.warn('Failed to remove lab', err);
+    setLabTestsCanonical((prev) => prev.filter((l) => l.labTestId !== id));
+    if (db) {
+      try {
+        await removeCatalogItem(db, 'labTests', id);
+      } catch (err) {
+        console.warn('Failed to remove lab', err);
+      }
     }
   };
 
   const handleToggleLabFavorite = async (id: string) => {
+    setLabTestsCanonical((prev) =>
+      prev.map((l) => (l.labTestId === id ? { ...l, isFavorite: !l.isFavorite } : l))
+    );
     if (!db) return;
     const current = labCatalog.find((l) => l.id === id);
     if (!current) return;
@@ -1101,37 +1192,64 @@ function ClinicApp() {
   };
 
   const handleAddDrugToCatalog = async (item: DrugCatalogItem) => {
-    if (!db) return;
-    try {
-      await saveCatalogItem(db, 'medications', item.id, {
-        medicationId: item.id,
-        tradeName: item.brandName,
-        genericName: item.genericName,
-        strength: item.strength,
-        form: item.form,
-        category: item.category,
-        defaultDose: item.defaultDosage,
-        defaultDuration: item.defaultDuration,
-        defaultTiming: item.defaultTiming,
-        isFavorite: !!item.isFavorite,
-        notes: item.notes || '',
-        active: true,
-      });
-    } catch (err) {
-      console.warn('Failed to save drug to catalog', err);
+    const rawItem: Medication = {
+      medicationId: item.id,
+      nameAr: item.brandName,
+      nameEn: item.brandName,
+      genericName: item.genericName,
+      strength: item.strength,
+      form: item.form,
+      manufacturer: '',
+      source: 'LOCAL',
+      active: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    setMedicationsCanonical((prev) => {
+      const filtered = prev.filter((m) => m.medicationId !== item.id);
+      return [rawItem, ...filtered];
+    });
+
+    if (db) {
+      try {
+        await saveCatalogItem(db, 'medications', item.id, {
+          medicationId: item.id,
+          nameAr: item.brandName,
+          tradeName: item.brandName,
+          nameEn: item.brandName,
+          genericName: item.genericName,
+          strength: item.strength,
+          form: item.form,
+          category: item.category,
+          defaultDosage: item.defaultDosage,
+          defaultDose: item.defaultDosage,
+          defaultDuration: item.defaultDuration,
+          defaultTiming: item.defaultTiming,
+          isFavorite: !!item.isFavorite,
+          notes: item.notes || '',
+          active: true,
+        });
+      } catch (err) {
+        console.warn('Failed to save drug to catalog', err);
+      }
     }
   };
 
   const handleRemoveDrugFromCatalog = async (id: string) => {
-    if (!db) return;
-    try {
-      await removeCatalogItem(db, 'medications', id);
-    } catch (err) {
-      console.warn('Failed to remove drug', err);
+    setMedicationsCanonical((prev) => prev.filter((m) => m.medicationId !== id));
+    if (db) {
+      try {
+        await removeCatalogItem(db, 'medications', id);
+      } catch (err) {
+        console.warn('Failed to remove drug', err);
+      }
     }
   };
 
   const handleToggleDrugFavorite = async (id: string) => {
+    setMedicationsCanonical((prev) =>
+      prev.map((m) => (m.medicationId === id ? { ...m, isFavorite: !m.isFavorite } : m))
+    );
     if (!db) return;
     const current = drugCatalog.find((d) => d.id === id);
     if (!current) return;
@@ -1145,32 +1263,52 @@ function ClinicApp() {
   };
 
   const handleAddDiagnosisToCatalog = async (item: DiagnosisCatalogItem) => {
-    if (!db) return;
-    try {
-      await saveCatalogItem(db, 'diagnoses', item.id, {
-        diagnosisId: item.id,
-        code: item.code,
-        nameAr: item.nameAr,
-        nameEn: item.nameEn,
-        category: item.category,
-        isFavorite: !!item.isFavorite,
-        active: true,
-      });
-    } catch (err) {
-      console.warn('Failed to save diagnosis to catalog', err);
+    const rawItem: Diagnosis = {
+      diagnosisId: item.id,
+      code: item.code,
+      nameAr: item.nameAr,
+      nameEn: item.nameEn,
+      codeSystem: 'ICD10',
+      active: true,
+      createdAt: new Date().toISOString(),
+    };
+    setDiagnosesCanonical((prev) => {
+      const filtered = prev.filter((d) => d.diagnosisId !== item.id);
+      return [rawItem, ...filtered];
+    });
+
+    if (db) {
+      try {
+        await saveCatalogItem(db, 'diagnoses', item.id, {
+          diagnosisId: item.id,
+          code: item.code,
+          nameAr: item.nameAr,
+          nameEn: item.nameEn,
+          category: item.category,
+          isFavorite: !!item.isFavorite,
+          active: true,
+        });
+      } catch (err) {
+        console.warn('Failed to save diagnosis to catalog', err);
+      }
     }
   };
 
   const handleRemoveDiagnosisFromCatalog = async (id: string) => {
-    if (!db) return;
-    try {
-      await removeCatalogItem(db, 'diagnoses', id);
-    } catch (err) {
-      console.warn('Failed to remove diagnosis', err);
+    setDiagnosesCanonical((prev) => prev.filter((d) => d.diagnosisId !== id));
+    if (db) {
+      try {
+        await removeCatalogItem(db, 'diagnoses', id);
+      } catch (err) {
+        console.warn('Failed to remove diagnosis', err);
+      }
     }
   };
 
   const handleToggleDiagnosisFavorite = async (id: string) => {
+    setDiagnosesCanonical((prev) =>
+      prev.map((d) => (d.diagnosisId === id ? { ...d, isFavorite: !d.isFavorite } : d))
+    );
     if (!db) return;
     const current = diagnosesCatalog.find((d) => d.id === id);
     if (!current) return;
@@ -1184,49 +1322,83 @@ function ClinicApp() {
   };
 
   const handleAddSymptomToCatalog = async (item: SymptomCatalogItem) => {
-    if (!db) return;
-    try {
-      await saveCatalogItem(db, 'symptoms', item.id, {
-        symptomId: item.id,
-        nameAr: item.name,
-        category: item.category,
-        active: true,
-      });
-    } catch (err) {
-      console.warn('Failed to save symptom to catalog', err);
+    const rawItem: Symptom = {
+      symptomId: item.id,
+      nameAr: item.name,
+      nameEn: item.name,
+      category: item.category,
+      active: true,
+    };
+    setSymptomsCanonical((prev) => {
+      const filtered = prev.filter((s) => s.symptomId !== item.id);
+      return [rawItem, ...filtered];
+    });
+
+    if (db) {
+      try {
+        await saveCatalogItem(db, 'symptoms', item.id, {
+          symptomId: item.id,
+          nameAr: item.name,
+          category: item.category,
+          active: true,
+        });
+      } catch (err) {
+        console.warn('Failed to save symptom to catalog', err);
+      }
     }
   };
 
   const handleRemoveSymptomFromCatalog = async (id: string) => {
-    if (!db) return;
-    try {
-      await removeCatalogItem(db, 'symptoms', id);
-    } catch (err) {
-      console.warn('Failed to remove symptom', err);
-    }
-  };
-
-  const handleAddChronicCondition = async (condition: string) => {
-    if (!db) return;
-    const id = `chronic-${Date.now()}`;
-    try {
-      await saveCatalogItem(db, 'chronicDiseases', id, {
-        diseaseId: id,
-        nameAr: condition,
-        category: 'عام',
-        active: true,
-      });
-    } catch (err) {
-      console.warn('Failed to save chronic disease', err);
-    }
-  };
-
-  const handleRemoveChronicCondition = async (condition: string) => {
-    if (!db) return;
-    const found = chronicDiseasesCanonical.find((c) => c.nameAr === condition);
-    if (found) {
+    setSymptomsCanonical((prev) => prev.filter((s) => s.symptomId !== id));
+    if (db) {
       try {
-        await removeCatalogItem(db, 'chronicDiseases', found.diseaseId);
+        await removeCatalogItem(db, 'symptoms', id);
+      } catch (err) {
+        console.warn('Failed to remove symptom', err);
+      }
+    }
+  };
+
+  const handleAddChronicCondition = async (itemOrName: { id?: string; name: string; category?: string } | string) => {
+    const name = typeof itemOrName === 'string' ? itemOrName : itemOrName.name;
+    const id = typeof itemOrName === 'string' ? `chronic-${Date.now()}` : (itemOrName.id || `chronic-${Date.now()}`);
+    const category = typeof itemOrName === 'string' ? 'عام' : (itemOrName.category || 'أمراض مزمنة شائعة');
+
+    const rawItem: ChronicDisease = {
+      diseaseId: id,
+      nameAr: name,
+      nameEn: name,
+      category,
+      active: true,
+    };
+    setChronicDiseasesCanonical((prev) => {
+      const filtered = prev.filter((c) => c.diseaseId !== id && c.nameAr !== name);
+      return [rawItem, ...filtered];
+    });
+
+    if (db) {
+      try {
+        await saveCatalogItem(db, 'chronicDiseases', id, {
+          diseaseId: id,
+          nameAr: name,
+          category,
+          active: true,
+        });
+      } catch (err) {
+        console.warn('Failed to save chronic disease', err);
+      }
+    }
+  };
+
+  const handleRemoveChronicCondition = async (idOrName: string) => {
+    setChronicDiseasesCanonical((prev) =>
+      prev.filter((c) => c.diseaseId !== idOrName && c.nameAr !== idOrName)
+    );
+    if (db) {
+      const found = chronicDiseasesCanonical.find((c) => c.diseaseId === idOrName || c.nameAr === idOrName);
+      const targetId = found ? found.diseaseId : idOrName;
+      try {
+        await removeCatalogItem(db, 'chronicDiseases', targetId);
       } catch (err) {
         console.warn('Failed to remove chronic disease', err);
       }
@@ -1265,14 +1437,21 @@ function ClinicApp() {
   };
 
   // Update patient record
-  const handleUpdatePatient = async (updated: Partial<Patient> & { patientId: string }) => {
+  const handleUpdatePatient = async (
+    patientIdOrUpdated: string | (Partial<Patient> & { patientId: string }),
+    maybeFields?: Partial<Patient>
+  ) => {
     const timestamp = new Date().toISOString();
-    if (db) {
+    const patientId = typeof patientIdOrUpdated === 'string' ? patientIdOrUpdated : patientIdOrUpdated.patientId;
+    const fields = typeof patientIdOrUpdated === 'string' ? maybeFields || {} : patientIdOrUpdated;
+
+    if (db && patientId) {
       try {
         await setDoc(
-          doc(db, 'patients', updated.patientId),
+          doc(db, 'patients', patientId),
           {
-            ...updated,
+            ...fields,
+            patientId,
             updatedAt: timestamp,
           },
           { merge: true }
@@ -1580,6 +1759,21 @@ function ClinicApp() {
           clinicLocationId: 'loc-mohandessin',
           receptionistData: { symptoms: item.complaint || '', chronicDiseases: patient.chronicDiseases || [], notes: '' },
         });
+
+        // If this intake was initiated from a scheduled appointment, mark the appointment as ARRIVED in Firestore
+        // so it disappears from the active scheduled appointments view across all user accounts
+        if (intakeInitialData?.appointmentId && db) {
+          try {
+            await setDoc(
+              doc(db, 'appointments', intakeInitialData.appointmentId),
+              { status: 'ARRIVED', updatedAt: timestamp },
+              { merge: true }
+            );
+          } catch (apptErr) {
+            console.warn('Could not update appointment status to ARRIVED:', apptErr);
+          }
+        }
+        setIntakeInitialData(null);
 
         const alertConfig = loadAlertSettings();
         if (alertConfig.audioEnabled && alertConfig.newVisitAudio) {
@@ -1996,6 +2190,10 @@ function ClinicApp() {
                   patient={activeExamPatient}
                   items={activePrescription}
                   onChangeItems={setActivePrescription}
+                  onUpdatePatient={(up) => {
+                    handleUpdatePatient(up.patientId, { fullName: up.fullName, dateOfBirth: up.dateOfBirth });
+                    setActiveExamPatient((prev) => prev ? { ...prev, name: up.fullName, age: up.age ?? prev.age } : null);
+                  }}
                 />
               )}
 

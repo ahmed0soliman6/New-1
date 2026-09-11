@@ -138,9 +138,16 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
     }
   };
 
-  // Live System Inflow Transactions
+  // Live System Inflow Transactions (sorted newest first)
   const allInflowRecords = useMemo(() => {
-    return transactions.filter((t) => t.type !== 'out');
+    return [...transactions]
+      .filter((t) => t.type !== 'out')
+      .sort((a, b) => {
+        const timeA = new Date(`${a.date || '2026-01-01'} ${a.time || '00:00'}`).getTime();
+        const timeB = new Date(`${b.date || '2026-01-01'} ${b.time || '00:00'}`).getTime();
+        if (!isNaN(timeB) && !isNaN(timeA) && timeB !== timeA) return timeB - timeA;
+        return (b.id || '').localeCompare(a.id || '');
+      });
   }, [transactions]);
 
   // Month Names in Arabic
@@ -942,9 +949,12 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
                           <td className="p-3 text-center font-mono font-bold text-sm text-emerald-600 dark:text-[#10B981]">
                             {amountDisplay.toLocaleString()} ج.م
                           </td>
-                          <td className="p-3 text-center font-mono text-slate-500 dark:text-[#859394] text-[11px] whitespace-nowrap">
-                            <div>{tx.date || '2026-09-08'}</div>
-                            <div className="text-[10px] text-slate-400">{tx.time || ''}</div>
+                          <td className="p-3 text-center font-mono text-[11px] whitespace-nowrap">
+                            <div className="text-slate-800 dark:text-slate-200 font-bold">{tx.date || '—'}</div>
+                            <div className="text-[10px] text-[#008f97] dark:text-[#00c2cb] font-bold flex items-center justify-center gap-1 mt-0.5">
+                              <span className="material-symbols-outlined text-[12px]">schedule</span>
+                              <span>{tx.time ? `الساعة ${tx.time}` : '—'}</span>
+                            </div>
                           </td>
                           <td className="p-3 text-center">
                             <span

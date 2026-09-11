@@ -113,8 +113,13 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({
                     </span>
                   </div>
 
-                  <p className="text-[11px] text-slate-400 dark:text-[#64748B] font-mono">
-                    تذكرة {item.ticketNumber} • وقت الوصول: {item.arrivalTime || '٠:٣٩ م'}
+                  <p className="text-[11px] text-slate-500 dark:text-[#859394] font-mono flex items-center gap-2 pt-0.5">
+                    <span className="font-bold">تذكرة #{item.ticketNumber}</span>
+                    <span>•</span>
+                    <span className="flex items-center gap-1 text-[#008f97] dark:text-[#00c2cb] font-bold">
+                      <span className="material-symbols-outlined text-[13px]">schedule</span>
+                      <span>وقت الحضور: {item.arrivalTime || 'الآن'}</span>
+                    </span>
                   </p>
                 </div>
               </div>
