@@ -4,7 +4,6 @@ import { useDoctorName } from '../hooks/useDoctorName';
 import { QueueItem, AppointmentListItem, PatientListItem, TransactionRecord, ScreenType } from '../types';
 import { ClinicAlertPayload } from '../utils/alertManager';
 import { GlobalSearchBar } from './GlobalSearchBar';
-import { PWAInstallButton } from './pwa/PWAInstallButton';
 
 export interface FollowUpItem {
   id: string;
@@ -99,71 +98,66 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <>
-      <header className="fixed top-0 right-0 lg:right-72 left-0 h-16 bg-white/95 dark:bg-black/95 backdrop-blur-xl border-b border-slate-200 dark:border-white/10 z-40 flex items-center justify-between px-3 sm:px-6 transition-colors">
+      <header className="fixed top-0 right-0 lg:right-72 left-0 h-16 bg-white/95 dark:bg-black/95 backdrop-blur-xl border-b border-slate-200 dark:border-white/10 z-40 flex items-center justify-between px-2 sm:px-6 transition-colors gap-1 sm:gap-3">
         {/* Right Side: Mobile Hamburger & Live Sync Status Badge */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           {/* Mobile Menu Toggle Button */}
           <button
             type="button"
             onClick={onToggleMobileMenu}
-            className="lg:hidden w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#161b29] dark:hover:bg-[#242a38] text-slate-700 dark:text-[#bbc9ca] flex items-center justify-center border border-slate-200 dark:border-white/5 cursor-pointer shrink-0"
+            className="lg:hidden w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#161b29] dark:hover:bg-[#242a38] text-slate-700 dark:text-[#bbc9ca] flex items-center justify-center border border-slate-200 dark:border-white/5 cursor-pointer shrink-0"
             aria-label="فتح القائمة الجانبية"
           >
-            <span className="material-symbols-outlined text-xl">menu</span>
+            <span className="material-symbols-outlined text-lg sm:text-xl">menu</span>
           </button>
 
           {/* Sync Status Badge (متصل / غير متصل / جار المزامنة / خطأ) */}
           {syncStatus === 'connected' && (
             <button
               onClick={() => setShowSyncDetailsModal(true)}
-              className="flex items-center gap-2 bg-emerald-500/10 hover:bg-emerald-500/20 dark:bg-[#18233C] px-3 py-1.5 rounded-xl border border-emerald-500/20 dark:border-[#00c2cb]/20 transition-all cursor-pointer group"
+              className="flex items-center gap-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 dark:bg-[#18233C] px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-emerald-500/20 dark:border-[#00c2cb]/20 transition-all cursor-pointer group shrink-0"
               title="النظام متصل وقيد المزامنة الفورية"
             >
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 dark:bg-[#00c2cb] animate-pulse"></span>
-              <span className="text-xs text-emerald-700 dark:text-[#45dee7] font-bold">متصل</span>
+              <span className="w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full bg-emerald-500 dark:bg-[#00c2cb] animate-pulse"></span>
+              <span className="text-[11px] sm:text-xs text-emerald-700 dark:text-[#45dee7] font-bold">متصل</span>
             </button>
           )}
 
           {syncStatus === 'syncing' && (
             <button
               onClick={() => setShowSyncDetailsModal(true)}
-              className="flex items-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 dark:bg-[#18233C] px-3 py-1.5 rounded-xl border border-amber-500/30 dark:border-amber-400/30 transition-all cursor-pointer"
+              className="flex items-center gap-1.5 bg-amber-500/10 hover:bg-amber-500/20 dark:bg-[#18233C] px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-amber-500/30 dark:border-amber-400/30 transition-all cursor-pointer shrink-0"
               title="جاري مزامنة التحديثات مع السحابة"
             >
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-spin"></span>
-              <span className="text-xs text-amber-700 dark:text-amber-300 font-bold">جار المزامنة</span>
+              <span className="w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full bg-amber-500 animate-spin"></span>
+              <span className="text-[11px] sm:text-xs text-amber-700 dark:text-amber-300 font-bold">جار المزامنة</span>
             </button>
           )}
 
           {syncStatus === 'offline' && (
             <button
               onClick={() => setShowSyncDetailsModal(true)}
-              className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 dark:bg-[#18233C] px-3 py-1.5 rounded-xl border border-slate-300 dark:border-white/10 transition-all cursor-pointer"
+              className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#18233C] px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-slate-300 dark:border-white/10 transition-all cursor-pointer shrink-0"
               title="أنت تعمل بالوضع المحلي دون اتصال"
             >
-              <span className="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
-              <span className="text-xs text-slate-600 dark:text-slate-300 font-bold">غير متصل</span>
+              <span className="w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full bg-slate-400"></span>
+              <span className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 font-bold">غير متصل</span>
             </button>
           )}
 
           {syncStatus === 'error' && (
             <button
               onClick={() => setShowSyncDetailsModal(true)}
-              className="flex items-center gap-2 bg-rose-500/10 hover:bg-rose-500/20 dark:bg-rose-950/30 px-3 py-1.5 rounded-xl border border-rose-500/30 transition-all cursor-pointer group animate-pulse"
+              className="flex items-center gap-1.5 bg-rose-500/10 hover:bg-rose-500/20 dark:bg-rose-950/30 px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-rose-500/30 transition-all cursor-pointer group animate-pulse shrink-0"
               title="انقر لعرض تفاصيل مشكلة المزامنة وحلها"
             >
-              <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
-              <span className="text-xs text-rose-700 dark:text-rose-400 font-bold flex items-center gap-1">
+              <span className="w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full bg-rose-500"></span>
+              <span className="text-[11px] sm:text-xs text-rose-700 dark:text-rose-400 font-bold flex items-center gap-0.5">
                 <span>تعذر المزامنة</span>
-                <span className="material-symbols-outlined text-sm">help_outline</span>
+                <span className="material-symbols-outlined text-xs sm:text-sm">help_outline</span>
               </span>
             </button>
           )}
-
-          {/* Compact PWA Install Button for mobile & desktop */}
-          <div className="hidden sm:block">
-            <PWAInstallButton compact={true} />
-          </div>
 
           <div className="hidden xl:flex items-center gap-1.5 text-slate-400 dark:text-[#bbc9ca] text-xs font-medium mr-1">
             <span className="material-symbols-outlined text-base">calendar_today</span>
@@ -185,12 +179,12 @@ export const Header: React.FC<HeaderProps> = ({
         />
 
         {/* Left Side: Notifications Hub */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           {/* Notifications Dropdown Button */}
-          <div className="relative">
+          <div className="relative shrink-0">
             <button
               onClick={() => setShowNotifications(!showNotifications)}
-              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all relative cursor-pointer ${
+              className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center transition-all relative cursor-pointer ${
                 showNotifications
                   ? 'bg-[#00c2cb] text-[#08101C]'
                   : 'bg-slate-100 hover:bg-slate-200 dark:bg-[#161b29] dark:hover:bg-[#242a38] text-slate-700 hover:text-slate-900 dark:text-[#bbc9ca] dark:hover:text-[#dde2f5] border border-slate-200 dark:border-white/5'
@@ -198,7 +192,7 @@ export const Header: React.FC<HeaderProps> = ({
               aria-label="التنبيهات وقائمة الانتظار والمتابعات"
               title="مركز الإشعارات والتنبيهات السريرية"
             >
-              <span className="material-symbols-outlined text-xl">notifications</span>
+              <span className="material-symbols-outlined text-lg sm:text-xl">notifications</span>
               {totalActionCount > 0 && (
                 <span className="absolute -top-1 -left-1 min-w-5 h-5 px-1 rounded-full bg-rose-500 text-white text-[10px] font-mono font-bold flex items-center justify-center animate-pulse shadow-sm">
                   {totalActionCount}

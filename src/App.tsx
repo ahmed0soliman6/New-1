@@ -469,8 +469,14 @@ function ClinicApp() {
   // DERIVED STATE (Canonical State -> Derived State -> UI)
   // =========================================================================
   const patients: PatientListItem[] = useMemo(() => {
+    // Only patients who have actually had visits/examinations registered appear in Patient Files screen
+    const clinicalPatients = patientsCanonical.filter((p) => {
+      const pVisits = visitsCanonical.filter((v) => v.patientId === p.patientId);
+      return pVisits.length > 0;
+    });
+
     // Sort canonical patients newest first (by createdAt desc, then fileNumber desc)
-    const sortedPatients = [...patientsCanonical].sort((a, b) => {
+    const sortedPatients = [...clinicalPatients].sort((a, b) => {
       const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
       const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
       if (timeB !== timeA) return timeB - timeA;
@@ -1410,7 +1416,7 @@ function ClinicApp() {
   // NO DOUBLE MUTATION!
   // =========================================================================
 
-  // Delete queue item / visit
+  // Delete queue item / visit & associated invoices/payments
   const handleRemoveFromQueue = async (ticket: string) => {
     const targetQueueNum = parseInt(ticket.replace(/\D/g, ''), 10);
     const targetVisit =
@@ -1418,9 +1424,33 @@ function ClinicApp() {
       visitsCanonical.find((v) => v.queueNumber === targetQueueNum);
     if (targetVisit && db) {
       try {
+        // 1. Delete visit document
         await deleteDoc(doc(db, 'visits', targetVisit.visitId));
+
+        // 2. Delete linked invoice(s)
+        const matchingInvoices = invoicesCanonical.filter(
+          (inv) => inv.visitId === targetVisit.visitId || (inv.patientId === targetVisit.patientId && inv.createdAt === targetVisit.createdAt)
+        );
+        for (const inv of matchingInvoices) {
+          await deleteDoc(doc(db, 'invoices', inv.invoiceId)).catch(() => {});
+        }
+
+        // 3. Delete linked payment(s)
+        const matchingPayments = paymentsCanonical.filter(
+          (p) => p.visitId === targetVisit.visitId || matchingInvoices.some((inv) => inv.invoiceId === p.invoiceId)
+        );
+        for (const pm of matchingPayments) {
+          await deleteDoc(doc(db, 'payments', pm.paymentId)).catch(() => {});
+        }
+
+        // 4. Clean up patient profile if no other visits or appointments exist
+        const otherVisits = visitsCanonical.filter((v) => v.patientId === targetVisit.patientId && v.visitId !== targetVisit.visitId);
+        const otherAppts = appointmentsCanonical.filter((a) => a.patientId === targetVisit.patientId);
+        if (otherVisits.length === 0 && otherAppts.length === 0) {
+          await deleteDoc(doc(db, 'patients', targetVisit.patientId)).catch(() => {});
+        }
       } catch (err) {
-        console.error('Error removing visit from Firestore:', err);
+        console.error('Error removing visit and associated payments/invoices from Firestore:', err);
       }
     }
   };

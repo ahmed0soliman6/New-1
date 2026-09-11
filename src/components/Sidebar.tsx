@@ -4,8 +4,6 @@ import { CLINIC_INFO } from '../data/previewClinicData';
 import { usePermissions } from '../context/AuthContext';
 import { ROLE_LABELS } from '../permissions';
 import { SoliMedicalLogo } from './SoliMedicalLogo';
-import { PWAInstallButton } from './pwa/PWAInstallButton';
-import { APP_VERSION } from '../constants/version';
 
 interface SidebarProps {
   activeScreen: ScreenType;
@@ -160,11 +158,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
         </nav>
 
-        {/* Doctor Availability, PWA Install, User Identity & Logout */}
+        {/* Doctor Availability, User Identity & Logout */}
         <div className="p-3 bg-[#080e1b] border-t border-white/10 space-y-2">
-          {/* Direct PWA Install Button */}
-          <PWAInstallButton />
-
           {role !== 'secretary' && (
             <div className="p-2 rounded-xl bg-[#111A2E] flex items-center justify-between border border-white/10 shadow-xs">
               <div className="flex items-center gap-2">
@@ -216,14 +211,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span className="material-symbols-outlined text-sm">logout</span>
               <span>خروج</span>
             </button>
-          </div>
-
-          {/* System App Version Badge */}
-          <div className="flex items-center justify-between px-1 text-[10px] text-slate-400 dark:text-slate-500 font-mono">
-            <span>Soli Medical Suite</span>
-            <span className="bg-white/5 px-2 py-0.5 rounded-md text-slate-300 dark:text-slate-400 font-bold">
-              {APP_VERSION}
-            </span>
           </div>
         </div>
       </aside>

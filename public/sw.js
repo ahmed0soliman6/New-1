@@ -1,19 +1,19 @@
 // Service Worker for Soli Medical Suite
-// Version: v2.6.0 (Updated: 2026-09-11)
+// Version: v2.7.0 (Updated: 2026-09-11)
 // Uses Network-First for HTML navigation and Stale-While-Revalidate with immediate client claiming
 
-const SW_VERSION = 'v2.6.0';
+const SW_VERSION = 'v2.7.0';
 const CACHE_NAME = `soli-pwa-${SW_VERSION}`;
 const STATIC_ASSETS = [
-  './',
-  './index.html',
-  './manifest.json',
-  './logo.svg',
-  './pwa-192x192.png',
-  './pwa-512x512.png',
-  './pwa-maskable-512x512.png',
-  './apple-touch-icon.png',
-  './favicon.png'
+  '/',
+  '/index.html',
+  '/manifest.json',
+  '/logo.svg',
+  '/pwa-192x192.png',
+  '/pwa-512x512.png',
+  '/pwa-maskable-512x512.png',
+  '/apple-touch-icon.png',
+  '/favicon.png'
 ];
 
 self.addEventListener('install', (event) => {

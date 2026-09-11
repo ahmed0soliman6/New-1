@@ -58,7 +58,7 @@
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', function() {
-          navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(function(reg) {
+          navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then(function(reg) {
             console.log('Soli PWA ServiceWorker active with scope:', reg.scope);
             
             // Check for updates periodically every 15 minutes and on focus

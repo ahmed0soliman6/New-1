@@ -203,19 +203,20 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
       {/* =========================================================================
           1. HEADER COMPACT SEARCH TRIGGER BUTTON / BAR
          ========================================================================= */}
-      <div className="relative flex-1 max-w-md mx-2 sm:mx-4">
+      <div className="relative flex-1 min-w-0 max-w-[130px] min-[380px]:max-w-[180px] sm:max-w-md mx-1 sm:mx-4">
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          className="w-full h-10 px-3 sm:px-3.5 bg-slate-100 hover:bg-slate-200/80 dark:bg-[#111A2E] dark:hover:bg-[#18233C] text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-white/10 rounded-xl flex items-center justify-between gap-2 text-xs transition-all cursor-pointer group shadow-2xs"
+          className="w-full h-9 sm:h-10 px-2 sm:px-3.5 bg-slate-100 hover:bg-slate-200/80 dark:bg-[#111A2E] dark:hover:bg-[#18233C] text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-white/10 rounded-xl flex items-center justify-between gap-1.5 sm:gap-2 text-xs transition-all cursor-pointer group shadow-2xs"
           title="بحث شامل في النظام (Ctrl + K)"
         >
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="material-symbols-outlined text-slate-400 group-hover:text-[#00c2cb] transition-colors text-lg">
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+            <span className="material-symbols-outlined text-slate-400 group-hover:text-[#00c2cb] transition-colors text-base sm:text-lg shrink-0">
               search
             </span>
-            <span className="truncate font-medium text-slate-600 dark:text-slate-300">
-              بحث شامل (اسم، هاتف، ملف، خدمة...)
+            <span className="truncate font-medium text-slate-600 dark:text-slate-300 text-[11px] sm:text-xs">
+              <span className="hidden sm:inline">بحث شامل (اسم، هاتف، ملف، خدمة...)</span>
+              <span className="sm:hidden font-bold">بحث...</span>
             </span>
           </div>
 
