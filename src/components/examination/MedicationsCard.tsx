@@ -7,6 +7,15 @@ interface MedicationsCardProps {
   drugCatalog: DrugCatalogItem[];
   onAddDrugToCatalog: (item: DrugCatalogItem) => void;
   onOpenPrescriptionPad?: () => void;
+  onPrintPrescription?: () => void;
+  frequentSuggestions?: Array<{
+    drugName: string;
+    strength?: string;
+    dosageForm?: string;
+    scientificName?: string;
+    instructions?: string;
+    count?: number;
+  }>;
 }
 
 // Expanded Egyptian Drug Authority (EDA) archive dataset with bilingual trade & scientific names
@@ -39,6 +48,8 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
   drugCatalog,
   onAddDrugToCatalog,
   onOpenPrescriptionPad,
+  onPrintPrescription,
+  frequentSuggestions = [],
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddCustomModal, setShowAddCustomModal] = useState(false);
@@ -221,10 +232,10 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-[#dde2f5]">
-                العلاج الموصوف والروشتة الإلكترونية (Rx)
+                الروشتة الإلكترونية (Rx)
               </h3>
               <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-teal-100 dark:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#45dee7]">
-                {prescriptionItems.length} أدوية موصوفة
+                {prescriptionItems.length} أدوية بالروشتة
               </span>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-[#859394]">
@@ -233,7 +244,19 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {onPrintPrescription && (
+            <button
+              type="button"
+              onClick={onPrintPrescription}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+              title="طباعة الروشتة مباشرة"
+            >
+              <span className="material-symbols-outlined text-base">print</span>
+              <span>طباعة الروشتة</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => setShowAddCustomModal(true)}
@@ -244,6 +267,57 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Smart Clinical Memory Suggestions Bar for Medications */}
+      {frequentSuggestions.length > 0 && (
+        <div className="p-3 bg-teal-500/10 dark:bg-teal-950/20 rounded-xl border border-teal-500/20 space-y-2">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-teal-700 dark:text-teal-300">
+            <span className="material-symbols-outlined text-sm">psychology</span>
+            <span>مقترحات الأدوية المعتادة لنوع التشخيص (إضافة بنقرة واحدة):</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {frequentSuggestions.map((s, idx) => {
+              const isAdded = prescriptionItems.some((it) => it.drugName === s.drugName);
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  disabled={isAdded}
+                  onClick={() => {
+                    if (!isAdded) {
+                      onChangePrescription([
+                        ...prescriptionItems,
+                        {
+                          id: `rx-sug-${Date.now()}-${idx}`,
+                          drugName: s.drugName,
+                          strength: s.strength || '',
+                          dosageForm: s.dosageForm || 'أقراص',
+                          scientificName: s.scientificName || '',
+                          dosageInstructions: s.instructions || 'قرص مرتين يومياً بعد الأكل',
+                          dosage: s.instructions || 'قرص مرتين يومياً',
+                          timing: 'بعد الأكل',
+                          duration: 'لمدة أسبوعين',
+                        },
+                      ]);
+                    }
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                    isAdded
+                      ? 'bg-teal-200 dark:bg-teal-900/60 text-teal-800 dark:text-teal-300 opacity-60 cursor-default'
+                      : 'bg-white dark:bg-[#111A2E] hover:bg-teal-50 dark:hover:bg-teal-900/40 text-slate-800 dark:text-[#dde2f5] border border-teal-200 dark:border-teal-800/40 shadow-xs'
+                  }`}
+                >
+                  <span>{isAdded ? '✓' : '+'}</span>
+                  <span>{s.drugName} {s.strength || ''}</span>
+                  {s.count && s.count > 1 && (
+                    <span className="text-[10px] text-teal-600 font-mono">({s.count}×)</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* RE-ORDERED: PROMINENT TOP SEARCH BAR (أعلى بطاقة العلاج) */}
       <div className="p-4 bg-teal-50/40 dark:bg-[#080e1b]/80 rounded-2xl border-2 border-[#00c2cb]/40 space-y-3 shadow-sm">
@@ -414,7 +488,7 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
             prescriptions
           </span>
           <p className="text-xs font-bold text-slate-600 dark:text-[#859394]">
-            لم يتم إضافة أدوية إلى قائمة العلاج الموصوف بعد.
+            لم يتم إضافة أدوية إلى قائمة الروشتة بعد.
           </p>
           <p className="text-[11px] text-slate-400 mt-1">
             استخدم صندوق البحث الشامل بأعلى البطاقة للبحث في أدوية العيادة وأرشيف الدواء المصري.
@@ -423,7 +497,7 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
       ) : (
         <div className="space-y-3">
           <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 dark:text-[#859394] px-1">
-            <span>قائمة الأدوية المعتمدة في العلاج الموصوف:</span>
+            <span>قائمة الأدوية المعتمدة بالروشتة:</span>
             <span className="text-teal-600 font-mono">Prescription Snapshot</span>
           </div>
 

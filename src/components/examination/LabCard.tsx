@@ -6,6 +6,7 @@ interface LabCardProps {
   onChangeOrders: (orders: LabOrderItem[]) => void;
   labCatalog: LabCatalogItem[];
   onAddLabToCatalog: (item: LabCatalogItem) => void;
+  frequentSuggestions?: Array<{ testName: string; count?: number }>;
 }
 
 // Preset Medical Lab Tests with abbreviations, Arabic/English names & sample info
@@ -32,6 +33,7 @@ export const LabCard: React.FC<LabCardProps> = ({
   onChangeOrders,
   labCatalog,
   onAddLabToCatalog,
+  frequentSuggestions = [],
 }) => {
   const [showPicker, setShowPicker] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -262,6 +264,54 @@ export const LabCard: React.FC<LabCardProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Smart Clinical Memory Suggestions Bar for Labs */}
+      {frequentSuggestions.length > 0 && (
+        <div className="p-3 bg-emerald-500/10 dark:bg-emerald-950/20 rounded-xl border border-emerald-500/20 space-y-2">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-400">
+            <span className="material-symbols-outlined text-sm">psychology</span>
+            <span>مقترحات التحاليل المتكررة لهذا التشخيص (إضافة بنقرة واحدة):</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {frequentSuggestions.map((s, idx) => {
+              const isAdded = labOrders.some((l) => l.testName === s.testName || l.name === s.testName);
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  disabled={isAdded}
+                  onClick={() => {
+                    if (!isAdded) {
+                      onChangeOrders([
+                        ...labOrders,
+                        {
+                          id: `lab-sug-${Date.now()}-${idx}`,
+                          testName: s.testName,
+                          name: s.testName,
+                          category: 'تحاليل متكررة',
+                          status: 'REQUEST',
+                          orderedAt: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+                        },
+                      ]);
+                    }
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                    isAdded
+                      ? 'bg-emerald-200 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 opacity-60 cursor-default'
+                      : 'bg-white dark:bg-[#111A2E] hover:bg-emerald-50 dark:hover:bg-emerald-900/40 text-slate-800 dark:text-[#dde2f5] border border-emerald-200 dark:border-emerald-800/40 shadow-xs'
+                  }`}
+                >
+                  <span>{isAdded ? '✓' : '+'}</span>
+                  <span>{s.testName}</span>
+                  {s.count && s.count > 1 && (
+                    <span className="text-[10px] text-emerald-600 font-mono">({s.count}×)</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* TOP PROMINENT SEARCH BAR (أعلى بطاقة المعمل والتحاليل) */}
       <div className="p-4 bg-emerald-50/40 dark:bg-[#080e1b]/80 rounded-2xl border-2 border-emerald-500/40 space-y-3 shadow-sm">

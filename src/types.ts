@@ -140,6 +140,7 @@ export interface RadiologyOrderItem {
   id: string;
   radiologyId?: string;
   name: string;
+  type?: string;
   category: string;
   status: RadiologyStatus;
   orderedAt: string;
@@ -167,6 +168,7 @@ export interface LabOrderItem {
   id: string;
   labTestId?: string;
   testName: string;
+  name?: string;
   category: string;
   status: LabStatus;
   orderedAt: string;

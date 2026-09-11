@@ -55,10 +55,15 @@ export async function loginWithUsername(username: string, password: string): Pro
   const profile = await getDoc(userRef);
 
   if (!profile.exists()) {
-    const now = serverTimestamp();
     const demo = DEMO_CREDENTIALS[unameLower];
-    const initialRole: UserRole = demo?.role || (unameLower.includes('doc') ? 'DOCTOR' : unameLower.includes('sec') ? 'SECRETARY' : 'ADMIN');
-    const initialDisplayName = demo?.displayName || unameLower;
+    if (!demo) {
+      await signOut(auth);
+      throw new Error('هذا الحساب غير مسجل في قاعدة بيانات مستخدمي العيادة. يرجى مراجعة مسؤول النظام (ADMIN).');
+    }
+
+    const now = serverTimestamp();
+    const initialRole: UserRole = demo.role;
+    const initialDisplayName = demo.displayName;
 
     await setDoc(userRef, {
       uid: credential.user.uid,

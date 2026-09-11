@@ -99,7 +99,7 @@ export function printPrescriptionDocument(data: PrintPrescriptionData) {
   // Build items HTML
   const itemsHtml = items.length > 0
     ? items.map((it, idx) => `
-        <div style="padding: 6px 10px; margin-bottom: 6px; border: 1px solid #e2e8f0; border-radius: 6px; background-color: #f8fafc; text-align: right;">
+        <div style="padding: 6px 10px; margin-bottom: 6px; border: 1px solid #e2e8f0; border-radius: 6px; background-color: #f8fafc; text-align: left; direction: ltr;">
           <div style="font-size: 13px; font-weight: 700; color: #0f172a; margin-bottom: 2px;">
             ${idx + 1}. ${it.drugName || ''} ${it.strength || ''} ${it.dosageForm || ''} ${it.scientificName ? `<span style="font-size: 11px; font-weight: normal; color: #475569;">(${it.scientificName})</span>` : ''}
           </div>
@@ -343,13 +343,13 @@ export function printPrescriptionDocument(data: PrintPrescriptionData) {
         </div>
 
         <!-- Middle Section: Medications -->
-        <div class="content-body">
-          <div class="rx-header">
-            <span class="rx-symbol">℞</span>
-            <span style="font-size: 11px; font-weight: bold; color: #64748b; letter-spacing: 0.5px;">العلاج الدوائي الموصوف</span>
+        <div class="content-body" style="direction: ltr; text-align: left;">
+          <div class="rx-header" style="display: flex; align-items: center; justify-content: flex-start; direction: ltr; border-bottom: 1.5px solid #e2e8f0; padding-bottom: 3px; margin-bottom: 8px;">
+            <span class="rx-symbol" style="font-family: Georgia, serif; font-size: 22px; font-weight: 900; font-style: italic; color: #008f97; margin-right: 8px;">℞</span>
+            <span style="font-size: 11px; font-weight: bold; color: #64748b; letter-spacing: 0.5px;">Rx</span>
           </div>
 
-          <div style="overflow: hidden;">
+          <div style="overflow: hidden; direction: ltr; text-align: left;">
             ${itemsHtml}
             ${diagnosesHtml}
             ${adviceHtml}

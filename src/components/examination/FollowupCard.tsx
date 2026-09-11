@@ -5,31 +5,22 @@ interface FollowupCardProps {
   onChangeFollowupDate: (date: string) => void;
   lifestyleAdvice: string;
   onChangeLifestyleAdvice: (advice: string) => void;
+  frequentSuggestions?: Array<{ text: string; count?: number }>;
 }
-
-const DEFAULT_ADVICE_PRESETS = [
-  'الامتناع التام عن الأطعمة الدسمة، الحارة، المقليات، والمشروبات الغازية.',
-  'تقليل استهلاك ملح الطعام والمخللات إلى أقل من 2 جرام صوديوم يومياً.',
-  'الامتناع عن السكريات والحلويات الصريحة والعصائر المحلاة والمخبوزات البيضاء.',
-  'عدم الاستلقاء أو النوم مباشرة بعد تناول الطعام لمدة ساعتين على الأقل.',
-  'شرب ما لا يقل عن 2.5 إلى 3 لترات ماء يومياً لحماية الكلى وتحسين التروية.',
-  'ممارسة رياضة المشي المنتظم 30 دقيقة يومياً لمدة 5 أيام أسبوعياً.',
-  'تجنب التوتر والضغط العصبي وأخذ قسط كافٍ من النوم (7-8 ساعات متواصلة).',
-  'تناول وجبات صغيرة متكررة خفيفة بدلاً من الوجبات الكبيرة الثقيلة.',
-];
 
 export const FollowupCard: React.FC<FollowupCardProps> = ({
   followupDate,
   onChangeFollowupDate,
   lifestyleAdvice,
   onChangeLifestyleAdvice,
+  frequentSuggestions = [],
 }) => {
   const [advicePresets, setAdvicePresets] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('soli_lifestyle_presets');
-      return saved ? JSON.parse(saved) : DEFAULT_ADVICE_PRESETS;
+      return saved ? JSON.parse(saved) : [];
     } catch {
-      return DEFAULT_ADVICE_PRESETS;
+      return [];
     }
   });
 
@@ -47,9 +38,7 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  const [selectedPresets, setSelectedPresets] = useState<string[]>(() => {
-    return [advicePresets[0] || DEFAULT_ADVICE_PRESETS[0], advicePresets[3] || DEFAULT_ADVICE_PRESETS[3]].filter(Boolean);
-  });
+  const [selectedPresets, setSelectedPresets] = useState<string[]>([]);
   const [customAdviceInput, setCustomAdviceInput] = useState('');
   const [selectedDropdownPreset, setSelectedDropdownPreset] = useState('');
 
@@ -138,6 +127,45 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Smart Clinical Memory Suggestions Bar for Instructions */}
+      {frequentSuggestions.length > 0 && (
+        <div className="p-3 bg-indigo-500/10 dark:bg-indigo-950/20 rounded-xl border border-indigo-500/20 space-y-2">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300">
+            <span className="material-symbols-outlined text-sm">psychology</span>
+            <span>مقترحات الإرشادات والتعليمات المتكررة (إضافة بنقرة واحدة):</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {frequentSuggestions.map((s, idx) => {
+              const isAdded = lifestyleAdvice.includes(s.text);
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  disabled={isAdded}
+                  onClick={() => {
+                    if (!isAdded) {
+                      const updated = lifestyleAdvice ? `${lifestyleAdvice}\n• ${s.text}` : `• ${s.text}`;
+                      onChangeLifestyleAdvice(updated);
+                    }
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                    isAdded
+                      ? 'bg-indigo-200 dark:bg-indigo-900/60 text-indigo-800 dark:text-indigo-300 opacity-60 cursor-default'
+                      : 'bg-white dark:bg-[#111A2E] hover:bg-indigo-50 dark:hover:bg-indigo-900/40 text-slate-800 dark:text-[#dde2f5] border border-indigo-200 dark:border-indigo-800/40 shadow-xs'
+                  }`}
+                >
+                  <span>{isAdded ? '✓' : '+'}</span>
+                  <span>{s.text}</span>
+                  {s.count && s.count > 1 && (
+                    <span className="text-[10px] text-indigo-600 font-mono">({s.count}×)</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Follow-up date & quick buttons */}

@@ -132,41 +132,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               customPermissions,
             });
           } else {
-            // Default profile for initial admin or unmigrated user
-            const fallbackUsername = fbUser.email?.split('@')[0]?.toLowerCase() || 'user';
-            const fallbackRole: Role = fallbackUsername.includes('admin')
-              ? 'admin'
-              : fallbackUsername.includes('doc')
-              ? 'doctor'
-              : fallbackUsername.includes('sec')
-              ? 'secretary'
-              : 'admin';
-
-            setUserProfile({
-              uid: fbUser.uid,
-              username: fallbackUsername,
-              displayName: fbUser.displayName || fallbackUsername,
-              email: fbUser.email || '',
-              role: fallbackRole,
-              active: true,
-              allowedScreens: getDefaultAllowedScreens(fallbackRole),
-              customPermissions: getDefaultRolePermissions(fallbackRole),
-            });
+            // User document does not exist in Firestore users collection
+            console.warn('[AuthContext] User document not found in Firestore for UID:', fbUser.uid);
+            void signOut(auth);
+            setUserProfile(null);
           }
           setLoading(false);
         },
         (error) => {
           console.warn('[AuthContext] Error fetching profile:', error);
-          setUserProfile((prev) => prev || {
-            uid: fbUser.uid,
-            username: fbUser.email?.split('@')[0] || 'user',
-            displayName: 'مستخدم',
-            email: fbUser.email || '',
-            role: 'admin',
-            active: true,
-            allowedScreens: getDefaultAllowedScreens('admin'),
-            customPermissions: getDefaultRolePermissions('admin'),
-          });
+          setUserProfile(null);
           setLoading(false);
         }
       );

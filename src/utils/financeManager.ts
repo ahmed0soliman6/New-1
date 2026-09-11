@@ -67,171 +67,149 @@ export const DEFAULT_CLINIC_EXPENSES: ClinicExpenseRecord[] = [
   },
 ];
 
+let cachedServices: MedicalServiceItem[] = DEFAULT_MEDICAL_SERVICES;
+let cachedExpenseCategories: ExpenseCategoryItem[] = DEFAULT_EXPENSE_CATEGORIES;
+let cachedClinicExpenses: ClinicExpenseRecord[] = [];
+
 // ==========================================
 // 1. Medical Services (الوارد والخدمات الطبية)
 // ==========================================
 export function loadMedicalServices(): MedicalServiceItem[] {
-  try {
-    const raw = localStorage.getItem('soli_medical_services');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    }
-  } catch (e) {
-    console.warn('Failed to load medical services from localStorage', e);
+  return cachedServices;
+}
+
+export function setCachedMedicalServices(services: MedicalServiceItem[]) {
+  if (Array.isArray(services) && services.length > 0) {
+    cachedServices = services;
   }
-  return DEFAULT_MEDICAL_SERVICES;
 }
 
 export function saveMedicalServices(services: MedicalServiceItem[]) {
+  cachedServices = services;
   try {
-    localStorage.setItem('soli_medical_services', JSON.stringify(services));
-    window.dispatchEvent(new CustomEvent('soli_services_updated', { detail: services }));
-  } catch (e) {
-    console.warn('Failed to save medical services to localStorage', e);
-  }
+    localStorage.removeItem('soli_medical_services');
+  } catch {}
+  window.dispatchEvent(new CustomEvent('soli_services_updated', { detail: services }));
 }
 
 export function addMedicalService(service: MedicalServiceItem) {
-  const current = loadMedicalServices();
-  const updated = [service, ...current];
-  saveMedicalServices(updated);
+  cachedServices = [service, ...cachedServices];
   if (db) {
     setDoc(doc(db, 'services', service.id), service).catch((err) =>
       console.warn('Firestore service sync error:', err)
     );
   }
-  return updated;
+  return cachedServices;
 }
 
 export function removeMedicalService(id: string) {
-  const current = loadMedicalServices();
-  const updated = current.filter((s) => s.id !== id);
-  saveMedicalServices(updated);
+  cachedServices = cachedServices.filter((s) => s.id !== id);
   if (db) {
     deleteDoc(doc(db, 'services', id)).catch((err) =>
       console.warn('Firestore service delete error:', err)
     );
   }
-  return updated;
+  return cachedServices;
 }
 
 export function updateMedicalService(id: string, updates: Partial<MedicalServiceItem>) {
-  const current = loadMedicalServices();
-  const updated = current.map((s) => (s.id === id ? { ...s, ...updates } : s));
-  saveMedicalServices(updated);
+  cachedServices = cachedServices.map((s) => (s.id === id ? { ...s, ...updates } : s));
   if (db) {
-    const target = updated.find((s) => s.id === id);
+    const target = cachedServices.find((s) => s.id === id);
     if (target) {
       setDoc(doc(db, 'services', id), target, { merge: true }).catch((err) =>
         console.warn('Firestore service update error:', err)
       );
     }
   }
-  return updated;
+  return cachedServices;
 }
 
 // ==========================================
 // 2. Expense Categories (بنود المنصرف)
 // ==========================================
 export function loadExpenseCategories(): ExpenseCategoryItem[] {
-  try {
-    const raw = localStorage.getItem('soli_expense_categories');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    }
-  } catch (e) {
-    console.warn('Failed to load expense categories from localStorage', e);
+  return cachedExpenseCategories;
+}
+
+export function setCachedExpenseCategories(categories: ExpenseCategoryItem[]) {
+  if (Array.isArray(categories) && categories.length > 0) {
+    cachedExpenseCategories = categories;
   }
-  return DEFAULT_EXPENSE_CATEGORIES;
 }
 
 export function saveExpenseCategories(categories: ExpenseCategoryItem[]) {
+  cachedExpenseCategories = categories;
   try {
-    localStorage.setItem('soli_expense_categories', JSON.stringify(categories));
-    window.dispatchEvent(new CustomEvent('soli_expense_categories_updated', { detail: categories }));
-  } catch (e) {
-    console.warn('Failed to save expense categories to localStorage', e);
-  }
+    localStorage.removeItem('soli_expense_categories');
+  } catch {}
+  window.dispatchEvent(new CustomEvent('soli_expense_categories_updated', { detail: categories }));
 }
 
 export function addExpenseCategory(name: string): ExpenseCategoryItem[] {
   const cleanName = name.trim();
-  if (!cleanName) return loadExpenseCategories();
-  const current = loadExpenseCategories();
-  if (current.some((c) => c.name === cleanName)) return current;
+  if (!cleanName) return cachedExpenseCategories;
+  if (cachedExpenseCategories.some((c) => c.name === cleanName)) return cachedExpenseCategories;
   const newItem: ExpenseCategoryItem = {
     id: `exp-cat-${Date.now()}`,
     name: cleanName,
   };
-  const updated = [...current, newItem];
-  saveExpenseCategories(updated);
+  cachedExpenseCategories = [...cachedExpenseCategories, newItem];
   if (db) {
     setDoc(doc(db, 'expenseCategories', newItem.id), newItem).catch((err) =>
       console.warn('Firestore expense category sync error:', err)
     );
   }
-  return updated;
+  return cachedExpenseCategories;
 }
 
 export function removeExpenseCategory(id: string): ExpenseCategoryItem[] {
-  const current = loadExpenseCategories();
-  const updated = current.filter((c) => c.id !== id && c.name !== id);
-  saveExpenseCategories(updated);
+  cachedExpenseCategories = cachedExpenseCategories.filter((c) => c.id !== id && c.name !== id);
   if (db) {
     deleteDoc(doc(db, 'expenseCategories', id)).catch((err) =>
       console.warn('Firestore expense category delete error:', err)
     );
   }
-  return updated;
+  return cachedExpenseCategories;
 }
 
 // ==========================================
 // 3. Clinic Expenses (المنصرف والمصروفات المسجلة)
 // ==========================================
 export function loadClinicExpenses(): ClinicExpenseRecord[] {
-  try {
-    const raw = localStorage.getItem('soli_clinic_expenses');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
-    }
-  } catch (e) {
-    console.warn('Failed to load clinic expenses from localStorage', e);
+  return cachedClinicExpenses;
+}
+
+export function setCachedClinicExpenses(expenses: ClinicExpenseRecord[]) {
+  if (Array.isArray(expenses)) {
+    cachedClinicExpenses = expenses;
   }
-  return [];
 }
 
 export function saveClinicExpenses(expenses: ClinicExpenseRecord[]) {
+  cachedClinicExpenses = expenses;
   try {
-    localStorage.setItem('soli_clinic_expenses', JSON.stringify(expenses));
-    window.dispatchEvent(new CustomEvent('soli_clinic_expenses_updated', { detail: expenses }));
-  } catch (e) {
-    console.warn('Failed to save clinic expenses to localStorage', e);
-  }
+    localStorage.removeItem('soli_clinic_expenses');
+  } catch {}
+  window.dispatchEvent(new CustomEvent('soli_clinic_expenses_updated', { detail: expenses }));
 }
 
 export function addClinicExpense(expense: ClinicExpenseRecord): ClinicExpenseRecord[] {
-  const current = loadClinicExpenses();
-  const updated = [expense, ...current];
-  saveClinicExpenses(updated);
+  cachedClinicExpenses = [expense, ...cachedClinicExpenses];
   if (db) {
     setDoc(doc(db, 'expenses', expense.id), expense).catch((err) =>
       console.warn('Firestore expense sync error:', err)
     );
   }
-  return updated;
+  return cachedClinicExpenses;
 }
 
 export function removeClinicExpense(id: string): ClinicExpenseRecord[] {
-  const current = loadClinicExpenses();
-  const updated = current.filter((e) => e.id !== id);
-  saveClinicExpenses(updated);
+  cachedClinicExpenses = cachedClinicExpenses.filter((e) => e.id !== id);
   if (db) {
     deleteDoc(doc(db, 'expenses', id)).catch((err) =>
       console.warn('Firestore expense delete error:', err)
     );
   }
-  return updated;
+  return cachedClinicExpenses;
 }

@@ -935,35 +935,36 @@ export const INITIAL_CLINICAL_GUIDES_TEMPLATES: RecurringRxTemplate[] = [
   },
 ];
 
+import { db } from '../services/firebase';
+import { doc, setDoc } from 'firebase/firestore';
+
 const STORAGE_KEY = 'soli_recurring_rx_templates';
 
+let cachedTemplates: RecurringRxTemplate[] = INITIAL_CLINICAL_GUIDES_TEMPLATES;
+
 export function loadRecurringTemplates(): RecurringRxTemplate[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
-      }
-    }
-  } catch (err) {
-    console.error('Error loading recurring templates:', err);
+  return cachedTemplates;
+}
+
+export function setCachedRecurringTemplates(templates: RecurringRxTemplate[]): void {
+  if (Array.isArray(templates) && templates.length > 0) {
+    cachedTemplates = templates;
   }
-  // If not found or empty, initialize with clinical guides templates
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_CLINICAL_GUIDES_TEMPLATES));
-  } catch (e) {
-    console.error(e);
-  }
-  return INITIAL_CLINICAL_GUIDES_TEMPLATES;
 }
 
 export function saveRecurringTemplates(templates: RecurringRxTemplate[]): void {
+  cachedTemplates = templates;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(templates));
-    window.dispatchEvent(new Event('soli_templates_updated'));
-  } catch (err) {
-    console.error('Error saving recurring templates:', err);
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+  window.dispatchEvent(new Event('soli_templates_updated'));
+
+  if (db) {
+    setDoc(doc(db, 'settings', 'recurringTemplates'), { items: templates }, { merge: true }).catch((err) => {
+      console.warn('Failed to sync recurring templates to Firestore:', err);
+    });
   }
 }
 

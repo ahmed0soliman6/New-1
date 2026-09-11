@@ -19,6 +19,8 @@ export interface ClinicAlertPayload {
   message: string;
   ticket?: string;
   timestamp: string;
+  patientId?: string;
+  visitId?: string;
 }
 
 const STORAGE_KEY = 'soli_clinic_alert_settings';
@@ -34,33 +36,24 @@ export const getDefaultAlertSettings = (): AlertSettings => ({
   finishExamVisual: true,
 });
 
+let cachedAlertSettings: AlertSettings = getDefaultAlertSettings();
+
 export const loadAlertSettings = (): AlertSettings => {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      // Legacy fallback
-      const legacyAudio = localStorage.getItem('audioAlerts') !== 'false';
-      const legacyVisual = localStorage.getItem('visualAlerts') !== 'false';
-      return {
-        ...getDefaultAlertSettings(),
-        audioEnabled: legacyAudio,
-        visualEnabled: legacyVisual,
-      };
-    }
-    const parsed = JSON.parse(raw);
-    return { ...getDefaultAlertSettings(), ...parsed };
-  } catch {
-    return getDefaultAlertSettings();
-  }
+  return cachedAlertSettings;
+};
+
+export const setCachedAlertSettings = (settings: AlertSettings): void => {
+  cachedAlertSettings = { ...getDefaultAlertSettings(), ...settings };
 };
 
 export const saveAlertSettings = (settings: AlertSettings): void => {
+  cachedAlertSettings = { ...getDefaultAlertSettings(), ...settings };
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-    localStorage.setItem('audioAlerts', settings.audioEnabled ? 'true' : 'false');
-    localStorage.setItem('visualAlerts', settings.visualEnabled ? 'true' : 'false');
-  } catch (e) {
-    console.error('Failed to save alert settings to localStorage:', e);
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem('audioAlerts');
+    localStorage.removeItem('visualAlerts');
+  } catch {
+    // ignore
   }
 };
 

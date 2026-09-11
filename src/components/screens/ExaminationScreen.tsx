@@ -22,6 +22,7 @@ import { DiagnosisCard, PatientDiagnosis } from '../examination/DiagnosisCard';
 import { MedicationsCard } from '../examination/MedicationsCard';
 import { FollowupCard } from '../examination/FollowupCard';
 import { PreviousVisitCard } from '../examination/PreviousVisitCard';
+import { recordExamToClinicalMemory, getSmartClinicalSuggestions } from '../../utils/clinicalRecommender';
 import {
   Visit,
   Prescription,
@@ -183,8 +184,6 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
     } catch (err) {
       console.warn('Iframe print error:', err);
     }
-    // Direct call to native window.print() guarantees browser print dialog opens for the A5 prescription pad
-    window.print();
   };
 
   const handleExportPDF = () => {
@@ -215,6 +214,28 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
   const [isEditingPatientInfo, setIsEditingPatientInfo] = useState(false);
   const [customSymptomInput, setCustomSymptomInput] = useState('');
   const [selectedPatientIdForOpen, setSelectedPatientIdForOpen] = useState<string>('');
+
+  // Dynamic Radiology Orders - starts empty
+  const [radiologyOrders, setRadiologyOrders] = useState<RadiologyOrderItem[]>([]);
+
+  // Dynamic Lab Orders - starts empty
+  const [labOrders, setLabOrders] = useState<LabOrderItem[]>([]);
+
+  // Dynamic Patient Diagnoses - starts empty
+  const [patientDiagnoses, setPatientDiagnoses] = useState<PatientDiagnosis[]>([]);
+
+  // Follow-up
+  const [followupDate, setFollowupDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 14);
+    return d.toISOString().split('T')[0];
+  });
+  const [lifestyleAdvice, setLifestyleAdvice] = useState('');
+
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [copiedWhatsAppText, setCopiedWhatsAppText] = useState(false);
 
   const handleOpenExamForQueuePatient = (item: QueueItem) => {
     const matched = availablePatients.find((p) => p.id === item.id || p.name === item.patientName);
@@ -429,27 +450,16 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  // Dynamic Radiology Orders - starts empty
-  const [radiologyOrders, setRadiologyOrders] = useState<RadiologyOrderItem[]>([]);
-
-  // Dynamic Lab Orders - starts empty
-  const [labOrders, setLabOrders] = useState<LabOrderItem[]>([]);
-
-  // Dynamic Patient Diagnoses - starts empty
-  const [patientDiagnoses, setPatientDiagnoses] = useState<PatientDiagnosis[]>([]);
-
-  // Follow-up
-  const [followupDate, setFollowupDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 14);
-    return d.toISOString().split('T')[0];
-  });
-  const [lifestyleAdvice, setLifestyleAdvice] = useState('');
-
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
-  const [showPrintModal, setShowPrintModal] = useState(false);
-  const [copiedWhatsAppText, setCopiedWhatsAppText] = useState(false);
+  // Derive smart clinical suggestions based on patient complaint, diagnosis & history
+  const smartSuggestions = React.useMemo(() => {
+    return getSmartClinicalSuggestions(
+      visits || [],
+      prescriptions || [],
+      allLabOrders || [],
+      allRadiologyOrders || [],
+      patientDiagnoses || []
+    );
+  }, [visits, prescriptions, allLabOrders, allRadiologyOrders, patientDiagnoses]);
 
   // Add custom or preset chronic condition
   const handleToggleChronicCondition = (condition: string) => {
@@ -646,6 +656,13 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
     try {
       assertPermission('clinical.complete', 'إنهاء الكشف وحفظ الزيارة');
       setIsExamFinished(true);
+      recordExamToClinicalMemory({
+        prescriptionItems: activePrescription,
+        labOrders,
+        radiologyOrders,
+        diagnoses: patientDiagnoses,
+        lifestyleAdvice,
+      });
       onFinishExam({
         prescriptionItems: activePrescription,
         labOrders,
@@ -860,10 +877,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                         {editablePatientName}
                       </h1>
                       <span className="px-2.5 py-0.5 rounded-full bg-teal-100 dark:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#45dee7] text-[11px] font-bold whitespace-nowrap">
-                        ملف رقم: #{patient.fileNumber || 1}
-                      </span>
-                      <span className="px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-[#bbc9ca] text-[11px] font-mono whitespace-nowrap">
-                        {patient.medicalCode}
+                        رقم الملف: #{patient.fileNumber || 1}
                       </span>
                     </div>
 
@@ -1098,6 +1112,8 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
           />
         </div>
       )}
+
+
 
       {/* 3. Responsive Section Jump Tabs & Examination Cards */}
       <div className="bg-white dark:bg-[#111A2E] p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs space-y-4">
@@ -1579,6 +1595,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
             onChangeOrders={setLabOrders}
             labCatalog={labCatalog}
             onAddLabToCatalog={onAddLabToCatalog}
+            frequentSuggestions={smartSuggestions.frequentLabs}
           />
         )}
 
@@ -1589,6 +1606,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
             onChangeOrders={setRadiologyOrders}
             radiologyCatalog={radiologyCatalog}
             onAddRadiologyToCatalog={onAddRadiologyToCatalog}
+            frequentSuggestions={smartSuggestions.frequentRadiology}
           />
         )}
 
@@ -1599,6 +1617,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
             onChangeDiagnoses={setPatientDiagnoses}
             diagnosesCatalog={diagnosesCatalog}
             onAddDiagnosisToCatalog={onAddDiagnosisToCatalog}
+            frequentSuggestions={smartSuggestions.frequentDiagnoses}
           />
         )}
 
@@ -1610,6 +1629,8 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
             drugCatalog={drugCatalog}
             onAddDrugToCatalog={onAddDrugToCatalog}
             onOpenPrescriptionPad={() => onNavigate('prescription-pad')}
+            onPrintPrescription={handleDirectPrint}
+            frequentSuggestions={smartSuggestions.frequentDrugs}
           />
         )}
 
@@ -1620,6 +1641,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
             onChangeFollowupDate={setFollowupDate}
             lifestyleAdvice={lifestyleAdvice}
             onChangeLifestyleAdvice={setLifestyleAdvice}
+            frequentSuggestions={smartSuggestions.frequentInstructions}
           />
         )}
 
@@ -2198,17 +2220,17 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                 : 'space-y-2.5'
             }`}
           >
-            <div className="flex items-center gap-2 border-b border-slate-200 pb-1" dir="rtl">
+            <div className="flex items-center gap-2 border-b border-slate-200 pb-1 text-left" dir="ltr">
               <span className="text-2xl font-serif font-black text-[#008f97] italic">℞</span>
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">العلاج الموصوف</span>
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Rx</span>
             </div>
 
             {/* Items List */}
-            <div className="space-y-2 text-slate-900" dir="rtl">
+            <div className="space-y-2 text-slate-900 text-left" dir="ltr">
               {activePrescription && activePrescription.length > 0 ? (
                 activePrescription.map((item, idx) => (
-                  <div key={item.id || idx} className="p-2 rounded-lg bg-slate-50/80 border border-slate-100 flex items-start justify-between gap-2 text-xs">
-                    <div className="text-right">
+                  <div key={item.id || idx} className="p-2 rounded-lg bg-slate-50/80 border border-slate-100 flex items-start justify-between gap-2 text-xs text-left" dir="ltr">
+                    <div className="text-left">
                       <div className="font-bold text-slate-900">
                         {idx + 1}. {item.drugName} {item.strength || ''} {item.dosageForm || ''} {item.scientificName ? `(${item.scientificName})` : ''}
                       </div>
@@ -2416,17 +2438,17 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                         : 'space-y-2'
                     }`}
                   >
-                    <div className="flex items-center gap-1 border-b border-slate-200 pb-0.5">
+                    <div className="flex items-center gap-1 border-b border-slate-200 pb-0.5 text-left" dir="ltr">
                       <span className="text-xl font-serif font-black text-[#008f97] italic">℞</span>
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">العلاج الموصوف</span>
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Rx</span>
                     </div>
 
                     {/* Items List */}
-                    <div className="space-y-1.5 text-slate-900">
+                    <div className="space-y-1.5 text-slate-900 text-left" dir="ltr">
                       {activePrescription && activePrescription.length > 0 ? (
                         activePrescription.map((item, idx) => (
-                          <div key={item.id || idx} className="p-1.5 rounded-lg bg-slate-50/80 border border-slate-100 flex items-start justify-between gap-2 text-[11px]">
-                            <div className="text-right">
+                          <div key={item.id || idx} className="p-1.5 rounded-lg bg-slate-50/80 border border-slate-100 flex items-start justify-between gap-2 text-[11px] text-left" dir="ltr">
+                            <div className="text-left">
                               <div className="font-bold text-slate-900">
                                 {idx + 1}. {item.drugName} {item.strength || ''} {item.dosageForm || ''} {item.scientificName ? `(${item.scientificName})` : ''}
                               </div>

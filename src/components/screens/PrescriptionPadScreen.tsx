@@ -1078,13 +1078,13 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
                   : 'space-y-2.5'
               }`}
             >
-              <div className="flex items-center gap-2 border-b border-slate-200 pb-1">
+              <div className="flex items-center gap-2 border-b border-slate-200 pb-1 text-left" dir="ltr">
                 <span className="text-2xl font-serif font-black text-[#008f97] italic">℞</span>
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">العلاج الموصوف</span>
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Rx</span>
               </div>
 
               {/* Items List */}
-              <div className="space-y-2">
+              <div className="space-y-2 text-left" dir="ltr">
                 {items && items.length > 0 ? (
                   items.map((item, idx) => (
                     <div key={item.id || idx} className="p-2 rounded-lg bg-slate-50/80 border border-slate-100 flex items-start justify-between gap-2 text-xs">

@@ -167,6 +167,15 @@ export const subscribeToSymptoms = (db: Firestore, next: (items: Symptom[]) => v
 export const subscribeToChronicDiseases = (db: Firestore, next: (items: ChronicDisease[]) => void, error: (reason: Error) => void) =>
   subscribeCollection<ChronicDisease>(db, 'chronicDiseases', next, error);
 
+export const subscribeToServices = (db: Firestore, next: (items: any[]) => void, error: (reason: Error) => void) =>
+  subscribeCollection<any>(db, 'services', next, error);
+
+export const subscribeToExpenses = (db: Firestore, next: (items: any[]) => void, error: (reason: Error) => void) =>
+  subscribeCollection<any>(db, 'expenses', next, error);
+
+export const subscribeToExpenseCategories = (db: Firestore, next: (items: any[]) => void, error: (reason: Error) => void) =>
+  subscribeCollection<any>(db, 'expenseCategories', next, error);
+
 export const subscribeToDoctorSettings = (
   db: Firestore,
   next: (settings: DoctorSettings | null) => void,
@@ -183,6 +192,109 @@ export const subscribeToDoctorSettings = (
     },
     (reason) => {
       error(handleFirestoreError(reason, OperationType.GET, 'settings/doctorSettings'));
+    }
+  );
+};
+
+export const subscribeToVisitTypes = (
+  db: Firestore,
+  next: (types: { id: string; name: string; fee: number }[] | null) => void,
+  error: (reason: Error) => void
+): Unsubscribe => {
+  return onSnapshot(
+    doc(db, 'settings', 'visitTypes'),
+    (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        next(((data.items || data.types || []) as { id: string; name: string; fee: number }[]));
+      } else {
+        next(null);
+      }
+    },
+    (reason) => {
+      error(handleFirestoreError(reason, OperationType.GET, 'settings/visitTypes'));
+    }
+  );
+};
+
+export const subscribeToPrinterSettings = <T = Record<string, unknown>>(
+  db: Firestore,
+  next: (settings: T | null) => void,
+  error: (reason: Error) => void
+): Unsubscribe => {
+  return onSnapshot(
+    doc(db, 'settings', 'printerSettings'),
+    (snap) => {
+      if (snap.exists()) {
+        next(normalize(snap.data()) as T);
+      } else {
+        next(null);
+      }
+    },
+    (reason) => {
+      error(handleFirestoreError(reason, OperationType.GET, 'settings/printerSettings'));
+    }
+  );
+};
+
+export const subscribeToLifestylePresets = (
+  db: Firestore,
+  next: (presets: string[] | null) => void,
+  error: (reason: Error) => void
+): Unsubscribe => {
+  return onSnapshot(
+    doc(db, 'settings', 'lifestylePresets'),
+    (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        next((data.items as string[]) || []);
+      } else {
+        next(null);
+      }
+    },
+    (reason) => {
+      error(handleFirestoreError(reason, OperationType.GET, 'settings/lifestylePresets'));
+    }
+  );
+};
+
+export const subscribeToAlertSettings = (
+  db: Firestore,
+  next: (settings: any | null) => void,
+  error: (reason: Error) => void
+): Unsubscribe => {
+  return onSnapshot(
+    doc(db, 'settings', 'alertSettings'),
+    (snap) => {
+      if (snap.exists()) {
+        next(normalize(snap.data()));
+      } else {
+        next(null);
+      }
+    },
+    (reason) => {
+      error(handleFirestoreError(reason, OperationType.GET, 'settings/alertSettings'));
+    }
+  );
+};
+
+export const subscribeToRecurringTemplates = (
+  db: Firestore,
+  next: (templates: any[] | null) => void,
+  error: (reason: Error) => void
+): Unsubscribe => {
+  return onSnapshot(
+    doc(db, 'settings', 'recurringTemplates'),
+    (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        next((data.items as any[]) || []);
+      } else {
+        next(null);
+      }
+    },
+    (reason) => {
+      error(handleFirestoreError(reason, OperationType.GET, 'settings/recurringTemplates'));
     }
   );
 };

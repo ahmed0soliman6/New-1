@@ -16,6 +16,7 @@ interface DiagnosisCardProps {
   onChangeDiagnoses: (diagnoses: PatientDiagnosis[]) => void;
   diagnosesCatalog: DiagnosisCatalogItem[];
   onAddDiagnosisToCatalog: (item: DiagnosisCatalogItem) => void;
+  frequentSuggestions?: Array<{ name: string; count?: number }>;
 }
 
 // Medical & Clinical ICD-10 Presets with abbreviations and bilingual support
@@ -47,6 +48,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({
   onChangeDiagnoses,
   diagnosesCatalog,
   onAddDiagnosisToCatalog,
+  frequentSuggestions = [],
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFilter, setSearchFilter] = useState('');
@@ -249,6 +251,52 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Smart Clinical Memory Suggestions Bar */}
+      {frequentSuggestions.length > 0 && (
+        <div className="p-3 bg-amber-500/10 dark:bg-amber-950/20 rounded-xl border border-amber-500/20 space-y-2">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-amber-700 dark:text-amber-400">
+            <span className="material-symbols-outlined text-sm">psychology</span>
+            <span>مقترحات الذاكرة والتشخيصات المتكررة (إضافة بنقرة واحدة):</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {frequentSuggestions.map((s, idx) => {
+              const isAdded = diagnoses.some((d) => d.nameAr === s.name || d.nameEn === s.name);
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  disabled={isAdded}
+                  onClick={() => {
+                    if (!isAdded) {
+                      onChangeDiagnoses([
+                        ...diagnoses,
+                        {
+                          id: `diag-sug-${Date.now()}-${idx}`,
+                          nameAr: s.name,
+                          nameEn: s.name,
+                          isPrimary: diagnoses.length === 0,
+                        },
+                      ]);
+                    }
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                    isAdded
+                      ? 'bg-amber-200 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 opacity-60 cursor-default'
+                      : 'bg-white dark:bg-[#111A2E] hover:bg-amber-50 dark:hover:bg-amber-900/40 text-slate-800 dark:text-[#dde2f5] border border-amber-200 dark:border-amber-800/40 shadow-xs'
+                  }`}
+                >
+                  <span>{isAdded ? '✓' : '+'}</span>
+                  <span>{s.name}</span>
+                  {s.count && s.count > 1 && (
+                    <span className="text-[10px] text-amber-600 font-mono">({s.count}×)</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* TOP PROMINENT SEARCH BAR (أعلى بطاقة التشخيص الطبي) */}
       <div className="p-4 bg-amber-50/40 dark:bg-[#080e1b]/80 rounded-2xl border-2 border-amber-500/40 space-y-3 shadow-sm">

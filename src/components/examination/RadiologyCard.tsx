@@ -6,6 +6,7 @@ interface RadiologyCardProps {
   onChangeOrders: (orders: RadiologyOrderItem[]) => void;
   radiologyCatalog: RadiologyCatalogItem[];
   onAddRadiologyToCatalog: (item: RadiologyCatalogItem) => void;
+  frequentSuggestions?: Array<{ type: string; count?: number }>;
 }
 
 // Preset Medical Radiology Scans with abbreviations, English names & category
@@ -29,6 +30,7 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
   onChangeOrders,
   radiologyCatalog,
   onAddRadiologyToCatalog,
+  frequentSuggestions = [],
 }) => {
   const [showPicker, setShowPicker] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -236,6 +238,54 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Smart Clinical Memory Suggestions Bar for Radiology */}
+      {frequentSuggestions.length > 0 && (
+        <div className="p-3 bg-sky-500/10 dark:bg-sky-950/20 rounded-xl border border-sky-500/20 space-y-2">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-sky-700 dark:text-sky-300">
+            <span className="material-symbols-outlined text-sm">psychology</span>
+            <span>مقترحات الأشعة والفحوصات المتكررة (إضافة بنقرة واحدة):</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {frequentSuggestions.map((s, idx) => {
+              const isAdded = radiologyOrders.some((r) => r.name === s.type || r.type === s.type);
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  disabled={isAdded}
+                  onClick={() => {
+                    if (!isAdded) {
+                      onChangeOrders([
+                        ...radiologyOrders,
+                        {
+                          id: `rad-sug-${Date.now()}-${idx}`,
+                          name: s.type,
+                          type: s.type,
+                          category: 'فحوصات متكررة',
+                          status: 'REQUEST',
+                          orderedAt: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+                        },
+                      ]);
+                    }
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                    isAdded
+                      ? 'bg-sky-200 dark:bg-sky-900/60 text-sky-800 dark:text-sky-300 opacity-60 cursor-default'
+                      : 'bg-white dark:bg-[#111A2E] hover:bg-sky-50 dark:hover:bg-sky-900/40 text-slate-800 dark:text-[#dde2f5] border border-sky-200 dark:border-sky-800/40 shadow-xs'
+                  }`}
+                >
+                  <span>{isAdded ? '✓' : '+'}</span>
+                  <span>{s.type}</span>
+                  {s.count && s.count > 1 && (
+                    <span className="text-[10px] text-sky-600 font-mono">({s.count}×)</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* TOP PROMINENT SEARCH BAR (أعلى بطاقة الأشعة والتصوير الطبي) */}
       <div className="p-4 bg-sky-50/40 dark:bg-[#080e1b]/80 rounded-2xl border-2 border-sky-500/40 space-y-3 shadow-sm">

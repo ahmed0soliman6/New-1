@@ -101,6 +101,7 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
     return (
       (p.name || '').toLowerCase().includes(q) ||
       (p.phone || '').includes(q) ||
+      String(p.fileNumber || '').includes(q) ||
       (p.medicalCode || '').toLowerCase().includes(q)
     );
   });
@@ -194,7 +195,7 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
                           {p.name}
                         </span>
                         <span className="bg-teal-50 dark:bg-[#00c2cb]/15 text-[#008f97] dark:text-[#45dee7] text-[10px] font-mono font-bold px-2 py-0.5 rounded-md border border-teal-200/50 dark:border-transparent">
-                          #{p.medicalCode}
+                          ملف #{p.fileNumber || 1}
                         </span>
                         {p.bloodType && p.bloodType !== 'غير محدد' && (
                           <span className="bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 text-[10px] font-mono font-bold px-2 py-0.5 rounded-md border border-red-100 dark:border-transparent">

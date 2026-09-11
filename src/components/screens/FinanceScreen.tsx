@@ -5,14 +5,23 @@ import { usePermissions } from '../../context/AuthContext';
 import { PermissionGate } from '../auth/PermissionGate';
 import {
   loadMedicalServices,
+  setCachedMedicalServices,
   loadExpenseCategories,
+  setCachedExpenseCategories,
   loadClinicExpenses,
+  setCachedClinicExpenses,
   addClinicExpense,
   removeClinicExpense,
   MedicalServiceItem,
   ExpenseCategoryItem,
   ClinicExpenseRecord,
 } from '../../utils/financeManager';
+import { db } from '../../services/firebase';
+import {
+  subscribeToServices,
+  subscribeToExpenseCategories,
+  subscribeToExpenses,
+} from '../../services/repositories';
 
 interface FinanceScreenProps {
   transactions: TransactionRecord[];
@@ -55,20 +64,45 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
     setCurrentPage(1);
   }, [searchQuery, selectedTimeframe, tableFilterMonth, tableFilterYear]);
 
-  // Re-sync on custom storage events
+  // Sync directly from Firestore collections
   useEffect(() => {
-    const handleServicesUpdate = () => setMedicalServices(loadMedicalServices());
-    const handleExpCatsUpdate = () => setExpenseCategories(loadExpenseCategories());
-    const handleExpensesUpdate = () => setExpenses(loadClinicExpenses());
+    if (!db) return;
 
-    window.addEventListener('soli_services_updated', handleServicesUpdate);
-    window.addEventListener('soli_expense_categories_updated', handleExpCatsUpdate);
-    window.addEventListener('soli_clinic_expenses_updated', handleExpensesUpdate);
+    const unsubServices = subscribeToServices(
+      db,
+      (srvs) => {
+        if (srvs && srvs.length > 0) {
+          setMedicalServices(srvs as MedicalServiceItem[]);
+          setCachedMedicalServices(srvs as MedicalServiceItem[]);
+        }
+      },
+      (err) => console.warn('Services sync error in FinanceScreen:', err)
+    );
+
+    const unsubExpCats = subscribeToExpenseCategories(
+      db,
+      (cats) => {
+        if (cats && cats.length > 0) {
+          setExpenseCategories(cats as ExpenseCategoryItem[]);
+          setCachedExpenseCategories(cats as ExpenseCategoryItem[]);
+        }
+      },
+      (err) => console.warn('Expense categories sync error in FinanceScreen:', err)
+    );
+
+    const unsubExpenses = subscribeToExpenses(
+      db,
+      (exps) => {
+        setExpenses(exps as ClinicExpenseRecord[]);
+        setCachedClinicExpenses(exps as ClinicExpenseRecord[]);
+      },
+      (err) => console.warn('Expenses sync error in FinanceScreen:', err)
+    );
 
     return () => {
-      window.removeEventListener('soli_services_updated', handleServicesUpdate);
-      window.removeEventListener('soli_expense_categories_updated', handleExpCatsUpdate);
-      window.removeEventListener('soli_clinic_expenses_updated', handleExpensesUpdate);
+      unsubServices();
+      unsubExpCats();
+      unsubExpenses();
     };
   }, []);
 
