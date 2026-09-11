@@ -104,7 +104,7 @@ service cloud.firestore {
     // =============================================================
     match /users/{userId} {
       // All authenticated users can read users for profile and collaborator lookups
-      allow read: if signedIn();
+      allow read: if signedIn() && isUserActive();
 
       // Creation allowed during initial bootstrap or by Admin
       allow create: if signedIn() && (isAdmin() || request.auth.uid == userId);
@@ -126,7 +126,7 @@ service cloud.firestore {
     // =============================================================
     match /usernames/{usernameLower} {
       allow get: if true; // Single doc lookup for username resolution on login
-      allow list: if signedIn();
+      allow list: if signedIn() && isUserActive();
       allow create, update: if signedIn() && (isAdmin() || request.resource.data.uid == request.auth.uid);
       allow delete: if signedIn() && isAdmin();
     }
@@ -177,8 +177,26 @@ service cloud.firestore {
     // =============================================================
     match /visits/{visitId} {
       allow read: if hasPermission('waiting-queue', 'view') || hasPermission('new-visit', 'view') || hasPermission('clinical-exam', 'view') || hasPermission('patient-records', 'view');
-      allow create: if hasPermission('new-visit', 'create') || hasPermission('waiting-queue', 'create');
-      allow update: if hasPermission('waiting-queue', 'update') || hasPermission('clinical-exam', 'update') || hasPermission('new-visit', 'update');
+      allow create: if (hasPermission('new-visit', 'create') || hasPermission('waiting-queue', 'create')) && (
+        isDoctor() || isAdmin() || (
+          !request.resource.data.keys().contains('clinicalData') ||
+          request.resource.data.clinicalData == null ||
+          (
+            request.resource.data.clinicalData.chiefComplaint == '' &&
+            request.resource.data.clinicalData.history == '' &&
+            request.resource.data.clinicalData.examination == '' &&
+            request.resource.data.clinicalData.diagnosis.size() == 0 &&
+            request.resource.data.clinicalData.treatment == ''
+          )
+        )
+      );
+      allow update: if (hasPermission('waiting-queue', 'update') || hasPermission('clinical-exam', 'update') || hasPermission('new-visit', 'update')) && (
+        isDoctor() || isAdmin() || (
+          // Non-clinical roles cannot modify clinicalData, nor mark a visit as COMPLETED
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['clinicalData']) &&
+          (request.resource.data.status != 'COMPLETED' || resource.data.status == 'COMPLETED')
+        )
+      );
       allow delete: if hasPermission('new-visit', 'delete') || hasPermission('waiting-queue', 'delete') || hasPermission('clinical-exam', 'delete');
     }
 

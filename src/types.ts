@@ -21,7 +21,7 @@ export interface PatientListItem {
   fileNumber?: number | string;
   name: string;
   age: number;
-  gender: 'male' | 'female';
+  gender: 'male' | 'female' | '';
   phone: string;
   governorate: string;
   address?: string;

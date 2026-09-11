@@ -208,7 +208,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
   const [editablePatientName, setEditablePatientName] = useState(patient?.name || '');
   const [editablePatientPhone, setEditablePatientPhone] = useState(patient?.phone || '');
   const [editablePatientAge, setEditablePatientAge] = useState(patient?.age ? String(patient.age) : '');
-  const [editablePatientGender, setEditablePatientGender] = useState<'male' | 'female' | ''>(patient?.gender || 'male');
+  const [editablePatientGender, setEditablePatientGender] = useState<'male' | 'female' | ''>(patient?.gender || '');
   const [editablePatientAddress, setEditablePatientAddress] = useState(patient?.address || '');
   const [editablePatientBloodType, setEditablePatientBloodType] = useState(patient?.bloodType || 'غير محدد');
   const [isEditingPatientInfo, setIsEditingPatientInfo] = useState(false);
@@ -248,9 +248,9 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
         medicalCode: item.medicalCode || 'EG-NEW',
         fileNumber: item.fileNumber || 1,
         phone: item.phone || '',
-        age: item.age || 30,
-        gender: (item.gender === 'female' || item.gender === 'male') ? item.gender : 'male',
-        governorate: 'القاهرة',
+        age: item.age || 0,
+        gender: item.gender || '',
+        governorate: '',
         address: item.address || '',
         allergies: [],
         chronicConditions: item.chronicConditions || [],
@@ -272,7 +272,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
     setEditablePatientName(patient?.name || '');
     setEditablePatientPhone(patient?.phone || '');
     setEditablePatientAge(patient?.age ? String(patient.age) : '');
-    setEditablePatientGender(patient?.gender || 'male');
+    setEditablePatientGender(patient?.gender || '');
     setEditablePatientAddress(patient?.address || '');
     setEditablePatientBloodType(patient?.bloodType || 'غير محدد');
   }, [patient?.id, patient?.chiefComplaint, patient?.chronicConditions, patient?.name, patient?.phone, patient?.age, patient?.gender, patient?.address, patient?.bloodType]);

@@ -72,6 +72,27 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
     ? patientsCanonical?.find((p) => p.patientId === viewingPatientId)
     : undefined;
 
+  const filteredPatients = useMemo(() => {
+    return patients
+      .filter((p) => {
+        if (!search.trim()) return true;
+        const q = search.toLowerCase();
+        return (
+          (p.name || '').toLowerCase().includes(q) ||
+          (p.phone || '').includes(q) ||
+          String(p.fileNumber || '').includes(q) ||
+          (p.medicalCode || '').toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) => {
+        // Newest registered or highest file number at the top
+        const numB = Number(b.fileNumber) || 0;
+        const numA = Number(a.fileNumber) || 0;
+        if (numB !== numA) return numB - numA;
+        return (b.id || '').localeCompare(a.id || '');
+      });
+  }, [patients, search]);
+
   if (activePatient) {
     return (
       <PatientDetailFullScreen
@@ -94,27 +115,6 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
       />
     );
   }
-
-  const filteredPatients = useMemo(() => {
-    return patients
-      .filter((p) => {
-        if (!search.trim()) return true;
-        const q = search.toLowerCase();
-        return (
-          (p.name || '').toLowerCase().includes(q) ||
-          (p.phone || '').includes(q) ||
-          String(p.fileNumber || '').includes(q) ||
-          (p.medicalCode || '').toLowerCase().includes(q)
-        );
-      })
-      .sort((a, b) => {
-        // Newest registered or highest file number at the top
-        const numB = Number(b.fileNumber) || 0;
-        const numA = Number(a.fileNumber) || 0;
-        if (numB !== numA) return numB - numA;
-        return (b.id || '').localeCompare(a.id || '');
-      });
-  }, [patients, search]);
 
   return (
     <div className="flex flex-col w-full pb-16 space-y-6 text-slate-800 dark:text-[#dde2f5]" id="patient-files-screen">

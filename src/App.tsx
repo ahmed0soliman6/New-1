@@ -1674,7 +1674,6 @@ function ClinicApp() {
         fileNumber: maxNum + 1,
         fullName: newTx.patientName.trim(),
         phone: '',
-        gender: 'male',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -1812,10 +1811,10 @@ function ClinicApp() {
       medicalCode: basePatient?.medicalCode || `EG-${targetVisit.patientId.slice(0, 5)}`,
       fileNumber: basePatient?.fileNumber || targetVisit.queueNumber || 1,
       name: basePatient?.name || name,
-      age: basePatient?.age || 30,
-      gender: basePatient?.gender || 'male',
+      age: basePatient?.age || 0,
+      gender: basePatient?.gender || '',
       phone: basePatient?.phone || '',
-      governorate: basePatient?.governorate || 'القاهرة',
+      governorate: basePatient?.governorate || '',
       address: basePatient?.address || '',
       allergies: basePatient?.allergies || [],
       chronicConditions: registeredChronic,
@@ -1904,11 +1903,11 @@ function ClinicApp() {
       ? new Date(new Date().getFullYear() - Number(item.age), 0, 1).toISOString().split('T')[0]
       : null;
 
-    const patientGender: 'male' | 'female' = item.gender === 'female'
+    const patientGender: 'male' | 'female' | undefined = item.gender === 'female'
       ? 'female'
       : item.gender === 'male'
       ? 'male'
-      : (basePat?.gender === 'female' ? 'female' : 'male');
+      : (basePat?.gender || undefined);
 
     const targetPatientId = basePat?.patientId || item.patientId || `pat-${Date.now()}`;
 

@@ -81,7 +81,7 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
   // Tab state
   const [activeTab, setActiveTab] = useState<
     'all' | 'basic' | 'visits' | 'prescriptions' | 'labs' | 'radiology' | 'billing'
-  >('basic');
+  >('all');
 
   // PDF Exporting state
   const [isExportingPdf, setIsExportingPdf] = useState(false);
@@ -97,9 +97,9 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
   const [phone, setPhone] = useState(patientCanonical?.phone || patient.phone || '');
   const [gender, setGender] = useState<'male' | 'female'>(patient.gender || 'male');
   const [dateOfBirth, setDateOfBirth] = useState(patientCanonical?.dateOfBirth || '');
-  const [age, setAge] = useState<number>(patient.age || 30);
+  const [age, setAge] = useState<number>(patient.age || 0);
   const [bloodType, setBloodType] = useState(patientCanonical?.bloodType || patient.bloodType || 'غير محدد');
-  const [governorate, setGovernorate] = useState(patientCanonical?.governorate || patient.governorate || 'القاهرة');
+  const [governorate, setGovernorate] = useState(patientCanonical?.governorate || patient.governorate || '');
   const [address, setAddress] = useState(patientCanonical?.address || patient.address || '');
   const [emergencyName, setEmergencyName] = useState(
     patientCanonical?.emergencyContact?.name || patient.emergencyContact?.name || ''
@@ -129,9 +129,9 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
     setPhone(patientCanonical?.phone || patient.phone || '');
     setGender(patient.gender || 'male');
     setDateOfBirth(patientCanonical?.dateOfBirth || '');
-    setAge(patient.age || 30);
+    setAge(patient.age || 0);
     setBloodType(patientCanonical?.bloodType || patient.bloodType || 'غير محدد');
-    setGovernorate(patientCanonical?.governorate || patient.governorate || 'القاهرة');
+    setGovernorate(patientCanonical?.governorate || patient.governorate || '');
     setAddress(patientCanonical?.address || patient.address || '');
     setEmergencyName(patientCanonical?.emergencyContact?.name || patient.emergencyContact?.name || '');
     setEmergencyPhone(patientCanonical?.emergencyContact?.phone || patient.emergencyContact?.phone || '');
