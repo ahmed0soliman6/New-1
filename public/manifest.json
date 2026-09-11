@@ -3,8 +3,8 @@
   "name": "سولي ميديكال | Soli Medical Clinic",
   "short_name": "سولي ميديكال",
   "description": "نظام إدارة عيادة الطبيب الواحد الذكي المتكامل - Soli Medical Clinic",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#0e172a",
@@ -13,25 +13,25 @@
   "categories": ["medical", "health", "productivity"],
   "icons": [
     {
-      "src": "/pwa-192x192.png",
+      "src": "./pwa-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/pwa-512x512.png",
+      "src": "./pwa-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/pwa-maskable-512x512.png",
+      "src": "./pwa-maskable-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/apple-touch-icon.png",
+      "src": "./apple-touch-icon.png",
       "sizes": "180x180",
       "type": "image/png",
       "purpose": "any"
@@ -42,15 +42,15 @@
       "name": "تسجيل كشف جديد",
       "short_name": "كشف جديد",
       "description": "فتح شاشة تسجيل زيارة وكشف جديد",
-      "url": "/?screen=new-visit",
-      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192" }]
+      "url": "./?screen=new-visit",
+      "icons": [{ "src": "./pwa-192x192.png", "sizes": "192x192" }]
     },
     {
       "name": "جدول المواعيد والمتابعات",
       "short_name": "المواعيد",
       "description": "عرض جدول المواعيد والمتابعات",
-      "url": "/?screen=upcoming-followups",
-      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192" }]
+      "url": "./?screen=upcoming-followups",
+      "icons": [{ "src": "./pwa-192x192.png", "sizes": "192x192" }]
     }
   ]
 }

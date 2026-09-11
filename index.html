@@ -58,10 +58,42 @@
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', function() {
-          navigator.serviceWorker.register('./sw.js').then(function(reg) {
-            console.log('ServiceWorker registered with scope:', reg.scope);
+          navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(function(reg) {
+            console.log('Soli PWA ServiceWorker active with scope:', reg.scope);
+            
+            // Check for updates periodically every 15 minutes and on focus
+            setInterval(function() {
+              reg.update();
+            }, 1000 * 60 * 15);
+
+            window.addEventListener('focus', function() {
+              reg.update();
+            });
+
+            // Listen for new service worker installing
+            reg.addEventListener('updatefound', function() {
+              var newWorker = reg.installing;
+              if (newWorker) {
+                newWorker.addEventListener('statechange', function() {
+                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    console.log('New Soli PWA update available, activating immediately...');
+                    newWorker.postMessage({ type: 'SKIP_WAITING' });
+                  }
+                });
+              }
+            });
           }).catch(function(err) {
-            console.warn('ServiceWorker registration failed:', err);
+            console.warn('ServiceWorker registration error:', err);
+          });
+
+          // Refresh page when controller changes to reflect new code
+          var refreshing = false;
+          navigator.serviceWorker.addEventListener('controllerchange', function() {
+            if (!refreshing) {
+              refreshing = true;
+              console.log('ServiceWorker controller changed. Refreshing for latest updates...');
+              window.location.reload();
+            }
           });
         });
       }

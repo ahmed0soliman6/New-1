@@ -4,6 +4,7 @@ import { useDoctorName } from '../hooks/useDoctorName';
 import { QueueItem, AppointmentListItem, PatientListItem, TransactionRecord, ScreenType } from '../types';
 import { ClinicAlertPayload } from '../utils/alertManager';
 import { GlobalSearchBar } from './GlobalSearchBar';
+import { PWAInstallButton } from './pwa/PWAInstallButton';
 
 export interface FollowUpItem {
   id: string;
@@ -158,6 +159,11 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             </button>
           )}
+
+          {/* Compact PWA Install Button for mobile & desktop */}
+          <div className="hidden sm:block">
+            <PWAInstallButton compact={true} />
+          </div>
 
           <div className="hidden xl:flex items-center gap-1.5 text-slate-400 dark:text-[#bbc9ca] text-xs font-medium mr-1">
             <span className="material-symbols-outlined text-base">calendar_today</span>

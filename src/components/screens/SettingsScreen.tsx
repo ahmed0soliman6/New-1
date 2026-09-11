@@ -138,7 +138,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     alerts: false,
     display: false,
     templates: false,
-    version: false,
     demoData: false,
     backup: false,
   });
@@ -1285,55 +1284,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               )}
             </div>
 
-            {/* ACCORDION CARD 8: Version & Updates Info (معلومات وإصدار النظام) */}
-            <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
-              <button
-                type="button"
-                onClick={() => toggleCard('version')}
-                className="w-full p-5 flex items-center justify-between text-right cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-[#00c2cb]/15 text-[#008f97] dark:text-[#00c2cb] flex items-center justify-center font-bold">
-                    <span className="material-symbols-outlined text-xl">verified</span>
-                  </div>
-                  <div>
-                    <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                      <span>8. رقم الإصدار والتحديثات الحالية</span>
-                      <span className="px-2.5 py-0.5 rounded-full bg-[#00c2cb]/20 text-[#008f97] dark:text-[#00c2cb] font-black text-[11px] border border-[#00c2cb]/30">
-                        v2.6.0 Stable
-                      </span>
-                    </h2>
-                    <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
-                      بطاقة معلومات الإصدار المستقر وأبرز التحديثات المضافة للنظام
-                    </p>
-                  </div>
-                </div>
-                <span
-                  className="material-symbols-outlined text-slate-400 text-2xl transition-transform duration-200"
-                  style={{ transform: openCards.version ? 'rotate(180deg)' : 'rotate(0deg)' }}
-                >
-                  expand_more
-                </span>
-              </button>
-
-              {openCards.version && (
-                <div className="p-5 pt-0 border-t border-slate-100 dark:border-white/5 text-xs pt-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-900 dark:text-white">Soli Medical Clinic System</span>
-                    <span className="text-[10px] text-slate-400 font-mono">2026.09 Release</span>
-                  </div>
-                  <ul className="list-disc list-inside space-y-1 text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
-                    <li>اعتماد الشعار الرسمي وتوحيد الهوية البصرية (Soli Medical Clinic).</li>
-                    <li>إدارة وتسعيرة ديناميكية متغيرة لجميع أنواع الزيارات وإضافة/حذف الكشوفات تلقائياً.</li>
-                    <li>تصميم عمود واحد موحد لكافة بطاقات الإعدادات وحفظ التغييرات تلقائياً.</li>
-                    <li>إضافة بطاقة خاصة بتغيير كلمة المرور وتأمين صلاحيات المستخدمين.</li>
-                    <li>نقل بطاقة النسخ الاحتياطي السحابي في أسفل صفحة الإعدادات.</li>
-                  </ul>
-                </div>
-              )}
-            </div>
-
-            {/* ACCORDION CARD 9: Demo Data & Database Management (إدارة البيانات والبيانات التجريبية للتوضيح) */}
+            {/* ACCORDION CARD 8: Demo Data & Database Management (إدارة البيانات والبيانات التجريبية للتوضيح) */}
             <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
               <button
                 type="button"
@@ -1346,7 +1297,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                      <span>9. إدارة البيانات والبيانات التجريبية</span>
+                      <span>8. إدارة البيانات والبيانات التجريبية</span>
                       <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-[#F59E0B] px-2 py-0.5 rounded-full border border-amber-500/20 font-bold">
                         أدوات المطورين والتهيئة
                       </span>
@@ -1499,7 +1450,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
                 </div>
               )}
-            {/* ACCORDION CARD 10: Cloud Backup & Data Export (النسخ الاحتياطي السحابي وتصدير البيانات) */}
+            </div>
+
+            {/* ACCORDION CARD 9: Cloud Backup & Data Export (النسخ الاحتياطي السحابي وتصدير البيانات) */}
             <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
               <button
                 type="button"
@@ -1512,7 +1465,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                      <span>10. النسخ الاحتياطي السحابي وتصدير البيانات</span>
+                      <span>9. النسخ الاحتياطي السحابي وتصدير البيانات</span>
                       <span className="text-[10px] bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 px-2 py-0.5 rounded-full border border-cyan-500/20 font-bold">
                         Firestore Cloud Sync
                       </span>
@@ -1558,8 +1511,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             </div>
 
           </div>
-        </div>
-      )}
+        )}
 
       {/* MODAL: Add New Visit Type */}
       {showAddVisitModal && (
