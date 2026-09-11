@@ -102,16 +102,21 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
     const initialPhone = (initialData.phone || '').trim();
     if (!initialName && !initialPhone) return;
 
-    // Search if patient already exists in clinic database
+    // Search if patient already exists in clinic database (strictly by priority)
     const cleanDigits = (s: string) => s.replace(/[^0-9]/g, '');
     const foundPatient = patients.find((p) => {
+      if (initialData.patientId) {
+        return p.id === initialData.patientId;
+      }
       const pPhoneClean = cleanDigits(p.phone || '');
       const initPhoneClean = cleanDigits(initialPhone);
       const phoneMatch = initPhoneClean.length >= 7 && pPhoneClean.includes(initPhoneClean);
+      if (phoneMatch) return true;
+      
       const nameMatch = Boolean(
         initialName && p.name && p.name.trim().toLowerCase() === initialName.toLowerCase()
       );
-      return phoneMatch || nameMatch;
+      return nameMatch;
     });
 
     if (foundPatient) {

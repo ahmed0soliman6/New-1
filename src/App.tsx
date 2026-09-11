@@ -1951,6 +1951,7 @@ function ClinicApp() {
           paymentMethod: paymentMethodEnum,
           receivedBy: userProfile?.username || 'receptionist',
           clinicLocationId: 'loc-mohandessin',
+          appointmentId: item.appointmentId || intakeInitialData?.appointmentId || null,
           receptionistData: { symptoms: item.complaint || '', chronicDiseases: patient.chronicDiseases || [], notes: '' },
         });
 
@@ -2005,7 +2006,7 @@ function ClinicApp() {
       return phoneMatch || nameMatch;
     });
 
-    const targetPatientId = existingPatient?.patientId || app.patientId || `pat-${Date.now()}`;
+    const targetPatientId = existingPatient?.patientId || undefined;
 
     const newApp: Appointment = {
       appointmentId: `app-${Date.now()}`,

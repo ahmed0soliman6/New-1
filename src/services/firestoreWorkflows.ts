@@ -146,6 +146,7 @@ export async function registerWalkInTransaction(params: {
   receivedBy: string;
   clinicLocationId: string;
   queueNumber?: number;
+  appointmentId?: string | null;
   receptionistData: Visit['receptionistData'];
 }): Promise<Visit> {
   return runTransaction(params.db, async (tx) => {
@@ -199,7 +200,7 @@ export async function registerWalkInTransaction(params: {
     const visit: Visit = {
       visitId,
       patientId: params.patient.patientId,
-      appointmentId: null,
+      appointmentId: params.appointmentId || null,
       clinicLocationId: params.clinicLocationId,
       visitType: params.paymentAmount === 0 ? 'FOLLOW_UP' : 'NEW',
       source: 'WALK_IN',

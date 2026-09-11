@@ -56,45 +56,29 @@
     <meta name="twitter:card" content="summary_large_image" />
     
     <script>
+      // Prevent stale Service Worker caching issues that cause white screen of death
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function() {
-          navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then(function(reg) {
-            console.log('Soli PWA ServiceWorker active with scope:', reg.scope);
-            
-            // Check for updates periodically every 15 minutes and on focus
-            setInterval(function() {
-              reg.update();
-            }, 1000 * 60 * 15);
-
-            window.addEventListener('focus', function() {
-              reg.update();
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for (var registration of registrations) {
+            registration.unregister().then(function(success) {
+              if (success) console.log('Soli PWA ServiceWorker unregistered successfully to prevent stale assets caching.');
             });
+          }
+        }).catch(function(err) {
+          console.warn('Error unregistering service workers:', err);
+        });
+      }
 
-            // Listen for new service worker installing
-            reg.addEventListener('updatefound', function() {
-              var newWorker = reg.installing;
-              if (newWorker) {
-                newWorker.addEventListener('statechange', function() {
-                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                    console.log('New Soli PWA update available, activating immediately...');
-                    newWorker.postMessage({ type: 'SKIP_WAITING' });
-                  }
-                });
-              }
+      // Force purge cache storage to avoid loading outdated hashed Vite bundles
+      if ('caches' in window) {
+        caches.keys().then(function(keys) {
+          keys.forEach(function(key) {
+            caches.delete(key).then(function() {
+              console.log('Cleared stale Cache Storage:', key);
             });
-          }).catch(function(err) {
-            console.warn('ServiceWorker registration error:', err);
           });
-
-          // Refresh page when controller changes to reflect new code
-          var refreshing = false;
-          navigator.serviceWorker.addEventListener('controllerchange', function() {
-            if (!refreshing) {
-              refreshing = true;
-              console.log('ServiceWorker controller changed. Refreshing for latest updates...');
-              window.location.reload();
-            }
-          });
+        }).catch(function(err) {
+          console.warn('Error clearing caches:', err);
         });
       }
     </script>
