@@ -113,118 +113,9 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
   // Follow-ups search state
   const [followupSearch, setFollowupSearch] = useState('');
 
-  const isDbInit = typeof window !== 'undefined' && localStorage.getItem('soli_clinic_db_initialized') === 'true';
-
-  // Sample initial appointments with strictly the 3 statuses (only if DB not initialized)
-  const [customAppointments, setCustomAppointments] = useState<AppointmentListItem[]>(() => {
-    if (isDbInit) return [];
-    return [
-      {
-        id: 'app-sample-1',
-        patientName: 'جمال على محمد',
-        phone: '01029384751',
-        medicalCode: 'EG-102',
-        timeSlot: '09:00 ص',
-        time: '09:00 ص',
-        date: '2026-09-08',
-        branch: 'الفرع الرئيسي',
-        visitType: 'متابعة',
-        expectedFee: 150,
-        status: 'مجدول',
-        notes: 'متابعة كشف واستشارة دورية',
-      },
-      {
-        id: 'app-sample-2',
-        patientName: 'سارة إبراهيم محمود',
-        phone: '01145829103',
-        medicalCode: 'EG-103',
-        timeSlot: '09:30 ص',
-        time: '09:30 ص',
-        date: '2026-09-08',
-        branch: 'الفرع الرئيسي',
-        visitType: 'كشف',
-        expectedFee: 300,
-        status: 'مجدول',
-        notes: 'كشف باطنة جديد',
-      },
-      {
-        id: 'app-sample-3',
-        patientName: 'خالد مصطفى العوضي',
-        phone: '01284910293',
-        medicalCode: 'EG-104',
-        timeSlot: '10:15 ص',
-        time: '10:15 ص',
-        date: '2026-09-08',
-        branch: 'الفرع الرئيسي',
-        visitType: 'كشف',
-        expectedFee: 300,
-        status: 'مجدول',
-        notes: 'حجز موعد جديد',
-      },
-      // Archived Appointments (حضر المريض / ملغى)
-      {
-        id: 'app-archived-1',
-        patientName: 'أحمد محمود رضوان',
-        phone: '01019283746',
-        medicalCode: 'EG-088',
-        timeSlot: '08:00 ص',
-        time: '08:00 ص',
-        date: '2026-09-08',
-        branch: 'الفرع الرئيسي',
-        visitType: 'كشف',
-        expectedFee: 300,
-        status: 'فى الانتظار حضر المريض',
-        notes: 'حضر للعيادة وسجل زيارة',
-      },
-      {
-        id: 'app-archived-2',
-        patientName: 'مروة كمال الشناوي',
-        phone: '01129384756',
-        medicalCode: 'EG-091',
-        timeSlot: '08:30 ص',
-        time: '08:30 ص',
-        date: '2026-09-08',
-        branch: 'الفرع الرئيسي',
-        visitType: 'متابعة',
-        expectedFee: 150,
-        status: 'فى الانتظار حضر المريض',
-        notes: 'حضرت وسددت الرسوم',
-      },
-      {
-        id: 'app-archived-3',
-        patientName: 'ياسر عبد العزيز',
-        phone: '01594837261',
-        medicalCode: 'EG-095',
-        timeSlot: '08:45 ص',
-        time: '08:45 ص',
-        date: '2026-09-08',
-        branch: 'الفرع الرئيسي',
-        visitType: 'كشف',
-        expectedFee: 300,
-        status: 'ملغى',
-        notes: 'اعتذر المريض عن الحضور وتم الإلغاء',
-      },
-    ];
-  });
-
-  // Merge canonical appointments from props if available and sort newest first
+  // All appointments derived directly from canonical Firestore appointments prop
   const allAppointments = useMemo(() => {
-    let list: AppointmentListItem[] = [];
-    if (appointments && appointments.length > 0) {
-      list = appointments.map((a) => {
-        // If local customAppointments has a status override (e.g. ARRIVED / حضر المريض), use it
-        const override = customAppointments.find((c) => c.id === a.id);
-        return override ? { ...a, status: override.status } : a;
-      });
-      // Also include any new appointment created locally that hasn't synced yet
-      customAppointments.forEach((app) => {
-        if (!list.some((existing) => existing.id === app.id)) {
-          list.push(app);
-        }
-      });
-    } else {
-      list = [...customAppointments];
-    }
+    const list = [...appointments];
 
     // Sort newest first by scheduled date & time descending
     return list.sort((a, b) => {
@@ -233,7 +124,7 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
       if (!isNaN(timeB) && !isNaN(timeA) && timeB !== timeA) return timeB - timeA;
       return (b.id || '').localeCompare(a.id || '');
     });
-  }, [customAppointments, appointments]);
+  }, [appointments]);
 
   // Count of archived appointments (فى الانتظار حضر المريض / ملغى)
   const archivedCount = useMemo(() => {
@@ -313,64 +204,9 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
     });
   }, [allAppointments, showArchive, statusFilter, appointmentSearch]);
 
-  // Default follow-ups if empty from prop
+  // Follow-ups from prop
   const activeFollowUps = useMemo(() => {
-    if (followUps && followUps.length > 0) {
-      return followUps;
-    }
-    if (isDbInit) {
-      return [];
-    }
-    return [
-      {
-        id: 'fu-1',
-        patientName: 'جمال على محمد',
-        phone: '01021434947',
-        medicalCode: 'EG-102',
-        lastVisitDate: '2026-08-28',
-        dueDate: '2026-09-11',
-        daysRemaining: 3,
-        isFreeEligible: true,
-        diagnosis: 'متابعة قرحة المعدة والارتجاع المريئي',
-        notes: 'تقييم التحسن بعد جرعة البانتوبرازول',
-      },
-      {
-        id: 'fu-2',
-        patientName: 'سارة إبراهيم محمود',
-        phone: '01145829103',
-        medicalCode: 'EG-103',
-        lastVisitDate: '2026-08-25',
-        dueDate: '2026-09-08',
-        daysRemaining: 0,
-        isFreeEligible: true,
-        diagnosis: 'متابعة ضغط الدم المرتفع',
-        notes: 'متابعة قياسات الضغط اليومية',
-      },
-      {
-        id: 'fu-3',
-        patientName: 'عمر شريف الدسوقي',
-        phone: '01234567890',
-        medicalCode: 'EG-108',
-        lastVisitDate: '2026-08-26',
-        dueDate: '2026-09-09',
-        daysRemaining: 1,
-        isFreeEligible: true,
-        diagnosis: 'التهاب المعدة وجرثومة المعدة H.Pylori',
-        notes: 'إعادة تقييم الأعراض بعد كورس العلاج الثلاثي',
-      },
-      {
-        id: 'fu-4',
-        patientName: 'نهى إبراهيم خليل',
-        phone: '01098765432',
-        medicalCode: 'EG-110',
-        lastVisitDate: '2026-08-20',
-        dueDate: '2026-09-03',
-        daysRemaining: 0,
-        isFreeEligible: false,
-        diagnosis: 'فحوصات الغدة الدرقية والكولسترول',
-        notes: 'انتهت فترة المتابعة المسجلة (14 يوماً)',
-      },
-    ];
+    return followUps || [];
   }, [followUps]);
 
   // Filtered follow-ups
@@ -392,10 +228,6 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
   // 3) "ملغى" -> moves patient to archive under cancelled
   const handleUpdateStatus = (app: AppointmentListItem, newStatus: AppointmentStatusType) => {
     if (newStatus === 'فى الانتظار حضر المريض') {
-      // 1. Update status locally
-      setCustomAppointments((prev) =>
-        prev.map((item) => (item.id === app.id ? { ...item, status: 'فى الانتظار حضر المريض' } : item))
-      );
       setToastMessage(`تم تسجيل حضور المريض "${app.patientName}" وجارٍ فتح صفحة تسجيل الزيارة`);
       setTimeout(() => setToastMessage(null), 3500);
 
@@ -408,7 +240,7 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
         ).catch((err) => console.warn('Failed to update appointment status in Firestore:', err));
       }
 
-      // 2. Automatically launch intake screen
+      // Automatically launch intake screen
       if (onStartIntakeFromAppointment) {
         onStartIntakeFromAppointment({ ...app, status: 'فى الانتظار حضر المريض' });
       } else {
@@ -419,9 +251,6 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
     }
 
     if (newStatus === 'ملغى') {
-      setCustomAppointments((prev) =>
-        prev.map((item) => (item.id === app.id ? { ...item, status: 'ملغى' } : item))
-      );
       setToastMessage(`تم إلغاء موعد "${app.patientName}" ونقله تلقائياً إلى الأرشيف`);
       setTimeout(() => setToastMessage(null), 3500);
 
@@ -436,9 +265,6 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
     }
 
     // Default: "مجدول"
-    setCustomAppointments((prev) =>
-      prev.map((item) => (item.id === app.id ? { ...item, status: 'مجدول' } : item))
-    );
     setToastMessage(`تم تحديث حالة موعد "${app.patientName}" إلى: مجدول`);
     setTimeout(() => setToastMessage(null), 3500);
 
@@ -455,11 +281,6 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
   // Converts appointment to Waiting Queue via PatientIntakeScreen:
   // Pre-fills existing patient data automatically, lets secretary pick visit type & intake info, then registers to queue & financials!
   const handlePatientArrived = (app: AppointmentListItem) => {
-    // 1. Update status to 'فى الانتظار حضر المريض' so it moves from active list to archive
-    setCustomAppointments((prev) =>
-      prev.map((item) => (item.id === app.id ? { ...item, status: 'فى الانتظار حضر المريض' } : item))
-    );
-
     // Persist to Firestore immediately
     if (db && app.id) {
       setDoc(
@@ -556,8 +377,6 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
       status: 'مجدول' as any,
       notes: appointmentNotes.trim() || undefined,
     };
-
-    setCustomAppointments((prev) => [newApp, ...prev]);
 
     if (onAddAppointment) {
       onAddAppointment(newApp);

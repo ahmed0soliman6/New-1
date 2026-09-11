@@ -130,6 +130,134 @@ import {
 } from './utils/alertManager';
 import { setCachedRecurringTemplates } from './utils/recurringTemplatesManager';
 
+// Merged full initial reference catalogs combining database.ts and previewMedicalCatalogs.ts
+const INITIAL_RADIOLOGY_FULL: RadiologyType[] = (() => {
+  const map = new Map<string, RadiologyType>();
+  INITIAL_RADIOLOGY_TYPES.forEach((r) => map.set(r.radiologyId, r));
+  DEFAULT_RADIOLOGY_CATALOG.forEach((r) => {
+    if (!map.has(r.id)) {
+      map.set(r.id, {
+        radiologyId: r.id,
+        nameAr: r.name,
+        nameEn: '',
+        category: r.category,
+        isFavorite: Boolean(r.isFavorite),
+        active: r.active !== false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as any);
+    }
+  });
+  return Array.from(map.values());
+})();
+
+const INITIAL_LAB_FULL: LabTest[] = (() => {
+  const map = new Map<string, LabTest>();
+  INITIAL_LAB_TESTS.forEach((l) => map.set(l.labTestId, l));
+  DEFAULT_LAB_CATALOG.forEach((l) => {
+    if (!map.has(l.id)) {
+      map.set(l.id, {
+        labTestId: l.id,
+        nameAr: l.name,
+        nameEn: '',
+        category: l.category,
+        sampleType: l.sampleType || 'دم',
+        referenceRange: l.referenceRange || '',
+        fastingRequired: Boolean(l.fastingRequired),
+        isFavorite: Boolean(l.isFavorite),
+        active: l.active !== false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as any);
+    }
+  });
+  return Array.from(map.values());
+})();
+
+const INITIAL_MEDICATIONS_FULL: Medication[] = (() => {
+  const map = new Map<string, Medication>();
+  INITIAL_MEDICATIONS.forEach((m) => map.set(m.medicationId, m));
+  DEFAULT_DRUG_CATALOG.forEach((d) => {
+    if (!map.has(d.id)) {
+      map.set(d.id, {
+        medicationId: d.id,
+        nameAr: d.brandName,
+        nameEn: d.brandName,
+        genericName: d.genericName || '',
+        strength: d.strength || '',
+        form: d.form || 'أقراص',
+        manufacturer: '',
+        source: 'LOCAL',
+        category: d.category || 'أدوية العيادة',
+        defaultDosage: d.defaultDosage || 'قرص واحد يومياً',
+        defaultDuration: d.defaultDuration || 'لمدة 7 أيام',
+        defaultTiming: d.defaultTiming || 'بعد الأكل',
+        isFavorite: Boolean(d.isFavorite),
+        active: d.active !== false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as any);
+    }
+  });
+  return Array.from(map.values());
+})();
+
+const INITIAL_DIAGNOSES_FULL: Diagnosis[] = (() => {
+  const map = new Map<string, Diagnosis>();
+  INITIAL_DIAGNOSES.forEach((d) => map.set(d.diagnosisId, d));
+  DEFAULT_DIAGNOSES_CATALOG.forEach((d) => {
+    if (!map.has(d.id)) {
+      map.set(d.id, {
+        diagnosisId: d.id,
+        nameAr: d.nameAr,
+        nameEn: d.nameEn || '',
+        code: d.code || 'ICD-10',
+        codeSystem: 'ICD10',
+        category: d.category || 'باطنة عامة',
+        isFavorite: Boolean(d.isFavorite),
+        active: d.active !== false,
+        createdAt: new Date().toISOString(),
+      } as any);
+    }
+  });
+  return Array.from(map.values());
+})();
+
+const INITIAL_SYMPTOMS_FULL: Symptom[] = (() => {
+  const map = new Map<string, Symptom>();
+  INITIAL_SYMPTOMS.forEach((s) => map.set(s.symptomId, s));
+  DEFAULT_SYMPTOMS_CATALOG.forEach((s) => {
+    if (!map.has(s.id)) {
+      map.set(s.id, {
+        symptomId: s.id,
+        nameAr: s.name,
+        nameEn: s.name,
+        category: s.category || 'شكوى عامة',
+        isFavorite: Boolean(s.isFavorite),
+        active: s.active !== false,
+      } as any);
+    }
+  });
+  return Array.from(map.values());
+})();
+
+const INITIAL_CHRONIC_FULL: ChronicDisease[] = (() => {
+  const map = new Map<string, ChronicDisease>();
+  INITIAL_CHRONIC_DISEASES.forEach((c) => map.set(c.diseaseId, c));
+  DEFAULT_CHRONIC_CONDITIONS.forEach((c) => {
+    if (!map.has(c.id)) {
+      map.set(c.id, {
+        diseaseId: c.id,
+        nameAr: c.name,
+        nameEn: c.name,
+        category: c.category || 'أمراض شائعة',
+        active: true,
+      } as any);
+    }
+  });
+  return Array.from(map.values());
+})();
+
 function ClinicApp() {
   const { canAccess, allowedScreens, userProfile } = usePermissions();
 
@@ -337,14 +465,14 @@ function ClinicApp() {
   const [paymentsCanonical, setPaymentsCanonical] = useState<Payment[]>([]);
   const [followUpsCanonical, setFollowUpsCanonical] = useState<FollowUp[]>([]);
   const [prescriptionsCanonical, setPrescriptionsCanonical] = useState<Prescription[]>([]);
-  const [medicationsCanonical, setMedicationsCanonical] = useState<Medication[]>(INITIAL_MEDICATIONS);
-  const [labTestsCanonical, setLabTestsCanonical] = useState<LabTest[]>(INITIAL_LAB_TESTS);
+  const [medicationsCanonical, setMedicationsCanonical] = useState<Medication[]>(INITIAL_MEDICATIONS_FULL);
+  const [labTestsCanonical, setLabTestsCanonical] = useState<LabTest[]>(INITIAL_LAB_FULL);
   const [labOrdersCanonical, setLabOrdersCanonical] = useState<LabOrder[]>([]);
-  const [radiologyTypesCanonical, setRadiologyTypesCanonical] = useState<RadiologyType[]>(INITIAL_RADIOLOGY_TYPES);
+  const [radiologyTypesCanonical, setRadiologyTypesCanonical] = useState<RadiologyType[]>(INITIAL_RADIOLOGY_FULL);
   const [radiologyOrdersCanonical, setRadiologyOrdersCanonical] = useState<RadiologyOrder[]>([]);
-  const [diagnosesCanonical, setDiagnosesCanonical] = useState<Diagnosis[]>(INITIAL_DIAGNOSES);
-  const [symptomsCanonical, setSymptomsCanonical] = useState<Symptom[]>(INITIAL_SYMPTOMS);
-  const [chronicDiseasesCanonical, setChronicDiseasesCanonical] = useState<ChronicDisease[]>(INITIAL_CHRONIC_DISEASES);
+  const [diagnosesCanonical, setDiagnosesCanonical] = useState<Diagnosis[]>(INITIAL_DIAGNOSES_FULL);
+  const [symptomsCanonical, setSymptomsCanonical] = useState<Symptom[]>(INITIAL_SYMPTOMS_FULL);
+  const [chronicDiseasesCanonical, setChronicDiseasesCanonical] = useState<ChronicDisease[]>(INITIAL_CHRONIC_FULL);
   const [doctorSettingsCanonical, setDoctorSettingsCanonical] = useState<DoctorSettings>(INITIAL_DOCTOR_SETTINGS_CANONICAL);
   const [systemSettingsCanonical] = useState<SystemSettings>(INITIAL_SYSTEM_SETTINGS_CANONICAL);
 
@@ -353,8 +481,8 @@ function ClinicApp() {
     if (activeExamPatient) {
       const live = patientsCanonical.find((p) => p.patientId === activeExamPatient.id);
       if (live && (live.fullName !== activeExamPatient.name || live.phone !== activeExamPatient.phone || live.address !== activeExamPatient.address)) {
-        const birthYear = live.dateOfBirth ? new Date(live.dateOfBirth).getFullYear() : 1988;
-        const calculatedAge = Math.max(1, new Date().getFullYear() - birthYear);
+        const birthYear = live.dateOfBirth ? new Date(live.dateOfBirth).getFullYear() : undefined;
+        const calculatedAge = birthYear ? Math.max(1, new Date().getFullYear() - birthYear) : activeExamPatient.age;
         setActiveExamPatient((prev) => prev ? {
           ...prev,
           name: live.fullName,
@@ -382,22 +510,22 @@ function ClinicApp() {
         if (querySnapshot.empty) {
           console.log('Firestore catalogs empty on first setup. Seeding reference catalogs...');
           const batch = writeBatch(db);
-          INITIAL_MEDICATIONS.forEach((med) => {
+          INITIAL_MEDICATIONS_FULL.forEach((med) => {
             batch.set(doc(db, 'medications', med.medicationId), med);
           });
-          INITIAL_LAB_TESTS.forEach((lt) => {
+          INITIAL_LAB_FULL.forEach((lt) => {
             batch.set(doc(db, 'labTests', lt.labTestId), lt);
           });
-          INITIAL_RADIOLOGY_TYPES.forEach((rt) => {
+          INITIAL_RADIOLOGY_FULL.forEach((rt) => {
             batch.set(doc(db, 'radiologyTypes', rt.radiologyId), rt);
           });
-          INITIAL_DIAGNOSES.forEach((diag) => {
+          INITIAL_DIAGNOSES_FULL.forEach((diag) => {
             batch.set(doc(db, 'diagnoses', diag.diagnosisId), diag);
           });
-          INITIAL_SYMPTOMS.forEach((sym) => {
+          INITIAL_SYMPTOMS_FULL.forEach((sym) => {
             batch.set(doc(db, 'symptoms', sym.symptomId), sym);
           });
-          INITIAL_CHRONIC_DISEASES.forEach((cd) => {
+          INITIAL_CHRONIC_FULL.forEach((cd) => {
             batch.set(doc(db, 'chronicDiseases', cd.diseaseId), cd);
           });
           await batch.commit();
@@ -448,12 +576,12 @@ function ClinicApp() {
       subscribeToFollowUps(db, (items) => { onDataSuccess(); setFollowUpsCanonical(items); }, onError),
       subscribeToLabOrders(db, (items) => { onDataSuccess(); setLabOrdersCanonical(items); }, onError),
       subscribeToRadiologyOrders(db, (items) => { onDataSuccess(); setRadiologyOrdersCanonical(items); }, onError),
-      subscribeToMedications(db, (items) => { onDataSuccess(); setMedicationsCanonical(items); }, onError),
-      subscribeToLabTests(db, (items) => { onDataSuccess(); setLabTestsCanonical(items); }, onError),
-      subscribeToRadiologyTypes(db, (items) => { onDataSuccess(); setRadiologyTypesCanonical(items); }, onError),
-      subscribeToDiagnoses(db, (items) => { onDataSuccess(); setDiagnosesCanonical(items); }, onError),
-      subscribeToSymptoms(db, (items) => { onDataSuccess(); setSymptomsCanonical(items); }, onError),
-      subscribeToChronicDiseases(db, (items) => { onDataSuccess(); setChronicDiseasesCanonical(items); }, onError),
+      subscribeToMedications(db, (items) => { onDataSuccess(); if (items) setMedicationsCanonical(items); }, onError),
+      subscribeToLabTests(db, (items) => { onDataSuccess(); if (items) setLabTestsCanonical(items); }, onError),
+      subscribeToRadiologyTypes(db, (items) => { onDataSuccess(); if (items) setRadiologyTypesCanonical(items); }, onError),
+      subscribeToDiagnoses(db, (items) => { onDataSuccess(); if (items) setDiagnosesCanonical(items); }, onError),
+      subscribeToSymptoms(db, (items) => { onDataSuccess(); if (items) setSymptomsCanonical(items); }, onError),
+      subscribeToChronicDiseases(db, (items) => { onDataSuccess(); if (items) setChronicDiseasesCanonical(items); }, onError),
       subscribeToDoctorProfile(db, (profile) => { if (profile) setDoctorProfile(profile); }, onError),
       subscribeToDoctorSettings(db, (settings) => { if (settings) setDoctorSettingsCanonical(settings); }, onError),
       subscribeToAlertSettings(db, (settings) => { if (settings) setCachedAlertSettings(settings); }, onError),
@@ -490,8 +618,8 @@ function ClinicApp() {
       const lastVisit = [...pVisits].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
       const lastDiag = lastVisit?.clinicalData?.diagnosis?.[0] || 'كشف عيادة باطنة';
       
-      const birthYear = p.dateOfBirth ? new Date(p.dateOfBirth).getFullYear() : 1988;
-      const calculatedAge = Math.max(1, new Date().getFullYear() - birthYear);
+      const birthYear = p.dateOfBirth ? new Date(p.dateOfBirth).getFullYear() : undefined;
+      const calculatedAge = birthYear ? Math.max(1, new Date().getFullYear() - birthYear) : 0;
 
       const createdDateObj = p.createdAt ? new Date(p.createdAt) : new Date();
       const registrationDate = createdDateObj.toLocaleDateString('ar-EG');
@@ -533,7 +661,7 @@ function ClinicApp() {
         const payment = paymentsCanonical.find((p) => p.visitId === v.visitId);
 
         const birthYear = pat?.dateOfBirth ? new Date(pat.dateOfBirth).getFullYear() : undefined;
-        const calculatedAge = birthYear ? Math.max(1, new Date().getFullYear() - birthYear) : 30;
+        const calculatedAge = birthYear ? Math.max(1, new Date().getFullYear() - birthYear) : 0;
 
         return {
           id: v.visitId,
@@ -580,10 +708,12 @@ function ClinicApp() {
         : 300;
       return {
         id: a.appointmentId,
-        patientName: pat?.fullName || 'مريض محجوز مسبقاً',
+        patientId: a.patientId,
+        appointmentId: a.appointmentId,
+        patientName: pat?.fullName || a.patientName || 'مريض محجوز مسبقاً',
         medicalCode: pat?.medicalCode || 'EG-NEW',
         fileNumber: pat?.fileNumber,
-        phone: pat?.phone || '',
+        phone: pat?.phone || a.phone || '',
         date: a.scheduledDate,
         time: a.scheduledTime,
         timeSlot: a.scheduledTime || '05:00 م',
@@ -672,87 +802,76 @@ function ClinicApp() {
 
   // Catalogs derived
   const presetChronicConditions = useMemo(() => {
-    if (chronicDiseasesCanonical.length > 0) {
-      return chronicDiseasesCanonical.map((c) => ({
-        id: c.diseaseId,
-        name: c.nameAr,
-        category: c.category || 'أمراض شائعة',
-        color: 'bg-teal-500',
-      }));
-    }
-    return DEFAULT_CHRONIC_CONDITIONS;
+    return chronicDiseasesCanonical.map((c) => ({
+      id: c.diseaseId,
+      name: c.nameAr || c.nameEn || 'مرض مزمن',
+      category: c.category || 'أمراض شائعة',
+      color: (c as any).color || 'bg-teal-500',
+    }));
   }, [chronicDiseasesCanonical]);
 
   const drugCatalog: DrugCatalogItem[] = useMemo(() => {
-    if (medicationsCanonical.length > 0) {
-      return medicationsCanonical.map((m) => ({
-        id: m.medicationId,
-        brandName: m.nameAr || m.nameEn || 'دواء',
-        genericName: m.genericName || '',
-        strength: m.strength || '',
-        form: m.form || 'أقراص',
-        category: (m as any).category || 'أدوية العيادة',
-        defaultDosage: (m as any).defaultDosage || 'قرص واحد يومياً',
-        defaultDuration: (m as any).defaultDuration || 'لمدة 7 أيام',
-        defaultTiming: (m as any).defaultTiming || 'بعد الأكل',
-        isFavorite: Boolean((m as any).isFavorite),
-        active: m.active !== false,
-      }));
-    }
-    return DEFAULT_DRUG_CATALOG;
+    return medicationsCanonical.map((m) => ({
+      id: m.medicationId,
+      brandName: m.nameAr || m.nameEn || 'دواء',
+      genericName: m.genericName || '',
+      strength: m.strength || '',
+      form: m.form || 'أقراص',
+      category: (m as any).category || 'أدوية العيادة',
+      defaultDosage: (m as any).defaultDosage || (m as any).defaultDose || 'قرص واحد يومياً',
+      defaultDuration: (m as any).defaultDuration || 'لمدة 7 أيام',
+      defaultTiming: (m as any).defaultTiming || 'بعد الأكل',
+      isFavorite: Boolean((m as any).isFavorite),
+      active: m.active !== false,
+      notes: (m as any).notes || '',
+    }));
   }, [medicationsCanonical]);
 
   const labCatalog: LabCatalogItem[] = useMemo(() => {
-    if (labTestsCanonical.length > 0) {
-      return labTestsCanonical.map((l) => ({
-        id: l.labTestId,
-        name: l.nameAr || l.nameEn || 'تحليل',
-        category: l.category || 'تحاليل عامة',
-        sampleType: l.sampleType || 'دم',
-        fastingRequired: Boolean(l.fastingRequired),
-        active: l.active !== false,
-      }));
-    }
-    return DEFAULT_LAB_CATALOG;
+    return labTestsCanonical.map((l) => ({
+      id: l.labTestId,
+      name: l.nameAr || l.nameEn || 'تحليل',
+      category: l.category || 'تحاليل عامة',
+      sampleType: l.sampleType || 'دم',
+      referenceRange: l.referenceRange || '',
+      unit: (l as any).unit || '',
+      fastingRequired: Boolean(l.fastingRequired),
+      isFavorite: Boolean((l as any).isFavorite),
+      active: l.active !== false,
+    }));
   }, [labTestsCanonical]);
 
   const radiologyCatalog: RadiologyCatalogItem[] = useMemo(() => {
-    if (radiologyTypesCanonical.length > 0) {
-      return radiologyTypesCanonical.map((r) => ({
-        id: r.radiologyId,
-        name: r.nameAr || r.nameEn || 'أشعة',
-        category: r.category || 'أشعة عامة',
-        active: r.active !== false,
-      }));
-    }
-    return DEFAULT_RADIOLOGY_CATALOG;
+    return radiologyTypesCanonical.map((r) => ({
+      id: r.radiologyId,
+      name: r.nameAr || r.nameEn || 'أشعة',
+      category: r.category || 'أشعة عامة',
+      isFavorite: Boolean((r as any).isFavorite),
+      active: r.active !== false,
+      notes: (r as any).notes || '',
+    }));
   }, [radiologyTypesCanonical]);
 
   const diagnosesCatalog: DiagnosisCatalogItem[] = useMemo(() => {
-    if (diagnosesCanonical.length > 0) {
-      return diagnosesCanonical.map((d) => ({
-        id: d.diagnosisId,
-        nameAr: d.nameAr || 'تشخيص',
-        nameEn: d.nameEn || '',
-        code: d.code || '',
-        category: d.category || 'باطنة عامة',
-        isFavorite: Boolean((d as any).isFavorite),
-        active: d.active !== false,
-      }));
-    }
-    return DEFAULT_DIAGNOSES_CATALOG;
+    return diagnosesCanonical.map((d) => ({
+      id: d.diagnosisId,
+      nameAr: d.nameAr || 'تشخيص',
+      nameEn: d.nameEn || '',
+      code: d.code || '',
+      category: d.category || 'باطنة عامة',
+      isFavorite: Boolean((d as any).isFavorite),
+      active: d.active !== false,
+    }));
   }, [diagnosesCanonical]);
 
   const symptomsCatalog: SymptomCatalogItem[] = useMemo(() => {
-    if (symptomsCanonical.length > 0) {
-      return symptomsCanonical.map((s) => ({
-        id: s.symptomId,
-        name: s.nameAr || 'عرض',
-        category: s.category || 'شكوى عامة',
-        active: s.active !== false,
-      }));
-    }
-    return DEFAULT_SYMPTOMS_CATALOG;
+    return symptomsCanonical.map((s) => ({
+      id: s.symptomId,
+      name: s.nameAr || 'عرض',
+      category: s.category || 'شكوى عامة',
+      isFavorite: Boolean((s as any).isFavorite),
+      active: s.active !== false,
+    }));
   }, [symptomsCanonical]);
 
   // Modals
@@ -780,6 +899,7 @@ function ClinicApp() {
     const cleanName = (app.patientName || '').trim().toLowerCase();
 
     const matchedPatient = patientsCanonical.find((p) => {
+      if (app.patientId && p.patientId === app.patientId) return true;
       const pPhone = (p.phone || '').trim().replace(/[^0-9]/g, '');
       const pName = (p.fullName || '').trim().toLowerCase();
       const phoneMatch = cleanPhone.length >= 7 && pPhone.includes(cleanPhone);
@@ -792,7 +912,7 @@ function ClinicApp() {
       : undefined;
 
     setIntakeInitialData({
-      patientId: matchedPatient?.patientId,
+      patientId: matchedPatient?.patientId || app.patientId,
       patientName: matchedPatient?.fullName || app.patientName,
       phone: matchedPatient?.phone || app.phone,
       visitType: app.visitType,
@@ -1088,7 +1208,9 @@ function ClinicApp() {
     };
     setRadiologyTypesCanonical((prev) => {
       const filtered = prev.filter((r) => r.radiologyId !== item.id);
-      return [rawItem, ...filtered];
+      const updated = [rawItem, ...filtered];
+      try { localStorage.setItem('soli_radiology_catalog', JSON.stringify(updated)); } catch {}
+      return updated;
     });
 
     if (db) {
@@ -1107,7 +1229,11 @@ function ClinicApp() {
   };
 
   const handleRemoveRadiologyFromCatalog = async (id: string) => {
-    setRadiologyTypesCanonical((prev) => prev.filter((r) => r.radiologyId !== id));
+    setRadiologyTypesCanonical((prev) => {
+      const updated = prev.filter((r) => r.radiologyId !== id);
+      try { localStorage.setItem('soli_radiology_catalog', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
     if (db) {
       try {
         await removeCatalogItem(db, 'radiologyTypes', id);
@@ -1118,9 +1244,11 @@ function ClinicApp() {
   };
 
   const handleToggleRadiologyFavorite = async (id: string) => {
-    setRadiologyTypesCanonical((prev) =>
-      prev.map((r) => (r.radiologyId === id ? { ...r, isFavorite: !r.isFavorite } : r))
-    );
+    setRadiologyTypesCanonical((prev) => {
+      const updated = prev.map((r) => (r.radiologyId === id ? { ...r, isFavorite: !r.isFavorite } : r));
+      try { localStorage.setItem('soli_radiology_catalog', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
     if (!db) return;
     const current = radiologyCatalog.find((r) => r.id === id);
     if (!current) return;
@@ -1148,7 +1276,9 @@ function ClinicApp() {
     };
     setLabTestsCanonical((prev) => {
       const filtered = prev.filter((l) => l.labTestId !== item.id);
-      return [rawItem, ...filtered];
+      const updated = [rawItem, ...filtered];
+      try { localStorage.setItem('soli_lab_catalog', JSON.stringify(updated)); } catch {}
+      return updated;
     });
 
     if (db) {
@@ -1171,7 +1301,11 @@ function ClinicApp() {
   };
 
   const handleRemoveLabFromCatalog = async (id: string) => {
-    setLabTestsCanonical((prev) => prev.filter((l) => l.labTestId !== id));
+    setLabTestsCanonical((prev) => {
+      const updated = prev.filter((l) => l.labTestId !== id);
+      try { localStorage.setItem('soli_lab_catalog', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
     if (db) {
       try {
         await removeCatalogItem(db, 'labTests', id);
@@ -1182,9 +1316,11 @@ function ClinicApp() {
   };
 
   const handleToggleLabFavorite = async (id: string) => {
-    setLabTestsCanonical((prev) =>
-      prev.map((l) => (l.labTestId === id ? { ...l, isFavorite: !l.isFavorite } : l))
-    );
+    setLabTestsCanonical((prev) => {
+      const updated = prev.map((l) => (l.labTestId === id ? { ...l, isFavorite: !l.isFavorite } : l));
+      try { localStorage.setItem('soli_lab_catalog', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
     if (!db) return;
     const current = labCatalog.find((l) => l.id === id);
     if (!current) return;
@@ -1213,7 +1349,9 @@ function ClinicApp() {
     };
     setMedicationsCanonical((prev) => {
       const filtered = prev.filter((m) => m.medicationId !== item.id);
-      return [rawItem, ...filtered];
+      const updated = [rawItem, ...filtered];
+      try { localStorage.setItem('soli_medications_catalog', JSON.stringify(updated)); } catch {}
+      return updated;
     });
 
     if (db) {
@@ -1242,7 +1380,11 @@ function ClinicApp() {
   };
 
   const handleRemoveDrugFromCatalog = async (id: string) => {
-    setMedicationsCanonical((prev) => prev.filter((m) => m.medicationId !== id));
+    setMedicationsCanonical((prev) => {
+      const updated = prev.filter((m) => m.medicationId !== id);
+      try { localStorage.setItem('soli_medications_catalog', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
     if (db) {
       try {
         await removeCatalogItem(db, 'medications', id);
@@ -1253,9 +1395,11 @@ function ClinicApp() {
   };
 
   const handleToggleDrugFavorite = async (id: string) => {
-    setMedicationsCanonical((prev) =>
-      prev.map((m) => (m.medicationId === id ? { ...m, isFavorite: !m.isFavorite } : m))
-    );
+    setMedicationsCanonical((prev) => {
+      const updated = prev.map((m) => (m.medicationId === id ? { ...m, isFavorite: !m.isFavorite } : m));
+      try { localStorage.setItem('soli_medications_catalog', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
     if (!db) return;
     const current = drugCatalog.find((d) => d.id === id);
     if (!current) return;
@@ -1280,7 +1424,9 @@ function ClinicApp() {
     };
     setDiagnosesCanonical((prev) => {
       const filtered = prev.filter((d) => d.diagnosisId !== item.id);
-      return [rawItem, ...filtered];
+      const updated = [rawItem, ...filtered];
+      try { localStorage.setItem('soli_diagnoses_catalog', JSON.stringify(updated)); } catch {}
+      return updated;
     });
 
     if (db) {
@@ -1301,7 +1447,11 @@ function ClinicApp() {
   };
 
   const handleRemoveDiagnosisFromCatalog = async (id: string) => {
-    setDiagnosesCanonical((prev) => prev.filter((d) => d.diagnosisId !== id));
+    setDiagnosesCanonical((prev) => {
+      const updated = prev.filter((d) => d.diagnosisId !== id);
+      try { localStorage.setItem('soli_diagnoses_catalog', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
     if (db) {
       try {
         await removeCatalogItem(db, 'diagnoses', id);
@@ -1312,9 +1462,11 @@ function ClinicApp() {
   };
 
   const handleToggleDiagnosisFavorite = async (id: string) => {
-    setDiagnosesCanonical((prev) =>
-      prev.map((d) => (d.diagnosisId === id ? { ...d, isFavorite: !d.isFavorite } : d))
-    );
+    setDiagnosesCanonical((prev) => {
+      const updated = prev.map((d) => (d.diagnosisId === id ? { ...d, isFavorite: !d.isFavorite } : d));
+      try { localStorage.setItem('soli_diagnoses_catalog', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
     if (!db) return;
     const current = diagnosesCatalog.find((d) => d.id === id);
     if (!current) return;
@@ -1337,7 +1489,9 @@ function ClinicApp() {
     };
     setSymptomsCanonical((prev) => {
       const filtered = prev.filter((s) => s.symptomId !== item.id);
-      return [rawItem, ...filtered];
+      const updated = [rawItem, ...filtered];
+      try { localStorage.setItem('soli_symptoms_catalog', JSON.stringify(updated)); } catch {}
+      return updated;
     });
 
     if (db) {
@@ -1355,7 +1509,11 @@ function ClinicApp() {
   };
 
   const handleRemoveSymptomFromCatalog = async (id: string) => {
-    setSymptomsCanonical((prev) => prev.filter((s) => s.symptomId !== id));
+    setSymptomsCanonical((prev) => {
+      const updated = prev.filter((s) => s.symptomId !== id);
+      try { localStorage.setItem('soli_symptoms_catalog', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
     if (db) {
       try {
         await removeCatalogItem(db, 'symptoms', id);
@@ -1379,7 +1537,9 @@ function ClinicApp() {
     };
     setChronicDiseasesCanonical((prev) => {
       const filtered = prev.filter((c) => c.diseaseId !== id && c.nameAr !== name);
-      return [rawItem, ...filtered];
+      const updated = [rawItem, ...filtered];
+      try { localStorage.setItem('soli_chronic_diseases_catalog', JSON.stringify(updated)); } catch {}
+      return updated;
     });
 
     if (db) {
@@ -1397,9 +1557,11 @@ function ClinicApp() {
   };
 
   const handleRemoveChronicCondition = async (idOrName: string) => {
-    setChronicDiseasesCanonical((prev) =>
-      prev.filter((c) => c.diseaseId !== idOrName && c.nameAr !== idOrName)
-    );
+    setChronicDiseasesCanonical((prev) => {
+      const updated = prev.filter((c) => c.diseaseId !== idOrName && c.nameAr !== idOrName);
+      try { localStorage.setItem('soli_chronic_diseases_catalog', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
     if (db) {
       const found = chronicDiseasesCanonical.find((c) => c.diseaseId === idOrName || c.nameAr === idOrName);
       const targetId = found ? found.diseaseId : idOrName;
@@ -1748,6 +1910,8 @@ function ClinicApp() {
       ? 'male'
       : (basePat?.gender === 'female' ? 'female' : 'male');
 
+    const targetPatientId = basePat?.patientId || item.patientId || `pat-${Date.now()}`;
+
     const patient: Patient = basePat
       ? {
           ...basePat,
@@ -1761,7 +1925,7 @@ function ClinicApp() {
           updatedAt: timestamp,
         }
       : {
-          patientId: `pat-${Date.now()}`,
+          patientId: targetPatientId,
           fullName: cleanName || 'مريض جديد',
           phone: cleanPhone,
           gender: patientGender,
@@ -1792,10 +1956,11 @@ function ClinicApp() {
 
         // If this intake was initiated from a scheduled appointment, mark the appointment as ARRIVED in Firestore
         // so it disappears from the active scheduled appointments view across all user accounts
-        if (intakeInitialData?.appointmentId && db) {
+        const apptIdToMark = item.appointmentId || intakeInitialData?.appointmentId;
+        if (apptIdToMark && db) {
           try {
             await setDoc(
-              doc(db, 'appointments', intakeInitialData.appointmentId),
+              doc(db, 'appointments', apptIdToMark),
               { status: 'ARRIVED', updatedAt: timestamp },
               { merge: true }
             );
@@ -1832,34 +1997,23 @@ function ClinicApp() {
     const cleanPhone = (app.phone || '').trim();
     const cleanName = (app.patientName || '').trim();
     const existingPatient = patientsCanonical.find((p) => {
+      if (app.patientId && p.patientId === app.patientId) return true;
       const pPhone = (p.phone || '').trim();
       const pName = (p.fullName || '').trim().toLowerCase();
       const phoneMatch = cleanPhone !== '' && pPhone !== '' && pPhone === cleanPhone;
       const nameMatch = cleanName !== '' && pName !== '' && pName === cleanName.toLowerCase();
       return phoneMatch || nameMatch;
     });
-    const patient: Patient = existingPatient
-      ? {
-          ...existingPatient,
-          fullName: cleanName || existingPatient.fullName,
-          phone: cleanPhone || existingPatient.phone,
-          updatedAt: timestamp,
-        }
-      : {
-          patientId: `pat-${Date.now()}`,
-          fullName: cleanName || 'مريض محجوز',
-          phone: cleanPhone,
-          medicalCode: app.medicalCode || `EG-${nextFileNumber}`,
-          fileNumber: app.fileNumber || nextFileNumber,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-          createdBy: userProfile?.username || 'receptionist',
-        };
+
+    const targetPatientId = existingPatient?.patientId || app.patientId || `pat-${Date.now()}`;
+
     const newApp: Appointment = {
       appointmentId: `app-${Date.now()}`,
-      patientId: patient.patientId,
+      patientId: targetPatientId,
+      patientName: cleanName || 'مريض محجوز',
+      phone: cleanPhone,
       clinicLocationId: 'loc-mohandessin',
-      scheduledDate: new Date().toISOString().split('T')[0],
+      scheduledDate: app.date || new Date().toISOString().split('T')[0],
       scheduledTime: app.timeSlot || '07:30 م',
       visitType: app.visitType,
       status: 'SCHEDULED',
@@ -1870,7 +2024,7 @@ function ClinicApp() {
     };
     if (db) {
       try {
-        await createAppointmentTransaction({ db, patient, appointment: newApp });
+        await createAppointmentTransaction({ db, patient: existingPatient || null, appointment: newApp });
       } catch (error) {
         alert(error instanceof Error ? error.message : 'تعذر حفظ الموعد في قاعدة البيانات');
       }

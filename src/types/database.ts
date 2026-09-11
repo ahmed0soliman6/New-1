@@ -116,6 +116,8 @@ export type AppointmentStatus = 'SCHEDULED' | 'ARRIVED' | 'CANCELLED' | 'NO_SHOW
 export interface Appointment {
   appointmentId: string;
   patientId: string;
+  patientName?: string;
+  phone?: string;
   clinicLocationId: string;
   scheduledDate: string; // YYYY-MM-DD
   scheduledTime: string; // HH:mm

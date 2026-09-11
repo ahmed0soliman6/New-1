@@ -358,16 +358,18 @@ export async function completeVisitTransaction(params: {
 
 export async function createAppointmentTransaction(params: {
   db: Firestore;
-  patient: Patient;
+  patient?: Patient | null;
   appointment: Appointment;
 }): Promise<void> {
   await runTransaction(params.db, async (tx) => {
-    const patientRef = doc(params.db, 'patients', params.patient.patientId);
-    const appointmentRef = doc(params.db, 'appointments', params.appointment.appointmentId);
-    const patientSnap = await tx.get(patientRef);
-    if (!patientSnap.exists()) {
-      tx.set(patientRef, { ...params.patient, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    if (params.patient && params.patient.patientId) {
+      const patientRef = doc(params.db, 'patients', params.patient.patientId);
+      const patientSnap = await tx.get(patientRef);
+      if (patientSnap.exists()) {
+        tx.update(patientRef, { updatedAt: serverTimestamp() });
+      }
     }
+    const appointmentRef = doc(params.db, 'appointments', params.appointment.appointmentId);
     tx.set(appointmentRef, { ...params.appointment, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
   });
 }

@@ -67,10 +67,13 @@ export interface QueueItem {
   bloodType?: string;
   chronicConditions?: string[];
   patientId?: string;
+  appointmentId?: string;
 }
 
 export interface AppointmentListItem {
   id: string;
+  patientId?: string;
+  appointmentId?: string;
   patientName: string;
   fileNumber?: number | string;
   phone: string;

@@ -11,6 +11,7 @@ interface PatientIntakeScreenProps {
   symptomsCatalog?: { id: string; name: string; category: string }[];
   visitTypesList?: { id: string; name: string; fee: number }[];
   initialData?: {
+    patientId?: string;
     patientName?: string;
     phone?: string;
     visitType?: string;
@@ -248,13 +249,15 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
     const ticketNumber = `#${Math.floor(Math.random() * 20) + 20}`;
     const newQueueItem: QueueItem = {
       id: `q-${Date.now()}`,
+      patientId: autoFilledPatientId || initialData?.patientId || undefined,
+      appointmentId: initialData?.appointmentId || undefined,
       ticketNumber,
       fileNumber: autoFileNumber,
       patientName: name.trim(),
       medicalCode: `EG-${Math.floor(Math.random() * 90000) + 10000}`,
       phone: phone.trim(),
-      age: Number(age) || 30,
-      gender: gender || 'male',
+      age: Number(age) || 0,
+      gender: gender || '',
       visitType: selectedVisitType.name,
       arrivalTime: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
       elapsedMinutes: 1,
