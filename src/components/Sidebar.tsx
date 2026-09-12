@@ -4,6 +4,7 @@ import { CLINIC_INFO } from '../data/previewClinicData';
 import { usePermissions } from '../context/AuthContext';
 import { ROLE_LABELS } from '../permissions';
 import { SoliMedicalLogo } from './SoliMedicalLogo';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface SidebarProps {
   activeScreen: ScreenType;
@@ -31,6 +32,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleDoctorStatus,
 }) => {
   const { role, userProfile, canAccess } = usePermissions();
+  const { language, toggleLanguage, t, isRTL } = useLanguage();
   const [internalDoctorStatus, setInternalDoctorStatus] = useState<'available' | 'break'>('available');
   
   const doctorStatus = externalDoctorStatus || internalDoctorStatus;
@@ -43,22 +45,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const allNavItems: { id: ScreenType; label: string; icon: string; badge?: number | string }[] = [
-    { id: 'dashboard', label: 'لوحة التحكم', icon: 'space_dashboard' },
-    { id: 'new-visit', label: 'تسجيل زيارة جديدة', icon: 'person_add' },
-    { id: 'waiting-queue', label: 'المرضى في الانتظار', icon: 'hourglass_top', badge: queueCount },
-    { id: 'clinical-exam', label: 'الكشف الطبي للغرفة', icon: 'stethoscope', badge: 'نشط' },
-    { id: 'upcoming-followups', label: 'المتابعة القادمة والمواعيد', icon: 'event_repeat' },
-    { id: 'patient-records', label: 'ملفات المرضى (EMR)', icon: 'folder_shared' },
-    { id: 'billing-payments', label: 'الفواتير والمدفوعات', icon: 'receipt_long' },
-    { id: 'clinical-reports', label: 'التقارير والإحصائيات', icon: 'analytics' },
-    { id: 'prescription-pad', label: 'إعدادات الروشتة والطباعة', icon: 'print' },
-    { id: 'system-settings', label: 'إعدادات النظام والأدلة', icon: 'settings' },
+    { id: 'dashboard', label: t('nav.dashboard'), icon: 'space_dashboard' },
+    { id: 'new-visit', label: t('nav.newVisit'), icon: 'person_add' },
+    { id: 'waiting-queue', label: t('nav.waitingQueue'), icon: 'hourglass_top', badge: queueCount },
+    { id: 'clinical-exam', label: t('nav.clinicalExam'), icon: 'stethoscope', badge: isRTL ? 'نشط' : 'Active' },
+    { id: 'upcoming-followups', label: t('nav.upcomingFollowups'), icon: 'event_repeat' },
+    { id: 'patient-records', label: t('nav.patientRecords'), icon: 'folder_shared' },
+    { id: 'billing-payments', label: t('nav.billingPayments'), icon: 'receipt_long' },
+    { id: 'clinical-reports', label: t('nav.clinicalReports'), icon: 'analytics' },
+    { id: 'prescription-pad', label: t('nav.prescriptionPad'), icon: 'print' },
+    { id: 'system-settings', label: t('nav.systemSettings'), icon: 'settings' },
   ];
 
   // Dynamically filter items according to the user's allowed screens configured in Firestore
   const navItems = allNavItems.filter((item) => canAccess(item.id));
 
-  const roleLabel = ROLE_LABELS[role] || role;
+  const roleLabel =
+    language === 'en'
+      ? role === 'admin'
+        ? 'System Admin'
+        : role === 'doctor'
+        ? 'Physician'
+        : 'Receptionist'
+      : ROLE_LABELS[role] || role;
 
   const roleBadgeStyle =
     role === 'admin'
@@ -79,21 +88,42 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       <aside
-        className={`fixed right-0 top-0 h-full w-72 bg-[#111A2E] text-[#dde2f5] border-l border-white/10 z-50 flex flex-col shadow-2xl transition-transform duration-300 ease-in-out ${
-          isOpenMobile ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'
+        className={`fixed top-0 h-full w-72 bg-[#111A2E] text-[#dde2f5] z-50 flex flex-col shadow-2xl transition-transform duration-300 ease-in-out ${
+          isRTL ? 'right-0 border-l border-white/10' : 'left-0 border-r border-white/10'
+        } ${
+          isOpenMobile
+            ? 'translate-x-0'
+            : isRTL
+            ? 'translate-x-full lg:translate-x-0'
+            : '-translate-x-full lg:translate-x-0'
         }`}
       >
         {/* Brand Header */}
-        <div className="h-16 px-3.5 flex items-center justify-between bg-[#080e1b] border-b border-white/10 shrink-0">
+        <div className="h-16 px-3 flex items-center justify-between bg-[#080e1b] border-b border-white/10 shrink-0">
           <SoliMedicalLogo size="md" showText={true} glow={true} />
 
           <div className="flex items-center gap-1.5">
+            {/* Translation / Language Toggle Button placed next to Theme Toggle */}
+            <button
+              type="button"
+              onClick={toggleLanguage}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-[#18233C] hover:bg-[#242a38] text-[#45dee7] hover:text-white border border-[#00c2cb]/40 transition-all cursor-pointer text-xs font-bold shadow-xs active:scale-95"
+              title={language === 'ar' ? 'Switch to English (التحويل للإنجليزية)' : 'التحويل للغة العربية (Switch to Arabic)'}
+            >
+              <span className="material-symbols-outlined text-[17px] text-[#00c2cb]">
+                translate
+              </span>
+              <span className="font-mono text-[11px] font-bold text-[#f1f5f9]">
+                {language === 'ar' ? 'EN' : 'عربي'}
+              </span>
+            </button>
+
             {/* Theme Toggle Button placed in Header of Sidebar */}
             <button
               type="button"
               onClick={onToggleTheme}
               className="flex items-center gap-1 px-2 py-1.5 rounded-xl bg-[#18233C] hover:bg-[#242a38] text-[#45dee7] border border-[#00c2cb]/30 transition-all cursor-pointer text-xs font-semibold shadow-xs active:scale-95"
-              title={isDark ? 'تفعيل الوضع النهاري' : 'تفعيل الوضع الليلي'}
+              title={isDark ? (language === 'en' ? 'Switch to Light Mode' : 'تفعيل الوضع النهاري') : (language === 'en' ? 'Switch to Dark Mode' : 'تفعيل الوضع الليلي')}
             >
               <span className="material-symbols-outlined text-base text-amber-400">
                 {isDark ? 'light_mode' : 'dark_mode'}
@@ -105,7 +135,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               type="button"
               onClick={onCloseMobile}
               className="lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10"
-              aria-label="إغلاق القائمة"
+              aria-label={language === 'en' ? 'Close menu' : 'إغلاق القائمة'}
             >
               <span className="material-symbols-outlined text-xl">close</span>
             </button>
@@ -123,26 +153,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   onNavigate(item.id);
                   if (onCloseMobile) onCloseMobile();
                 }}
-                className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl text-right transition-all duration-200 cursor-pointer group ${
+                className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl ${
+                  isRTL ? 'text-right' : 'text-left'
+                } transition-all duration-200 cursor-pointer group ${
                   isActive
-                    ? 'bg-[#18233C] text-[#45dee7] font-bold shadow-md relative border-r-4 border-[#00c2cb] scale-[1.01]'
-                    : 'text-[#cbd5e1] hover:bg-[#00c2cb]/15 hover:text-[#45dee7] hover:border-r-4 hover:border-[#00c2cb]/70 font-medium'
+                    ? `bg-[#18233C] text-[#45dee7] font-bold shadow-md relative ${
+                        isRTL ? 'border-r-4' : 'border-l-4'
+                      } border-[#00c2cb] scale-[1.01]`
+                    : `text-[#cbd5e1] hover:bg-[#00c2cb]/15 hover:text-[#45dee7] ${
+                        isRTL ? 'hover:border-r-4' : 'hover:border-l-4'
+                      } hover:border-[#00c2cb]/70 font-medium`
                 }`}
               >
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3.5 min-w-0">
                   <span
-                    className={`material-symbols-outlined text-[22px] transition-colors ${
+                    className={`material-symbols-outlined text-[22px] transition-colors shrink-0 ${
                       isActive ? 'text-[#00c2cb]' : 'text-slate-400 group-hover:text-[#00c2cb]'
                     }`}
                     style={isActive ? { fontVariationSettings: "'FILL' 1" } : {}}
                   >
                     {item.icon}
                   </span>
-                  <span className="text-[15px] font-bold tracking-wide leading-relaxed">{item.label}</span>
+                  <span className="text-[14.5px] font-bold tracking-wide leading-relaxed truncate">{item.label}</span>
                 </div>
                 {item.badge !== undefined && (
                   <span
-                    className={`text-xs px-2.5 py-0.5 rounded-full font-bold font-mono ${
+                    className={`text-xs px-2.5 py-0.5 rounded-full font-bold font-mono shrink-0 ${
                       isActive
                         ? 'bg-[#00c2cb] text-[#08101C]'
                         : typeof item.badge === 'string'
@@ -171,7 +207,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 }`}
               ></span>
               <span className="text-xs font-semibold text-[#f1f5f9]">
-                {doctorStatus === 'available' ? 'الطبيب متاح' : 'الطبيب في استراحة ☕'}
+                {doctorStatus === 'available'
+                  ? language === 'en'
+                    ? 'Doctor Available'
+                    : 'الطبيب متاح'
+                  : language === 'en'
+                  ? 'Doctor on Break ☕'
+                  : 'الطبيب في استراحة ☕'}
               </span>
             </div>
             {role !== 'secretary' ? (
@@ -180,20 +222,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onClick={handleToggleDoctor}
                 className="px-2.5 py-1 bg-[#18233C] hover:bg-[#242a38] text-[#cbd5e1] hover:text-white rounded-lg text-xs font-medium transition-colors cursor-pointer border border-white/5"
               >
-                {doctorStatus === 'available' ? 'استراحة' : 'تفعيل'}
+                {doctorStatus === 'available'
+                  ? language === 'en'
+                    ? 'Break'
+                    : 'استراحة'
+                  : language === 'en'
+                  ? 'Activate'
+                  : 'تفعيل'}
               </button>
             ) : (
               <span className="text-[10px] text-slate-400 px-1.5 py-0.5 rounded bg-[#18233C]">
-                مباشر
+                {language === 'en' ? 'Live' : 'مباشر'}
               </span>
             )}
           </div>
 
-          {/* User Identity (Clean, No Image) + Logout */}
+          {/* User Identity + Logout */}
           <div className="p-2.5 rounded-xl bg-[#111A2E] border border-white/10 shadow-xs flex items-center justify-between gap-2">
-            <div className="min-w-0 text-right">
+            <div className={`min-w-0 ${isRTL ? 'text-right' : 'text-left'}`}>
               <div className="text-xs font-bold text-[#f1f5f9] truncate">
-                {userProfile?.displayName || userProfile?.username || 'المستخدم'}
+                {userProfile?.displayName || userProfile?.username || (language === 'en' ? 'User' : 'المستخدم')}
               </div>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className="text-[10px] text-slate-400 font-mono truncate" dir="ltr">
@@ -211,10 +259,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
               type="button"
               onClick={onLogout}
               className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-400/40 bg-red-500/15 text-xs font-bold text-red-300 hover:bg-red-500/25 transition-colors cursor-pointer shrink-0"
-              title="تسجيل الخروج من الحساب"
+              title={language === 'en' ? 'Sign out' : 'تسجيل الخروج من الحساب'}
             >
               <span className="material-symbols-outlined text-sm">logout</span>
-              <span>خروج</span>
+              <span>{language === 'en' ? 'Exit' : 'خروج'}</span>
             </button>
           </div>
         </div>
@@ -222,3 +270,4 @@ export const Sidebar: React.FC<SidebarProps> = ({
     </>
   );
 };
+

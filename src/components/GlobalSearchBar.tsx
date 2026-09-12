@@ -8,6 +8,7 @@ import {
 } from '../types';
 import { INITIAL_SERVICES } from '../data/database';
 import { toEnglishDigits } from '../utils/numberUtils';
+import { useLanguage } from '../i18n/LanguageContext';
 
 export interface GlobalSearchBarProps {
   patients: PatientListItem[];
@@ -32,6 +33,7 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
   onStartIntakeFromAppointment,
   onCallPatient,
 }) => {
+  const { language, isRTL, t } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<'all' | 'patients' | 'appointments' | 'queue' | 'services' | 'billing'>('all');
@@ -209,15 +211,19 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
           type="button"
           onClick={() => setIsOpen(true)}
           className="w-full h-9 sm:h-10 px-2 sm:px-3.5 bg-slate-100 hover:bg-slate-200/80 dark:bg-[#111A2E] dark:hover:bg-[#18233C] text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-white/10 rounded-xl flex items-center justify-between gap-1.5 sm:gap-2 text-xs transition-all cursor-pointer group shadow-2xs"
-          title="بحث شامل في النظام (Ctrl + K)"
+          title={language === 'en' ? 'Universal System Search (Ctrl + K)' : 'بحث شامل في النظام (Ctrl + K)'}
         >
           <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
             <span className="material-symbols-outlined text-slate-400 group-hover:text-[#00c2cb] transition-colors text-base sm:text-lg shrink-0">
               search
             </span>
             <span className="truncate font-medium text-slate-600 dark:text-slate-300 text-[11px] sm:text-xs">
-              <span className="hidden sm:inline">بحث شامل (اسم، هاتف، ملف، خدمة...)</span>
-              <span className="sm:hidden font-bold">بحث...</span>
+              <span className="hidden sm:inline">
+                {language === 'en' ? 'Universal search (Patient, phone, file #, service...)' : 'بحث شامل (اسم، هاتف، ملف، خدمة...)'}
+              </span>
+              <span className="sm:hidden font-bold">
+                {language === 'en' ? 'Search...' : 'بحث...'}
+              </span>
             </span>
           </div>
 
@@ -237,7 +243,7 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
           <div
             ref={modalRef}
             className="w-full max-w-3xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-white/15 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-150"
-            dir="rtl"
+            dir={isRTL ? 'rtl' : 'ltr'}
           >
             {/* Header & Main Search Input */}
             <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-white/10 bg-slate-50/70 dark:bg-[#111A2E]/80 flex flex-col gap-3">
@@ -248,10 +254,10 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
                   </div>
                   <div>
                     <h3 className="text-sm font-black text-slate-900 dark:text-white">
-                      البحث الشامل في النظام
+                      {language === 'en' ? 'Universal Clinic Search' : 'البحث الشامل في النظام'}
                     </h3>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                      بحث حي ومتزامن عبر السحابة والتخزين المحلي
+                      {language === 'en' ? 'Live synchronized search across cloud and local storage' : 'بحث حي ومتزامن عبر السحابة والتخزين المحلي'}
                     </p>
                   </div>
                 </div>
@@ -259,7 +265,7 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    <span>السحابة والمتصفح متصلان</span>
+                    <span>{language === 'en' ? 'Live Cloud Sync' : 'السحابة والمتصفح متصلان'}</span>
                   </div>
                   <button
                     onClick={() => setIsOpen(false)}
@@ -277,16 +283,16 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="اكتب اسم المريض، رقم الهاتف، كود الملف (P-001)، أو نوع الخدمة المطلوبة..."
-                  className="w-full bg-white dark:bg-[#070d18] text-slate-900 dark:text-white text-sm sm:text-base pr-11 pl-10 py-3.5 rounded-2xl border-2 border-[#00c2cb] focus:outline-none focus:ring-4 focus:ring-[#00c2cb]/20 placeholder:text-slate-400 font-medium shadow-inner"
+                  placeholder={language === 'en' ? 'Type patient name, phone, file number (e.g. P-001), or service...' : 'اكتب اسم المريض، رقم الهاتف، كود الملف (P-001)، أو نوع الخدمة المطلوبة...'}
+                  className={`w-full bg-white dark:bg-[#070d18] text-slate-900 dark:text-white text-sm sm:text-base ${isRTL ? 'pr-11 pl-10' : 'pl-11 pr-10'} py-3.5 rounded-2xl border-2 border-[#00c2cb] focus:outline-none focus:ring-4 focus:ring-[#00c2cb]/20 placeholder:text-slate-400 font-medium shadow-inner`}
                 />
-                <span className="material-symbols-outlined absolute right-3.5 top-1/2 -translate-y-1/2 text-[#00c2cb] text-2xl pointer-events-none">
+                <span className={`material-symbols-outlined absolute ${isRTL ? 'right-3.5' : 'left-3.5'} top-1/2 -translate-y-1/2 text-[#00c2cb] text-2xl pointer-events-none`}>
                   search
                 </span>
                 {searchTerm && (
                   <button
                     onClick={() => setSearchTerm('')}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white p-1 cursor-pointer"
+                    className={`absolute ${isRTL ? 'left-3' : 'right-3'} top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white p-1 cursor-pointer`}
                   >
                     <span className="material-symbols-outlined text-lg">cancel</span>
                   </button>
@@ -296,12 +302,12 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
               {/* Category Filter Pills */}
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
                 {[
-                  { id: 'all', label: 'الكل', count: searchResults.total },
-                  { id: 'patients', label: 'سجلات المرضى', count: searchResults.patients.length },
-                  { id: 'appointments', label: 'المواعيد', count: searchResults.appointments.length },
-                  { id: 'queue', label: 'طابور الانتظار', count: searchResults.queue.length },
-                  { id: 'services', label: 'الخدمات الطبية', count: searchResults.services.length },
-                  { id: 'billing', label: 'الفواتير والماليات', count: searchResults.billing.length },
+                  { id: 'all', label: language === 'en' ? 'All' : 'الكل', count: searchResults.total },
+                  { id: 'patients', label: language === 'en' ? 'Patients' : 'سجلات المرضى', count: searchResults.patients.length },
+                  { id: 'appointments', label: language === 'en' ? 'Appointments' : 'المواعيد', count: searchResults.appointments.length },
+                  { id: 'queue', label: language === 'en' ? 'Queue' : 'طابور الانتظار', count: searchResults.queue.length },
+                  { id: 'services', label: language === 'en' ? 'Services' : 'الخدمات الطبية', count: searchResults.services.length },
+                  { id: 'billing', label: language === 'en' ? 'Billing' : 'الفواتير والماليات', count: searchResults.billing.length },
                 ].map((tab) => (
                   <button
                     key={tab.id}

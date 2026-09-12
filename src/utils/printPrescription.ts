@@ -185,11 +185,11 @@ export function printPrescriptionDocument(data: PrintPrescriptionData) {
       `).join('')
     : '<div style="text-align: center; padding: 25px 0; color: #94a3b8; font-size: 12px;">لا توجد أدوية مضافة للروشتة حالياً.</div>';
 
-  // Build diagnoses HTML
+  // Build diagnoses HTML - strictly LTR and in English as requested
   const diagnosesHtml = diagnoses.length > 0
     ? `
-      <div style="padding: 6px 10px; margin-top: 8px; border: 1px solid #e2e8f0; border-radius: 6px; background-color: #f8fafc; font-size: 11px; text-align: right; color: #1e293b;">
-        <strong style="color: #475569;">التشخيص الطبي:</strong> ${diagnoses.map(d => d.nameAr || d.nameEn || d.code).join('، ')}
+      <div style="padding: 6px 10px; margin-top: 8px; border: 1px solid #e2e8f0; border-radius: 6px; background-color: #f8fafc; font-size: 11.5px; text-align: left; direction: ltr; color: #1e293b;">
+        <strong style="color: #008f97;">Diagnosis:</strong> ${diagnoses.map(d => d.nameEn || d.nameAr || d.code).join(', ')}
       </div>
     `
     : '';

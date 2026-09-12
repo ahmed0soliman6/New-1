@@ -2252,10 +2252,13 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
               )}
             </div>
 
-            {/* Diagnosis / Notes in print */}
+            {/* Diagnosis / Notes in print - strictly LTR and English */}
             {patientDiagnoses && patientDiagnoses.length > 0 && (
-              <div className="p-2 rounded-lg bg-slate-50 border border-slate-100 text-[10px] text-slate-800 text-right leading-relaxed" dir="rtl">
-                <span className="font-bold text-slate-600">التشخيص:</span> {patientDiagnoses.map((d) => d.nameAr).join('، ')}
+              <div className="p-2 rounded-lg bg-slate-50 border border-slate-100 text-[11px] text-slate-800 text-left leading-relaxed font-sans" dir="ltr">
+                <span className="font-bold text-slate-700">Diagnosis:</span>{' '}
+                <span className="font-semibold text-slate-900">
+                  {patientDiagnoses.map((d) => d.nameEn || d.nameAr).join(', ')}
+                </span>
               </div>
             )}
 

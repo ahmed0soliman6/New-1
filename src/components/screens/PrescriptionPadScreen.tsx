@@ -8,6 +8,7 @@ import { saveSettingsDocument, subscribeToPrescriptionSettings } from '../../ser
 import { usePermissions } from '../../context/AuthContext';
 import { PermissionGate } from '../auth/PermissionGate';
 import { PatientListItem, PrescriptionItem } from '../../types';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 interface PrescriptionPadScreenProps {
   patient?: PatientListItem | null;
@@ -112,6 +113,7 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
   onChangeItems,
   onUpdatePatient,
 }) => {
+  const { language, isRTL, t } = useLanguage();
   const { assertPermission } = usePermissions();
 
   // Editing patient state from Prescription Pad
@@ -418,10 +420,10 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
             </div>
             <div>
               <h1 className="text-xl font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                <span>إعدادات الروشتة والطباعة (A5 Print Settings)</span>
+                <span>{t('prescriptionSettings.title')}</span>
               </h1>
               <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
-                التحكم المباشر في هوية ورأس الروشتة، الشعار، رمز QR، الهوامش، والفروع مع حفظ تلقائي فوري
+                {t('prescriptionSettings.subtitle')}
               </p>
             </div>
           </div>
@@ -430,7 +432,7 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
             {/* Auto-save status indicator */}
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40 text-[11px] font-bold">
               <span className={`w-2 h-2 rounded-full ${autoSaveStatus === 'saving' ? 'bg-amber-500 animate-ping' : 'bg-emerald-500'}`}></span>
-              <span>{autoSaveStatus === 'saving' ? 'جارٍ الحفظ التلقائي...' : 'تم الحفظ التلقائي ✓'}</span>
+              <span>{autoSaveStatus === 'saving' ? t('prescriptionSettings.autoSaving') : t('prescriptionSettings.autoSaved')}</span>
             </div>
 
             <button
@@ -439,7 +441,7 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] hover:bg-slate-200 dark:hover:bg-white/10 text-xs font-bold transition-all cursor-pointer border border-slate-200 dark:border-white/5"
             >
               <span className="material-symbols-outlined text-base">print</span>
-              <span>تجربة الطباعة الحية</span>
+              <span>{t('prescriptionSettings.testPrint')}</span>
             </button>
 
             <PermissionGate permission="settings.edit">
@@ -450,7 +452,7 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
                 className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] text-xs font-bold shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
               >
                 <span className="material-symbols-outlined text-base">save</span>
-                <span>{isSaving ? 'جارٍ الحفظ...' : 'حفظ الإعدادات'}</span>
+                <span>{isSaving ? t('action.saving') : t('action.save')}</span>
               </button>
             </PermissionGate>
           </div>
@@ -468,7 +470,7 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
             }`}
           >
             <span className="material-symbols-outlined text-base">dashboard_customize</span>
-            <span>الهوامش والأبعاد والتنسيق</span>
+            <span>{t('prescriptionSettings.margins')}</span>
           </button>
 
           <button
@@ -481,7 +483,7 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
             }`}
           >
             <span className="material-symbols-outlined text-base">badge</span>
-            <span>بيانات الطبيب والشعار</span>
+            <span>{t('prescriptionSettings.doctorProfile')}</span>
           </button>
 
           <button
@@ -494,7 +496,7 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
             }`}
           >
             <span className="material-symbols-outlined text-base">qr_code_2</span>
-            <span>رمز الاستجابة السريعة (QR Code)</span>
+            <span>{t('prescriptionSettings.qrCode')}</span>
           </button>
 
           <button
@@ -507,7 +509,7 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
             }`}
           >
             <span className="material-symbols-outlined text-base">apartment</span>
-            <span>فروع العيادة بالتذييل</span>
+            <span>{t('prescriptionSettings.branches')}</span>
           </button>
 
           <button
@@ -520,7 +522,7 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
             }`}
           >
             <span className="material-symbols-outlined text-base">print</span>
-            <span>طابعات الإيصالات والروشتات</span>
+            <span>{t('prescriptionSettings.printers')}</span>
           </button>
         </div>
       </div>
@@ -1148,12 +1150,13 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
           {/* A5 Simulated Sheet */}
           <div
             id="printable-prescription-pad"
+            dir="rtl"
             style={{
               padding: MARGIN_VALUES[config.outerMargin] || '7mm',
               paddingTop: config.preprintedPaperMode ? '25mm' : MARGIN_VALUES[config.headerMarginTop] || '7mm',
               paddingBottom: config.preprintedPaperMode ? '20mm' : MARGIN_VALUES[config.footerMarginBottom] || '7mm',
             }}
-            className="w-full max-w-[560px] bg-white text-slate-900 rounded-2xl shadow-2xl border border-slate-300 min-h-[680px] flex flex-col justify-between transition-all print:m-0 print:border-none print:shadow-none print:w-full print:max-w-none"
+            className="w-full max-w-[560px] bg-white text-slate-900 rounded-2xl shadow-2xl border border-slate-300 min-h-[680px] flex flex-col justify-between transition-all print:m-0 print:border-none print:shadow-none print:w-full print:max-w-none text-right"
           >
             {/* Header Area */}
             {!config.preprintedPaperMode && config.showHeader ? (
@@ -1353,12 +1356,11 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
                 )}
               </div>
 
-              {/* Chronic conditions info banner in print preview if any */}
-              {patient && patient.chronicConditions && patient.chronicConditions.length > 0 && (
-                <div className="p-2 rounded-lg bg-rose-50/40 border border-rose-100 text-[10px] text-rose-950 leading-relaxed">
-                  <span className="font-bold">التشخيص المزمن:</span> {patient.chronicConditions.join('، ')}
-                </div>
-              )}
+              {/* Diagnosis Banner - strictly LTR and in English as requested */}
+              <div dir="ltr" className="p-2 rounded-lg bg-slate-50/90 border border-slate-200 text-[11px] text-slate-800 text-left font-medium">
+                <span className="font-bold text-[#008f97]">Diagnosis: </span>
+                <span>{patient?.chronicConditions && patient.chronicConditions.length > 0 ? patient.chronicConditions.join(', ') : 'Essential Hypertension (I10)'}</span>
+              </div>
 
               {/* Sample Advice */}
               <div className="p-2 rounded-lg bg-teal-50/40 border border-teal-100 text-[10px] text-teal-900 leading-relaxed">

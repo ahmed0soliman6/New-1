@@ -22,12 +22,15 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 import { initArabicToEnglishDigitsGlobalListener } from './utils/numberUtils';
+import { LanguageProvider } from './i18n/LanguageContext';
 
 // Initialize global Arabic to English numbers converter for all inputs
 initArabicToEnglishDigitsGlobalListener();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <LanguageProvider>
+      <App />
+    </LanguageProvider>
   </StrictMode>,
 );

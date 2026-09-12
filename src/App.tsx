@@ -91,6 +91,7 @@ import { doc, deleteDoc, setDoc, collection, getDocs, writeBatch } from 'firebas
 import { logoutAccount } from './services/auth';
 import { AuthScreen } from './components/AuthScreen';
 import { AuthProvider, useAuth, usePermissions } from './context/AuthContext';
+import { useLanguage } from './i18n/LanguageContext';
 import {
   createAppointmentTransaction,
   checkInAppointmentTransaction,
@@ -261,15 +262,54 @@ const INITIAL_CHRONIC_FULL: ChronicDisease[] = (() => {
   return Array.from(map.values());
 })();
 
+const ACTIVE_SCREEN_STORAGE_KEY = 'soli_clinic_active_screen';
+const THEME_STORAGE_KEY = 'soli_clinic_theme';
+
+const VALID_SCREENS: ScreenType[] = [
+  'dashboard',
+  'new-visit',
+  'waiting-queue',
+  'clinical-exam',
+  'upcoming-followups',
+  'appointments',
+  'patient-records',
+  'billing-payments',
+  'finance',
+  'clinical-reports',
+  'prescription-pad',
+  'system-settings',
+  'settings',
+];
+
 function ClinicApp() {
   const { canAccess, allowedScreens, userProfile } = usePermissions();
+  const { language, dir, isRTL, t } = useLanguage();
 
   const [activeScreen, setActiveScreen] = useState<ScreenType>(() => {
+    try {
+      const saved = localStorage.getItem(ACTIVE_SCREEN_STORAGE_KEY) as ScreenType | null;
+      if (saved && VALID_SCREENS.includes(saved)) {
+        return saved;
+      }
+    } catch {
+      // ignore
+    }
     if (allowedScreens && allowedScreens.length > 0 && !allowedScreens.includes('dashboard')) {
       return (allowedScreens[0] as ScreenType) || 'new-visit';
     }
     return 'dashboard';
   });
+
+  // Save active screen to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      if (activeScreen) {
+        localStorage.setItem(ACTIVE_SCREEN_STORAGE_KEY, activeScreen);
+      }
+    } catch {
+      // ignore
+    }
+  }, [activeScreen]);
 
   // Strict synchronization: if user's permissions change or active screen is unauthorized, redirect immediately
   useEffect(() => {
@@ -280,6 +320,9 @@ function ClinicApp() {
           (allowedScreens[0] as ScreenType) ||
           'new-visit';
         setActiveScreen(firstPermitted);
+        try {
+          localStorage.setItem(ACTIVE_SCREEN_STORAGE_KEY, firstPermitted);
+        } catch {}
       }
     }
   }, [allowedScreens, activeScreen, canAccess]);
@@ -292,12 +335,44 @@ function ClinicApp() {
         (allowedScreens[0] as ScreenType) ||
         'new-visit';
       setActiveScreen(firstPermitted);
+      try {
+        localStorage.setItem(ACTIVE_SCREEN_STORAGE_KEY, firstPermitted);
+      } catch {}
       return;
     }
     setActiveScreen(screen);
+    try {
+      localStorage.setItem(ACTIVE_SCREEN_STORAGE_KEY, screen);
+    } catch {}
   };
 
-  const [theme, setTheme] = useState<'light' | 'dark'>('light'); // Day/Light mode enabled by default
+  // Theme state persisted in localStorage and synced with document root class
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    try {
+      const saved = localStorage.getItem(THEME_STORAGE_KEY);
+      if (saved === 'dark' || saved === 'light') {
+        return saved;
+      }
+    } catch {
+      // ignore
+    }
+    return 'light';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch {}
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+  };
   // Dynamic Visit Types Pricing State (Persistence in localStorage)
   const [visitTypesList, setVisitTypesList] = useState<{ id: string; name: string; fee: number }[]>(() => {
     const saved = localStorage.getItem('soli_visit_types');
@@ -1263,35 +1338,6 @@ function ClinicApp() {
 
     return list.sort((a, b) => a.daysRemaining - b.daysRemaining);
   }, [followUpsCanonical, appointmentsCanonical, patientsCanonical, visitsCanonical]);
-
-  // Synchronize Theme class on HTML document root and localStorage
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('soli_clinic_theme') as 'light' | 'dark' | null;
-    if (savedTheme) {
-      setTheme(savedTheme);
-      if (savedTheme === 'dark') {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, []);
-
-  useEffect(() => {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('soli_clinic_theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('soli_clinic_theme', 'light');
-    }
-  }, [theme]);
-
-  const toggleTheme = () => {
-    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
-  };
 
   // Sound Chime for Patient Queue & Status Updates
   const playQueueNotificationSound = () => {
@@ -2296,9 +2342,9 @@ function ClinicApp() {
   return (
     <div
       className="min-h-screen bg-slate-100 dark:bg-black text-slate-900 dark:text-slate-100 font-sans antialiased flex transition-colors"
-      dir="rtl"
+      dir={dir}
     >
-      {/* Permanent Right Sidebar Navigation & Mobile Drawer */}
+      {/* Permanent Sidebar Navigation & Mobile Drawer */}
       <Sidebar
         activeScreen={activeScreen}
         onNavigate={handleNavigate}
@@ -2313,7 +2359,7 @@ function ClinicApp() {
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 mr-0 lg:mr-72 flex flex-col min-h-screen min-w-0 w-full max-w-full overflow-x-hidden">
+      <div className={`flex-1 ${isRTL ? 'mr-0 lg:mr-72' : 'ml-0 lg:ml-72'} flex flex-col min-h-screen min-w-0 w-full max-w-full overflow-x-hidden`}>
         {/* Top Header */}
         <Header
           syncStatus={syncStatus}
@@ -2333,12 +2379,14 @@ function ClinicApp() {
           onRetrySync={() => setSyncRetryCounter((c) => c + 1)}
           onOpenDatabaseInspector={() => setIsDatabaseInspectorOpen(true)}
           onToggleMobileMenu={() => setIsMobileMenuOpen((prev) => !prev)}
+          isDark={theme === 'dark'}
+          onToggleTheme={toggleTheme}
         />
 
         {/* Global Live Clinic Notification Banner (Controlled by Settings: Audio & Visual) */}
         {callingBanner && (
           <div
-            className={`fixed top-18 right-4 lg:right-80 left-4 lg:left-8 z-50 bg-white dark:bg-[#18233C] border-2 rounded-2xl p-4 shadow-2xl flex items-center justify-between animate-in slide-in-from-top-4 max-w-full transition-all ${
+            className={`fixed top-18 ${isRTL ? 'right-4 lg:right-80 left-4 lg:left-8' : 'left-4 lg:left-80 right-4 lg:right-8'} z-50 bg-white dark:bg-[#18233C] border-2 rounded-2xl p-4 shadow-2xl flex items-center justify-between animate-in slide-in-from-top-4 max-w-full transition-all ${
               callingBanner.type === 'finish'
                 ? 'border-emerald-500 shadow-emerald-500/10'
                 : callingBanner.type === 'call'

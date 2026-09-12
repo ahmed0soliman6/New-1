@@ -5,6 +5,7 @@ import { AdminRecoveryDialog } from './auth/AdminRecoveryDialog';
 import { SoliMedicalLogo } from './SoliMedicalLogo';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 import { PWAInstallModal } from './PWAInstallModal';
+import { useLanguage } from '../i18n/LanguageContext';
 
 export const AuthScreen: React.FC = () => {
   const [username, setUsername] = useState('admin');
@@ -16,6 +17,7 @@ export const AuthScreen: React.FC = () => {
   const [showRecoveryDialog, setShowRecoveryDialog] = useState(false);
   const [showPwaModal, setShowPwaModal] = useState(false);
 
+  const { language, toggleLanguage, dir, t } = useLanguage();
   const { isInstalled, canInstallPrompt, installApp } = usePWAInstall();
 
   const submit = async (event: React.FormEvent) => {
@@ -38,7 +40,20 @@ export const AuthScreen: React.FC = () => {
   };
 
   return (
-    <main dir="rtl" className="min-h-screen bg-[#050a14] text-[#dde2f5] flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-hidden selection:bg-[#00c2cb]/30 selection:text-[#00c2cb]">
+    <main dir={dir} className="min-h-screen bg-[#050a14] text-[#dde2f5] flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-hidden selection:bg-[#00c2cb]/30 selection:text-[#00c2cb]">
+      {/* Top Bar language toggle */}
+      <div className="absolute top-4 right-4 z-20">
+        <button
+          type="button"
+          onClick={toggleLanguage}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0c1524]/80 hover:bg-[#162338] text-[#45dee7] border border-[#00c2cb]/30 transition-all cursor-pointer text-xs font-bold shadow-lg active:scale-95"
+          title={language === 'ar' ? 'Switch to English' : 'التحويل للغة العربية'}
+        >
+          <span className="material-symbols-outlined text-base">translate</span>
+          <span className="font-mono text-xs">{language === 'ar' ? 'EN' : 'عربي'}</span>
+        </button>
+      </div>
+
       {/* Background Decorative Ambient Glows */}
       <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-[#00c2cb]/10 blur-3xl pointer-events-none" />
       <div className="absolute -bottom-32 -right-32 w-96 h-96 rounded-full bg-cyan-600/10 blur-3xl pointer-events-none" />

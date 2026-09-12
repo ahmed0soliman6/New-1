@@ -5,6 +5,7 @@ import { QueueItem, AppointmentListItem, PatientListItem, TransactionRecord, Scr
 import { ClinicAlertPayload } from '../utils/alertManager';
 import { GlobalSearchBar } from './GlobalSearchBar';
 import { toEnglishDigits } from '../utils/numberUtils';
+import { useLanguage } from '../i18n/LanguageContext';
 
 export interface FollowUpItem {
   id: string;
@@ -43,6 +44,8 @@ export interface HeaderProps {
   onSelectPatient?: (patient: PatientListItem) => void;
   onStartIntakeFromAppointment?: (appointment: AppointmentListItem) => void;
   onOpenDatabaseInspector?: () => void;
+  isDark?: boolean;
+  onToggleTheme?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -63,7 +66,10 @@ export const Header: React.FC<HeaderProps> = ({
   transactions = [],
   onSelectPatient,
   onStartIntakeFromAppointment,
+  isDark,
+  onToggleTheme,
 }) => {
+  const { language, toggleLanguage, isRTL, t } = useLanguage();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSyncDetailsModal, setShowSyncDetailsModal] = useState(false);
   const [activeNotifyTab, setActiveNotifyTab] = useState<'queue' | 'alerts' | 'followups'>('queue');
@@ -79,9 +85,16 @@ export const Header: React.FC<HeaderProps> = ({
   const handleSendWhatsapp = (phone: string, patientName: string, dueDate?: string) => {
     const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
     const formattedPhone = cleanPhone.startsWith('0') ? `2${cleanPhone}` : cleanPhone;
-    const dateText = dueDate || 'الأيام القادمة';
+    const dateText = dueDate || (language === 'en' ? 'upcoming days' : 'الأيام القادمة');
 
-    const message = `مرحباً بحضرتك أستاذ/ة *${patientName}* 🌸
+    const message = language === 'en'
+      ? `Hello *${patientName}* 🌸
+This is a reminder for your follow-up medical consultation at *Dr. ${activeDoctorName}'s Clinic* 🩺
+🗓 Follow-up date: *${dateText}*
+📍 Address: Specialized Internal Medicine Clinic - Mohandessin
+📞 Phone: 01092847162
+Wishing you great health and wellness ✨`
+      : `مرحباً بحضرتك أستاذ/ة *${patientName}* 🌸
 نود تذكيركم بموعد المتابعة والاستشارة الطبية المحدد لكم في *عيادة ${activeDoctorName}* 🩺
 🗓 موعد المتابعة: *${dateText}*
 📍 العنوان: عيادة الباطنة التخصصية - المهندسين
@@ -97,7 +110,11 @@ export const Header: React.FC<HeaderProps> = ({
       // Fallback
     }
 
-    setWhatsappToast(`تم فتح محادثة واتساب وتجهيز رسالة تذكير المتابعة لـ (${patientName})`);
+    setWhatsappToast(
+      language === 'en'
+        ? `WhatsApp chat opened with follow-up reminder for (${patientName})`
+        : `تم فتح محادثة واتساب وتجهيز رسالة تذكير المتابعة لـ (${patientName})`
+    );
     setTimeout(() => setWhatsappToast(null), 4000);
   };
 
@@ -106,15 +123,15 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <>
-      <header className="fixed top-0 right-0 lg:right-72 left-0 h-16 bg-white/95 dark:bg-black/95 backdrop-blur-xl border-b border-slate-200 dark:border-white/10 z-40 flex items-center justify-between px-2 sm:px-6 transition-colors gap-1 sm:gap-3">
-        {/* Right Side: Mobile Hamburger & Live Sync Status Badge */}
+      <header className={`fixed top-0 ${isRTL ? 'right-0 lg:right-72 left-0' : 'left-0 lg:left-72 right-0'} h-16 bg-white/95 dark:bg-black/95 backdrop-blur-xl border-b border-slate-200 dark:border-white/10 z-40 flex items-center justify-between px-2 sm:px-6 transition-colors gap-1 sm:gap-3`}>
+        {/* Right Side / Start Side: Mobile Hamburger & Live Sync Status Badge */}
         <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           {/* Mobile Menu Toggle Button */}
           <button
             type="button"
             onClick={onToggleMobileMenu}
             className="lg:hidden w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#161b29] dark:hover:bg-[#242a38] text-slate-700 dark:text-[#bbc9ca] flex items-center justify-center border border-slate-200 dark:border-white/5 cursor-pointer shrink-0"
-            aria-label="فتح القائمة الجانبية"
+            aria-label={language === 'en' ? 'Open sidebar menu' : 'فتح القائمة الجانبية'}
           >
             <span className="material-symbols-outlined text-lg sm:text-xl">menu</span>
           </button>
@@ -124,10 +141,12 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={() => setShowSyncDetailsModal(true)}
               className="flex items-center gap-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 dark:bg-[#18233C] px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-emerald-500/20 dark:border-[#00c2cb]/20 transition-all cursor-pointer group shrink-0"
-              title="النظام متصل وقيد المزامنة الفورية"
+              title={language === 'en' ? 'System is online and real-time syncing' : 'النظام متصل وقيد المزامنة الفورية'}
             >
               <span className="w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full bg-emerald-500 dark:bg-[#00c2cb] animate-pulse"></span>
-              <span className="text-[11px] sm:text-xs text-emerald-700 dark:text-[#45dee7] font-bold">متصل</span>
+              <span className="text-[11px] sm:text-xs text-emerald-700 dark:text-[#45dee7] font-bold">
+                {t('header.connected')}
+              </span>
             </button>
           )}
 
@@ -135,10 +154,12 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={() => setShowSyncDetailsModal(true)}
               className="flex items-center gap-1.5 bg-amber-500/10 hover:bg-amber-500/20 dark:bg-[#18233C] px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-amber-500/30 dark:border-amber-400/30 transition-all cursor-pointer shrink-0"
-              title="جاري مزامنة التحديثات مع السحابة"
+              title={language === 'en' ? 'Syncing updates with cloud' : 'جاري مزامنة التحديثات مع السحابة'}
             >
               <span className="w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full bg-amber-500 animate-spin"></span>
-              <span className="text-[11px] sm:text-xs text-amber-700 dark:text-amber-300 font-bold">جار المزامنة</span>
+              <span className="text-[11px] sm:text-xs text-amber-700 dark:text-amber-300 font-bold">
+                {t('header.syncing')}
+              </span>
             </button>
           )}
 
@@ -146,10 +167,12 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={() => setShowSyncDetailsModal(true)}
               className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#18233C] px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-slate-300 dark:border-white/10 transition-all cursor-pointer shrink-0"
-              title="أنت تعمل بالوضع المحلي دون اتصال"
+              title={language === 'en' ? 'Working in local offline mode' : 'أنت تعمل بالوضع المحلي دون اتصال'}
             >
               <span className="w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full bg-slate-400"></span>
-              <span className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 font-bold">غير متصل</span>
+              <span className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 font-bold">
+                {t('header.offline')}
+              </span>
             </button>
           )}
 
@@ -157,19 +180,27 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={() => setShowSyncDetailsModal(true)}
               className="flex items-center gap-1.5 bg-rose-500/10 hover:bg-rose-500/20 dark:bg-rose-950/30 px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-rose-500/30 transition-all cursor-pointer group animate-pulse shrink-0"
-              title="انقر لعرض تفاصيل مشكلة المزامنة وحلها"
+              title={language === 'en' ? 'Click to inspect sync issues' : 'انقر لعرض تفاصيل مشكلة المزامنة وحلها'}
             >
               <span className="w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full bg-rose-500"></span>
               <span className="text-[11px] sm:text-xs text-rose-700 dark:text-rose-400 font-bold flex items-center gap-0.5">
-                <span>تعذر المزامنة</span>
+                <span>{t('header.syncError')}</span>
                 <span className="material-symbols-outlined text-xs sm:text-sm">help_outline</span>
               </span>
             </button>
           )}
 
-          <div className="hidden xl:flex items-center gap-1.5 text-slate-400 dark:text-[#bbc9ca] text-xs font-medium mr-1">
+          <div className="hidden xl:flex items-center gap-1.5 text-slate-400 dark:text-[#bbc9ca] text-xs font-medium mx-1">
             <span className="material-symbols-outlined text-base">calendar_today</span>
-            <span>اليوم، {new Date().toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+            <span>
+              {language === 'en' ? 'Today, ' : 'اليوم، '}
+              {new Date().toLocaleDateString(language === 'en' ? 'en-US' : 'ar-EG', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+              })}
+            </span>
           </div>
         </div>
 
@@ -186,8 +217,35 @@ export const Header: React.FC<HeaderProps> = ({
           onCallPatient={onCallPatient}
         />
 
-        {/* Left Side: Notifications Hub */}
-        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+        {/* Left Side / End Side: Controls & Notifications Hub */}
+        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+          {/* Language Switcher */}
+          <button
+            type="button"
+            onClick={toggleLanguage}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#161b29] dark:hover:bg-[#242a38] text-slate-700 dark:text-[#45dee7] border border-slate-200 dark:border-white/5 transition-all cursor-pointer text-xs font-bold shadow-2xs active:scale-95 shrink-0"
+            title={language === 'ar' ? 'Switch to English (التحويل للإنجليزية)' : 'التحويل للغة العربية (Switch to Arabic)'}
+          >
+            <span className="material-symbols-outlined text-[17px] text-[#00c2cb]">translate</span>
+            <span className="font-mono text-[11px] font-bold text-slate-800 dark:text-slate-100">
+              {language === 'ar' ? 'EN' : 'عربي'}
+            </span>
+          </button>
+
+          {/* Theme Switcher (Day / Night Mode) */}
+          {onToggleTheme && (
+            <button
+              type="button"
+              onClick={onToggleTheme}
+              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#161b29] dark:hover:bg-[#242a38] text-amber-500 dark:text-amber-400 flex items-center justify-center border border-slate-200 dark:border-white/5 transition-all cursor-pointer shadow-2xs active:scale-95 shrink-0"
+              title={isDark ? (language === 'en' ? 'Switch to Light Mode (الوضع النهاري)' : 'تفعيل الوضع النهاري') : (language === 'en' ? 'Switch to Dark Mode (الوضع الليلي)' : 'تفعيل الوضع الليلي')}
+            >
+              <span className="material-symbols-outlined text-lg sm:text-xl">
+                {isDark ? 'light_mode' : 'dark_mode'}
+              </span>
+            </button>
+          )}
+
           {/* Notifications Dropdown Button */}
           <div className="relative shrink-0">
             <button
@@ -197,8 +255,8 @@ export const Header: React.FC<HeaderProps> = ({
                   ? 'bg-[#00c2cb] text-[#08101C]'
                   : 'bg-slate-100 hover:bg-slate-200 dark:bg-[#161b29] dark:hover:bg-[#242a38] text-slate-700 hover:text-slate-900 dark:text-[#bbc9ca] dark:hover:text-[#dde2f5] border border-slate-200 dark:border-white/5'
               }`}
-              aria-label="التنبيهات وقائمة الانتظار والمتابعات"
-              title="مركز الإشعارات والتنبيهات السريرية"
+              aria-label={t('header.notifications')}
+              title={language === 'en' ? 'Clinical Notification & Queue Center' : 'مركز الإشعارات والتنبيهات السريرية'}
             >
               <span className="material-symbols-outlined text-lg sm:text-xl">notifications</span>
               {totalActionCount > 0 && (
@@ -210,12 +268,14 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* Notifications Dropdown Panel */}
             {showNotifications && (
-              <div className="absolute left-0 mt-2 w-80 sm:w-96 bg-white dark:bg-[#18233C] border border-slate-200 dark:border-[#00c2cb]/30 rounded-2xl shadow-2xl p-3 z-50 animate-in fade-in text-right">
+              <div className={`absolute ${isRTL ? 'left-0' : 'right-0'} mt-2 w-80 sm:w-96 bg-white dark:bg-[#18233C] border border-slate-200 dark:border-[#00c2cb]/30 rounded-2xl shadow-2xl p-3 z-50 animate-in fade-in ${isRTL ? 'text-right' : 'text-left'}`}>
                 {/* Panel Header */}
                 <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 dark:border-white/10">
                   <div className="flex items-center gap-2">
                     <span className="material-symbols-outlined text-[#00c2cb] text-lg">campaign</span>
-                    <span className="text-xs font-bold text-slate-900 dark:text-[#dde2f5]">مركز التنبيهات الإكلينيكي</span>
+                    <span className="text-xs font-bold text-slate-900 dark:text-[#dde2f5]">
+                      {language === 'en' ? 'Clinical Notifications Center' : 'مركز التنبيهات الإكلينيكي'}
+                    </span>
                   </div>
                   <button
                     onClick={() => setShowNotifications(false)}
@@ -235,7 +295,7 @@ export const Header: React.FC<HeaderProps> = ({
                         : 'text-slate-500 dark:text-[#bbc9ca]'
                     }`}
                   >
-                    <span>الانتظار</span>
+                    <span>{t('nav.queue')}</span>
                     <span className="px-1.5 py-0.2 rounded-full bg-[#00c2cb]/20 text-[10px] font-mono">
                       {waitingQueue.length}
                     </span>
@@ -248,7 +308,7 @@ export const Header: React.FC<HeaderProps> = ({
                         : 'text-slate-500 dark:text-[#bbc9ca]'
                     }`}
                   >
-                    <span>التنبيهات</span>
+                    <span>{t('header.alerts')}</span>
                     <span className="px-1.5 py-0.2 rounded-full bg-purple-500/20 text-[10px] font-mono">
                       {recentAlerts.length}
                     </span>
@@ -261,7 +321,7 @@ export const Header: React.FC<HeaderProps> = ({
                         : 'text-slate-500 dark:text-[#bbc9ca]'
                     }`}
                   >
-                    <span>المتابعات</span>
+                    <span>{t('header.followUps')}</span>
                     <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
                       urgentFollowUps.length > 0 ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 font-bold' : 'bg-slate-100 dark:bg-white/5 text-slate-400'
                     }`}>
