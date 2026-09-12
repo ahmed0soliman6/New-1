@@ -17,7 +17,11 @@ export const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID as string | undefined,
 };
 
-export const firebaseConfigured = Object.values(firebaseConfig).every(Boolean);
+export const firebaseConfigured = Boolean(
+  firebaseConfig.apiKey &&
+  firebaseConfig.authDomain &&
+  firebaseConfig.projectId
+);
 export const firebaseConfigError = firebaseConfigured ? null : 'أضف إعدادات Firebase في متغيرات VITE_FIREBASE_* قبل تسجيل الدخول.';
 export const firebaseApp: FirebaseApp | null = firebaseConfigured ? (getApps()[0] ?? initializeApp(firebaseConfig)) : null;
 export const auth: Auth | null = firebaseApp ? getAuth(firebaseApp) : null;
