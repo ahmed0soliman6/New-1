@@ -597,10 +597,15 @@ function ClinicApp() {
   // DERIVED STATE (Canonical State -> Derived State -> UI)
   // =========================================================================
   const patients: PatientListItem[] = useMemo(() => {
-    // Only patients who have actually had visits/examinations registered appear in Patient Files screen
+    // Clinic Workflow Rule: A patient ONLY appears in Patient Files ("ملفات المرضى")
+    // after having their clinical examination completed and their prescription saved!
+    // (Prescription saved in prescriptionsCanonical OR Visit marked as COMPLETED)
     const clinicalPatients = patientsCanonical.filter((p) => {
-      const pVisits = visitsCanonical.filter((v) => v.patientId === p.patientId);
-      return pVisits.length > 0;
+      const hasPrescription = prescriptionsCanonical.some((pr) => pr.patientId === p.patientId);
+      const hasCompletedVisit = visitsCanonical.some(
+        (v) => v.patientId === p.patientId && v.status === 'COMPLETED'
+      );
+      return hasPrescription || hasCompletedVisit;
     });
 
     // Sort canonical patients newest first (by createdAt desc, then fileNumber desc)
@@ -612,7 +617,10 @@ function ClinicApp() {
     });
 
     return sortedPatients.map((p) => {
-      const pVisits = visitsCanonical.filter((v) => v.patientId === p.patientId);
+      const pCompletedVisits = visitsCanonical.filter(
+        (v) => v.patientId === p.patientId && v.status === 'COMPLETED'
+      );
+      const pVisits = pCompletedVisits.length > 0 ? pCompletedVisits : visitsCanonical.filter((v) => v.patientId === p.patientId);
       const pPayments = paymentsCanonical.filter((pm) => pm.patientId === p.patientId);
       const totalPaid = pPayments.reduce((acc, pm) => acc + (pm.amount || 0), 0);
       const lastVisit = [...pVisits].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
@@ -644,12 +652,12 @@ function ClinicApp() {
         lastVisitTime: lastVisit ? new Date(lastVisit.createdAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : undefined,
         registrationDate,
         registrationTime,
-        visitsCount: pVisits.length,
+        visitsCount: pCompletedVisits.length || 1,
         totalPaid,
         lastDiagnosis: lastDiag,
       };
     });
-  }, [patientsCanonical, visitsCanonical, paymentsCanonical]);
+  }, [patientsCanonical, visitsCanonical, paymentsCanonical, prescriptionsCanonical]);
 
   const queue: QueueItem[] = useMemo(() => {
     return visitsCanonical
@@ -1796,6 +1804,7 @@ function ClinicApp() {
       visitsCanonical.find((v) => patientsCanonical.find((p) => p.patientId === v.patientId)?.fullName === name);
     if (!targetVisit) return;
 
+    const canonicalPat = patientsCanonical.find((p) => p.patientId === targetVisit.patientId);
     const basePatient = patients.find((p) => p.id === targetVisit.patientId);
     const registeredComplaint = targetVisit.receptionistData?.symptoms || basePatient?.chiefComplaint || '';
     const registeredSymptoms = targetVisit.receptionistData?.symptoms
@@ -1804,21 +1813,24 @@ function ClinicApp() {
     const registeredChronic =
       targetVisit.receptionistData?.chronicDiseases && targetVisit.receptionistData.chronicDiseases.length > 0
         ? targetVisit.receptionistData.chronicDiseases
-        : basePatient?.chronicConditions || [];
+        : (canonicalPat?.chronicDiseases || basePatient?.chronicConditions || []);
+
+    const birthYear = canonicalPat?.dateOfBirth ? new Date(canonicalPat.dateOfBirth).getFullYear() : undefined;
+    const calculatedAge = birthYear ? Math.max(1, new Date().getFullYear() - birthYear) : (basePatient?.age || 0);
 
     const matchedPatient: PatientListItem = {
       id: targetVisit.patientId,
-      medicalCode: basePatient?.medicalCode || `EG-${targetVisit.patientId.slice(0, 5)}`,
-      fileNumber: basePatient?.fileNumber || targetVisit.queueNumber || 1,
-      name: basePatient?.name || name,
-      age: basePatient?.age || 0,
-      gender: basePatient?.gender || '',
-      phone: basePatient?.phone || '',
-      governorate: basePatient?.governorate || '',
-      address: basePatient?.address || '',
-      allergies: basePatient?.allergies || [],
+      medicalCode: canonicalPat?.medicalCode || basePatient?.medicalCode || `EG-${targetVisit.patientId.slice(0, 5)}`,
+      fileNumber: canonicalPat?.fileNumber || basePatient?.fileNumber || targetVisit.queueNumber || 1,
+      name: canonicalPat?.fullName || basePatient?.name || name,
+      age: calculatedAge,
+      gender: canonicalPat?.gender || basePatient?.gender || '',
+      phone: canonicalPat?.phone || basePatient?.phone || '',
+      governorate: canonicalPat?.governorate || basePatient?.governorate || '',
+      address: canonicalPat?.address || basePatient?.address || '',
+      allergies: canonicalPat?.allergies || basePatient?.allergies || [],
       chronicConditions: registeredChronic,
-      bloodGroup: basePatient?.bloodType || basePatient?.bloodGroup || 'غير محدد',
+      bloodGroup: canonicalPat?.bloodType || basePatient?.bloodType || basePatient?.bloodGroup || 'غير محدد',
       visitsCount: basePatient?.visitsCount || 1,
       chiefComplaint: registeredComplaint,
       intakeSymptoms: registeredSymptoms,

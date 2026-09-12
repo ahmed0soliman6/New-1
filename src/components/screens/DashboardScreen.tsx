@@ -1036,9 +1036,22 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                         <button
                           type="button"
                           onClick={() => {
-                            const matchingPat = patients.find((p) => p.name === item.patientName);
-                            if (matchingPat && onSelectPatient) {
-                              onSelectPatient(matchingPat);
+                            const matchingPat = patients.find((p) => p.name === item.patientName) || {
+                              id: item.patientId,
+                              name: item.patientName,
+                              fileNumber: item.fileNumber,
+                              medicalCode: item.medicalCode,
+                              phone: item.phone,
+                              age: item.age,
+                              gender: (item.gender === 'female' ? 'female' : 'male') as any,
+                              bloodType: item.bloodType,
+                              address: item.address,
+                              chronicConditions: item.chronicConditions,
+                              chiefComplaint: item.complaint,
+                              visitsCount: 1,
+                            };
+                            if (onSelectPatient) {
+                              onSelectPatient(matchingPat as any);
                             }
                             onCallPatient(item.ticketNumber || `#0${idx + 1}`, item.patientName);
                             onNavigate('clinical-exam');

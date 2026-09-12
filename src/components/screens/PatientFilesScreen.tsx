@@ -173,7 +173,8 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
           </div>
         ) : (
           filteredPatients.map((p) => {
-            const pVisitsCount = visits.filter((v) => v.patientId === p.id).length;
+            const completedVisits = visits.filter((v) => v.patientId === p.id && v.status === 'COMPLETED');
+            const pVisitsCount = completedVisits.length > 0 ? completedVisits.length : p.visitsCount || 1;
             const pPrescriptionsCount = prescriptions.filter((pr) => pr.patientId === p.id).length;
 
             return (
