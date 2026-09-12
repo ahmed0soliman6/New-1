@@ -7,12 +7,14 @@ interface ChangePasswordCardProps {
   onNotify?: (msg: string) => void;
   isOpen?: boolean;
   onToggle?: () => void;
+  cardNumber?: number | string;
 }
 
 export const ChangePasswordCard: React.FC<ChangePasswordCardProps> = ({
   onNotify,
   isOpen = false,
   onToggle,
+  cardNumber,
 }) => {
   const { userProfile, role } = usePermissions();
   const [currentPassword, setCurrentPassword] = useState('');
@@ -75,7 +77,7 @@ export const ChangePasswordCard: React.FC<ChangePasswordCardProps> = ({
           </div>
           <div>
             <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-              <span>تغيير كلمة المرور</span>
+              <span>{cardNumber ? `${cardNumber}. ` : ''}تغيير كلمة المرور (حساب المستخدم)</span>
               <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold text-[10px]">
                 {userProfile?.displayName || userProfile?.username || 'المستخدم الحالي'}
               </span>

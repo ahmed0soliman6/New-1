@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   RadiologyCatalogItem,
   LabCatalogItem,
@@ -132,10 +132,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     'general' | 'catalogs' | 'users'
   >('general');
 
-  // Accordion Collapsible Open States
+  // Accordion Collapsible Open States (All folded/collapsed by default)
   const [openCards, setOpenCards] = useState<Record<string, boolean>>({
-    language: true,
-    pricing: true,
+    language: false,
+    pricing: false,
     password: false,
     services: false,
     expenses: false,
@@ -294,6 +294,91 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       console.error(e);
       alert('حدث خطأ أثناء تصدير ملف النسخة الاحتياطية.');
     }
+  };
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImportBackupFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const content = event.target?.result as string;
+        const data = JSON.parse(content);
+
+        if (!data || typeof data !== 'object') {
+          throw new Error('ملف JSON غير صالح.');
+        }
+
+        if (Array.isArray(data.visitTypes) && data.visitTypes.length > 0) {
+          data.visitTypes.forEach((vt: VisitTypeItem) => {
+            if (vt.name) onAddVisitType(vt);
+          });
+        }
+
+        if (typeof data.freeFollowupDays === 'number') {
+          setFreeFollowupDays(data.freeFollowupDays);
+          localStorage.setItem('soli_free_followup_days', String(data.freeFollowupDays));
+        }
+
+        if (Array.isArray(data.medicalServices) && data.medicalServices.length > 0) {
+          saveMedicalServices(data.medicalServices);
+          setMedicalServicesList(data.medicalServices);
+        }
+
+        if (Array.isArray(data.expenseCategories) && data.expenseCategories.length > 0) {
+          saveExpenseCategories(data.expenseCategories);
+          setExpenseCategoriesList(data.expenseCategories);
+        }
+
+        if (data.alertConfig && typeof data.alertConfig === 'object') {
+          setAlertConfig(data.alertConfig);
+          saveAlertSettings(data.alertConfig);
+        }
+
+        if (data.examDisplayConfig && typeof data.examDisplayConfig === 'object') {
+          setExamDisplayConfig(data.examDisplayConfig);
+          saveExamDisplaySettings(data.examDisplayConfig);
+        }
+
+        if (Array.isArray(data.recurringTemplates) && data.recurringTemplates.length > 0) {
+          localStorage.setItem('soli_recurring_templates', JSON.stringify(data.recurringTemplates));
+          setSavedTemplates(data.recurringTemplates);
+          window.dispatchEvent(new Event('soli_templates_updated'));
+        }
+
+        if (Array.isArray(data.radiologyCatalog) && data.radiologyCatalog.length > 0) {
+          data.radiologyCatalog.forEach((item: RadiologyCatalogItem) => onAddRadiology(item));
+        }
+
+        if (Array.isArray(data.labCatalog) && data.labCatalog.length > 0) {
+          data.labCatalog.forEach((item: LabCatalogItem) => onAddLab(item));
+        }
+
+        if (Array.isArray(data.drugCatalog) && data.drugCatalog.length > 0) {
+          data.drugCatalog.forEach((item: DrugCatalogItem) => onAddDrug(item));
+        }
+
+        if (Array.isArray(data.diagnosesCatalog) && data.diagnosesCatalog.length > 0) {
+          data.diagnosesCatalog.forEach((item: DiagnosisCatalogItem) => onAddDiagnosis(item));
+        }
+
+        if (Array.isArray(data.symptomsCatalog) && data.symptomsCatalog.length > 0) {
+          data.symptomsCatalog.forEach((item: SymptomCatalogItem) => onAddSymptom(item));
+        }
+
+        setSavedToast(`تم استيراد واستعادة بيانات النسخة الاحتياطية (${file.name}) بنجاح ✓`);
+        setTimeout(() => setSavedToast(null), 3500);
+      } catch (err) {
+        console.error(err);
+        alert('حدث خطأ أثناء استيراد الملف. يرجى التأكد من اختيار ملف JSON صحيح مسبق تصديره.');
+      } finally {
+        e.target.value = '';
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleTestAlertSound = (type: 'new_visit' | 'call' | 'finish' = 'new_visit') => {
@@ -676,13 +761,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               )}
             </div>
 
-            {/* ACCORDION CARD 2: Change Password Card (تغيير كلمة المرور للمستخدمين) */}
+            {/* ACCORDION CARD 3: Change Password Card */}
             <ChangePasswordCard
+              cardNumber={3}
               isOpen={!!openCards.password}
               onToggle={() => toggleCard('password')}
             />
 
-            {/* ACCORDION CARD 3: Medical Services & Pricing (خدمات وبنود الوارد والتسعير) */}
+            {/* ACCORDION CARD 4: Medical Services & Pricing */}
             <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
               <button
                 type="button"
@@ -695,7 +781,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                      <span>3. خدمات وبنود الوارد (الخدمات الطبية والتسعير)</span>
+                      <span>4. خدمات وبنود الوارد (الخدمات الطبية والتسعير)</span>
                       <span className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20 font-bold">
                         {medicalServicesList.length} خدمة طبية
                       </span>
@@ -870,7 +956,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                      <span>4. بنود المنصرف (مصروفات العيادة)</span>
+                      <span>5. بنود المنصرف (مصروفات العيادة)</span>
                       <span className="text-[10px] bg-rose-500/10 text-rose-600 dark:text-rose-400 px-2 py-0.5 rounded-full border border-rose-500/20 font-bold">
                         {expenseCategoriesList.length} بنود مصروفات
                       </span>
@@ -997,7 +1083,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                      <span>5. نظام التنبيهات والأصوات المتقدم</span>
+                      <span>6. نظام التنبيهات والأصوات المتقدم</span>
                       <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20 font-bold">
                         {alertConfig.audioEnabled ? 'الصوت يعمل ✓' : 'الصوت صامت'}
                       </span>
@@ -1224,7 +1310,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">
-                      6. تخصيص أقسام شاشة الكشف الطبي (عرض وإخفاء)
+                      7. تخصيص أقسام شاشة الكشف الطبي (عرض وإخفاء)
                     </h2>
                     <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
                       إظهار أو إخفاء أقسام العلامات الحيوية والتحاليل والأشعة بغرفة الكشف (تحفظ تلقائياً)
@@ -1376,7 +1462,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                      <span>7. القوائم المتكررة وبروتوكولات الروشتة</span>
+                      <span>8. القوائم المتكررة وبروتوكولات الروشتة</span>
                       <span className="px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-bold text-[10px]">
                         {savedTemplates.length} قائمة وبروتوكول
                       </span>
@@ -1421,7 +1507,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                      <span>8. إدارة البيانات والبيانات التجريبية</span>
+                      <span>9. إدارة البيانات والبيانات التجريبية</span>
                       <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-[#F59E0B] px-2 py-0.5 rounded-full border border-amber-500/20 font-bold">
                         أدوات المطورين والتهيئة
                       </span>
@@ -1581,7 +1667,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               )}
             </div>
 
-            {/* ACCORDION CARD 9: Cloud Backup & Data Export (النسخ الاحتياطي السحابي وتصدير البيانات) */}
+            {/* ACCORDION CARD 10: Cloud Backup & Data Export */}
             <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
               <button
                 type="button"
@@ -1594,13 +1680,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                      <span>9. النسخ الاحتياطي السحابي وتصدير البيانات</span>
+                      <span>10. النسخ الاحتياطي السحابي وتصدير واستيراد البيانات</span>
                       <span className="text-[10px] bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 px-2 py-0.5 rounded-full border border-cyan-500/20 font-bold">
                         Firestore Cloud Sync
                       </span>
                     </h2>
                     <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
-                      تصدير وحفظ نسخة احتياطية كاملة من قاعدة بيانات العيادة والإعدادات بصيغة JSON
+                      تصدير وحفظ أو استيراد واستعادة نسخة احتياطية كاملة من قاعدة بيانات العيادة والإعدادات بصيغة JSON
                     </p>
                   </div>
                 </div>
@@ -1622,7 +1708,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-500 dark:text-[#859394] leading-relaxed">
-                      يتم حفظ وتحديث كافة بيانات العيادة والمرضى والزيارات والأدلة الطبية لحظياً بالسحابة المشفرة، مع إمكانية تصدير نسخة احتياطية محلية بصيغة JSON في أي وقت.
+                      يتم حفظ وتحديث كافة بيانات العيادة والمرضى والزيارات والأدلة الطبية لحظياً بالسحابة المشفرة، مع إمكانية تصدير أو استيراد نسخة احتياطية محلية بصيغة JSON في أي وقت.
                     </p>
                     <div className="flex flex-wrap items-center gap-3 pt-1">
                       <button
@@ -1633,6 +1719,23 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                         <span className="material-symbols-outlined text-base">download</span>
                         <span>تصدير وتحميل نسخة احتياطية JSON</span>
                       </button>
+
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-xs active:scale-95"
+                      >
+                        <span className="material-symbols-outlined text-base">upload_file</span>
+                        <span>استيراد واستعادة ملف نسخة احتياطية JSON</span>
+                      </button>
+
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        accept=".json"
+                        onChange={handleImportBackupFile}
+                        className="hidden"
+                      />
                     </div>
                   </div>
                 </div>
