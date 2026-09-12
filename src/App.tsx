@@ -2005,17 +2005,33 @@ function ClinicApp() {
       return phoneMatch || nameMatch;
     });
 
-    const targetPatientId = existingPatient?.patientId || undefined;
+    const targetPatientId = existingPatient?.patientId || app.patientId || `pat-${Date.now()}`;
+
+    const patientToSave: Patient = existingPatient || {
+      patientId: targetPatientId,
+      fullName: cleanName || 'مريض محجوز',
+      phone: cleanPhone,
+      fileNumber: nextFileNumber,
+      medicalCode: app.medicalCode || `EG-${Math.floor(Math.random() * 90000) + 10000}`,
+      chronicDiseases: [],
+      allergies: [],
+      address: '',
+      bloodType: 'غير محدد',
+      dateOfBirth: null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      createdBy: userProfile?.username || 'receptionist',
+    };
 
     const newApp: Appointment = {
-      appointmentId: `app-${Date.now()}`,
+      appointmentId: app.appointmentId || app.id || `app-${Date.now()}`,
       patientId: targetPatientId,
       patientName: cleanName || 'مريض محجوز',
       phone: cleanPhone,
       clinicLocationId: 'loc-mohandessin',
       scheduledDate: app.date || new Date().toISOString().split('T')[0],
-      scheduledTime: app.timeSlot || '07:30 م',
-      visitType: app.visitType,
+      scheduledTime: app.timeSlot || app.time || '07:30 م',
+      visitType: app.visitType || 'كشف جديد',
       status: 'SCHEDULED',
       notes: app.notes || 'حجز موعد كشف مسبق',
       createdAt: timestamp,
@@ -2024,7 +2040,7 @@ function ClinicApp() {
     };
     if (db) {
       try {
-        await createAppointmentTransaction({ db, patient: existingPatient || null, appointment: newApp });
+        await createAppointmentTransaction({ db, patient: patientToSave, appointment: newApp });
       } catch (error) {
         alert(error instanceof Error ? error.message : 'تعذر حفظ الموعد في قاعدة البيانات');
       }

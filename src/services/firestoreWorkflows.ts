@@ -24,6 +24,30 @@ import type {
 const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 const now = () => new Date().toISOString();
 
+/**
+ * Strips all undefined fields recursively so Firestore never throws
+ * "Unsupported field value: undefined".
+ */
+export function removeUndefined<T extends Record<string, any>>(obj: T): Record<string, any> {
+  const result: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value === undefined) {
+      continue;
+    }
+    if (
+      value !== null &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      value.constructor === Object
+    ) {
+      result[key] = removeUndefined(value);
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
 const emptyClinicalData = {
   chiefComplaint: '',
   history: '',
@@ -368,10 +392,24 @@ export async function createAppointmentTransaction(params: {
       const patientSnap = await tx.get(patientRef);
       if (patientSnap.exists()) {
         tx.update(patientRef, { updatedAt: serverTimestamp() });
+      } else {
+        tx.set(patientRef, {
+          ...removeUndefined(params.patient),
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
       }
     }
     const appointmentRef = doc(params.db, 'appointments', params.appointment.appointmentId);
-    tx.set(appointmentRef, { ...params.appointment, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    const sanitizedAppointment = removeUndefined(params.appointment);
+    if (!sanitizedAppointment.patientId && params.patient?.patientId) {
+      sanitizedAppointment.patientId = params.patient.patientId;
+    }
+    tx.set(appointmentRef, {
+      ...sanitizedAppointment,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
   });
 }
 
