@@ -118,6 +118,8 @@ import {
   subscribeToDoctorSettings,
   subscribeToPrescriptionSettings,
   subscribeToAlertSettings,
+  subscribeToClinicStatus,
+  updateClinicStatusInFirestore,
   subscribeToRecurringTemplates,
   saveCatalogItem,
   removeCatalogItem,
@@ -950,8 +952,72 @@ function ClinicApp() {
 
   const registerAlert = (alertItem: ClinicAlertPayload) => {
     setCallingBanner(alertItem);
-    setAlertHistory((prev) => [alertItem, ...prev.filter((a) => a.id !== alertItem.id)].slice(0, 15));
+    setAlertHistory((prev) => [alertItem, ...prev.filter((a) => a.id !== alertItem.id)].slice(0, 20));
   };
+
+  const handleDismissAlert = (alertId: string) => {
+    setAlertHistory((prev) => prev.filter((a) => a.id !== alertId));
+    setCallingBanner((prev) => (prev?.id === alertId ? null : prev));
+  };
+
+  const handleClearAllAlerts = () => {
+    setAlertHistory([]);
+    setCallingBanner(null);
+  };
+
+  // Real-time synchronization of Doctor/Clinic Break Status across all connected accounts via Firestore
+  const isInitialClinicStatusRef = useRef(true);
+  const lastClinicStatusRef = useRef<'available' | 'break'>('available');
+
+  useEffect(() => {
+    if (!db) return;
+    const unsub = subscribeToClinicStatus(
+      db,
+      (clinicData) => {
+        if (!clinicData) return;
+        const newStatus = clinicData.status || 'available';
+        setDoctorStatus(newStatus);
+
+        // If status changed and it's not the initial mount, broadcast audio & visual alert to all connected users
+        if (!isInitialClinicStatusRef.current && lastClinicStatusRef.current !== newStatus) {
+          const alertConfig = loadAlertSettings();
+          if (newStatus === 'break') {
+            if (alertConfig.audioEnabled) {
+              playSingleAlertSound('call');
+            }
+            if (alertConfig.visualEnabled) {
+              registerAlert({
+                id: `break-${Date.now()}`,
+                type: 'call',
+                title: 'تنبيه: الطبيب في فترة استراحة ☕',
+                message: `أعلن (${clinicData.updatedBy || 'الطبيب'}) بدء فترة استراحة مؤقتة. يرجى التوقف عن تحويل المرضى لغرفة الكشف.`,
+                timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+              });
+              setTimeout(() => setCallingBanner(null), 6000);
+            }
+          } else {
+            if (alertConfig.audioEnabled) {
+              playSingleAlertSound('finish');
+            }
+            if (alertConfig.visualEnabled) {
+              registerAlert({
+                id: `avail-${Date.now()}`,
+                type: 'new_visit',
+                title: 'تنبيه: الطبيب متاح للكشف الآن 🟢',
+                message: 'انتهت فترة الاستراحة، الطبيب جاهز ومستعد لاستقبال وفحص المريض التالي.',
+                timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+              });
+              setTimeout(() => setCallingBanner(null), 6000);
+            }
+          }
+        }
+        lastClinicStatusRef.current = newStatus;
+        isInitialClinicStatusRef.current = false;
+      },
+      (err) => console.warn('Clinic status subscription error:', err)
+    );
+    return () => unsub();
+  }, [db]);
 
   // Real-time Firestore-driven notifications based on Visit status transitions (new_visit / call / finish)
   const previousVisitsMapRef = useRef<Map<string, Visit['status']>>(new Map());
@@ -976,7 +1042,7 @@ function ClinicApp() {
       const patientName = patient?.fullName || 'المريض';
       const ticket = String(v.queueNumber || '');
 
-      // 1. New visit registered in Firestore
+      // 1. New visit registered in Firestore (Waiting State)
       if (!prevStatus && v.status === 'WAITING') {
         if (alertConfig.audioEnabled && alertConfig.newVisitAudio) {
           playSingleAlertSound('new_visit');
@@ -1014,8 +1080,11 @@ function ClinicApp() {
           setTimeout(() => setCallingBanner(null), 5000);
         }
       }
-      // 3. Examination completed
+      // 3. Examination completed: automatically removes previous waiting/call notification for this patient!
       else if (prevStatus === 'IN_PROGRESS' && v.status === 'COMPLETED') {
+        // Disappear/purge waiting and calling notification for this patient on completion!
+        setAlertHistory((prev) => prev.filter((a) => a.patientId !== v.patientId));
+
         if (alertConfig.audioEnabled && alertConfig.finishExamAudio) {
           playSingleAlertSound('finish');
         }
@@ -1038,14 +1107,17 @@ function ClinicApp() {
     });
   }, [visitsCanonical, patientsCanonical]);
 
-  const handleToggleDoctorStatus = () => {
-    setDoctorStatus((prev) => {
-      const next = prev === 'available' ? 'break' : 'available';
-      const alertConfig = loadAlertSettings();
-      if (next === 'break') {
-        if (alertConfig.audioEnabled) {
-          playSingleAlertSound('call');
-        }
+  const handleToggleDoctorStatus = async () => {
+    const nextStatus = doctorStatus === 'available' ? 'break' : 'available';
+    setDoctorStatus(nextStatus);
+    const updatedBy = userProfile?.displayName || userProfile?.username || 'الطبيب';
+
+    const alertConfig = loadAlertSettings();
+    if (nextStatus === 'break') {
+      if (alertConfig.audioEnabled) {
+        playSingleAlertSound('call');
+      }
+      if (alertConfig.visualEnabled) {
         registerAlert({
           id: `break-${Date.now()}`,
           type: 'call',
@@ -1053,10 +1125,13 @@ function ClinicApp() {
           message: 'تم تفعيل وضع الاستراحة للطبيب، يرجى إيقاف تحويل المرضى لغرفة الكشف مؤقتاً لحين عودة الطبيب.',
           timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
         });
-      } else {
-        if (alertConfig.audioEnabled) {
-          playSingleAlertSound('finish');
-        }
+        setTimeout(() => setCallingBanner(null), 6000);
+      }
+    } else {
+      if (alertConfig.audioEnabled) {
+        playSingleAlertSound('finish');
+      }
+      if (alertConfig.visualEnabled) {
         registerAlert({
           id: `avail-${Date.now()}`,
           type: 'new_visit',
@@ -1064,9 +1139,18 @@ function ClinicApp() {
           message: 'الطبيب جاهز ومستعد لاستقبال وفحص المريض التالي في طابور الانتظار.',
           timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
         });
+        setTimeout(() => setCallingBanner(null), 6000);
       }
-      return next;
-    });
+    }
+
+    // Sync to Firestore immediately so all other connected accounts & devices receive the status update in real-time
+    if (db) {
+      try {
+        await updateClinicStatusInFirestore(db, nextStatus, updatedBy);
+      } catch (err) {
+        console.warn('Failed to update clinic status in Firestore:', err);
+      }
+    }
   };
 
   // Doctor-determined Follow-ups only (from followUps collection & doctor examination schedules)
@@ -2199,6 +2283,8 @@ function ClinicApp() {
           syncErrorDetails={syncErrorDetails}
           waitingQueue={queue}
           recentAlerts={alertHistory}
+          onDismissAlert={handleDismissAlert}
+          onClearAllAlerts={handleClearAllAlerts}
           followUpsList={doctorFollowUpsList}
           patients={patients}
           appointments={appointments}

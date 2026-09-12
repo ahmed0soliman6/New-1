@@ -56,10 +56,10 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   const [activeAlertsCardTab, setActiveAlertsCardTab] = useState<'queue' | 'alerts' | 'followups'>('queue');
   const [dashboardWhatsappToast, setDashboardWhatsappToast] = useState<string | null>(null);
 
-  // Urgent upcoming follow-ups: strictly less than 3 days (< 3 days: 0, 1, 2 days remaining) sorted in order
+  // Urgent upcoming follow-ups: strictly less than 2 days (< 2 days: 0, 1 days remaining, or overdue)
   const dashboardUrgentFollowUps = useMemo(() => {
     return (followUps || [])
-      .filter((f) => f.daysRemaining >= 0 && f.daysRemaining < 3)
+      .filter((f) => f.daysRemaining < 2)
       .sort((a, b) => a.daysRemaining - b.daysRemaining);
   }, [followUps]);
 
@@ -955,7 +955,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
             }`}
           >
             <span className="material-symbols-outlined text-base">event_repeat</span>
-            <span>المتابعات القادمة (&lt; 3 أيام)</span>
+            <span>المتابعات القادمة (&lt; يومين)</span>
             <span
               className={`px-1.5 py-0.2 rounded-full text-[10px] font-black font-mono ${
                 activeAlertsCardTab === 'followups'
@@ -1254,9 +1254,18 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                     <div className="text-[11px] text-slate-600 dark:text-slate-300 space-y-0.5 bg-white dark:bg-black/30 p-2 rounded-xl border border-slate-200/60 dark:border-white/5">
                       <div className="flex items-center justify-between">
                         <span className="text-slate-400">تاريخ المتابعة:</span>
-                        <span className="font-bold text-slate-800 dark:text-slate-200 font-mono" dir="ltr">
-                          {item.dueDate}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                          <span className="font-bold text-slate-800 dark:text-slate-200 font-mono" dir="ltr">
+                            {item.dueDate}
+                          </span>
+                          <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">
+                            {item.daysRemaining < 0
+                              ? `(متأخر ${Math.abs(item.daysRemaining)} يوم)`
+                              : item.daysRemaining === 0
+                              ? '(اليوم)'
+                              : '(غداً - متبقي 1 يوم)'}
+                          </span>
+                        </div>
                       </div>
                       {item.diagnosis && (
                         <div className="truncate">

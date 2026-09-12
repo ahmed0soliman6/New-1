@@ -150,6 +150,16 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
       });
   }, [transactions]);
 
+  // Live System Expenses (sorted newest first)
+  const sortedExpenses = useMemo(() => {
+    return [...expenses].sort((a, b) => {
+      const timeA = new Date(a.date || a.createdAt || '2026-01-01').getTime();
+      const timeB = new Date(b.date || b.createdAt || '2026-01-01').getTime();
+      if (!isNaN(timeB) && !isNaN(timeA) && timeB !== timeA) return timeB - timeA;
+      return (b.id || '').localeCompare(a.id || '');
+    });
+  }, [expenses]);
+
   // Month Names in Arabic
   const MONTH_NAMES_AR: Record<string, string> = {
     '1': 'يناير',
@@ -1188,14 +1198,14 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-                  {expenses.length === 0 ? (
+                  {sortedExpenses.length === 0 ? (
                     <tr>
                       <td colSpan={4} className="p-8 text-center text-xs text-slate-400 dark:text-[#859394]">
                         لا توجد مصروفات مسجلة حتى الآن
                       </td>
                     </tr>
                   ) : (
-                    expenses.map((exp) => (
+                    sortedExpenses.map((exp) => (
                       <tr key={exp.id} className="hover:bg-slate-50 dark:hover:bg-[#18233C]/60 transition-colors">
                         <td className="p-3 font-bold text-slate-900 dark:text-[#dde2f5]">
                           <div>{exp.category}</div>

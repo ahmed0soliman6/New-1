@@ -278,6 +278,52 @@ export const subscribeToAlertSettings = (
   );
 };
 
+export interface ClinicStatusState {
+  status: 'available' | 'break';
+  updatedAt: string;
+  updatedBy: string;
+  message?: string;
+}
+
+export const subscribeToClinicStatus = (
+  db: Firestore,
+  next: (status: ClinicStatusState | null) => void,
+  error: (reason: Error) => void
+): Unsubscribe => {
+  return onSnapshot(
+    doc(db, 'settings', 'clinicStatus'),
+    (snap) => {
+      if (snap.exists()) {
+        next(snap.data() as ClinicStatusState);
+      } else {
+        next(null);
+      }
+    },
+    (reason) => {
+      error(handleFirestoreError(reason, OperationType.GET, 'settings/clinicStatus'));
+    }
+  );
+};
+
+export const updateClinicStatusInFirestore = async (
+  db: Firestore,
+  status: 'available' | 'break',
+  updatedBy: string
+) => {
+  const ref = doc(db, 'settings', 'clinicStatus');
+  await setDoc(
+    ref,
+    {
+      status,
+      updatedAt: new Date().toISOString(),
+      updatedBy,
+      message: status === 'break' ? 'الطبيب في فترة استراحة ☕' : 'الطبيب متاح الآن للكشف 🟢',
+    },
+    { merge: true }
+  );
+};
+
+
 export const subscribeToRecurringTemplates = (
   db: Firestore,
   next: (templates: any[] | null) => void,

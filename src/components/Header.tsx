@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { CLINIC_INFO } from '../data/previewClinicData';
 import { useDoctorName } from '../hooks/useDoctorName';
 import { QueueItem, AppointmentListItem, PatientListItem, TransactionRecord, ScreenType } from '../types';
@@ -28,6 +28,8 @@ export interface HeaderProps {
   // Queue & Alerts Integration
   waitingQueue: QueueItem[];
   recentAlerts: ClinicAlertPayload[];
+  onDismissAlert?: (alertId: string) => void;
+  onClearAllAlerts?: () => void;
   activeExamPatientName?: string | null;
   onCallPatient?: (ticket: string, name: string) => void;
   // Followups Data & Action
@@ -49,6 +51,8 @@ export const Header: React.FC<HeaderProps> = ({
   onRetrySync,
   waitingQueue = [],
   recentAlerts = [],
+  onDismissAlert,
+  onClearAllAlerts,
   activeExamPatientName,
   onCallPatient,
   followUpsList = [],
@@ -64,8 +68,10 @@ export const Header: React.FC<HeaderProps> = ({
   const activeDoctorName = useDoctorName();
   const [whatsappToast, setWhatsappToast] = useState<string | null>(null);
 
-  // Filter urgent follow-ups: Only patients with less than 2 days remaining (0 <= daysRemaining <= 2)
-  const urgentFollowUps = followUpsList.filter((f) => f.daysRemaining >= 0 && f.daysRemaining <= 2);
+  // Filter urgent follow-ups: Only patients with less than 2 days remaining (< 2 days: 0 days, 1 day, or overdue)
+  const urgentFollowUps = useMemo(() => {
+    return followUpsList.filter((f) => f.daysRemaining < 2);
+  }, [followUpsList]);
 
   // Send stylized WhatsApp message for doctor-scheduled follow-up
   const handleSendWhatsapp = (phone: string, patientName: string, dueDate?: string) => {
@@ -93,8 +99,8 @@ export const Header: React.FC<HeaderProps> = ({
     setTimeout(() => setWhatsappToast(null), 4000);
   };
 
-  // Total unread/pending count for notification badge: only urgent followups (<= 2 days) trigger alert badge
-  const totalActionCount = waitingQueue.length + (recentAlerts.length > 0 ? 1 : 0) + urgentFollowUps.length;
+  // Total unread/pending count for notification badge: queue items + active alerts + urgent followups (< 2 days)
+  const totalActionCount = waitingQueue.length + recentAlerts.length + urgentFollowUps.length;
 
   return (
     <>
@@ -255,9 +261,9 @@ export const Header: React.FC<HeaderProps> = ({
                   >
                     <span>المتابعات</span>
                     <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
-                      urgentFollowUps.length > 0 ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 font-bold' : 'bg-emerald-500/20'
+                      urgentFollowUps.length > 0 ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 font-bold' : 'bg-slate-100 dark:bg-white/5 text-slate-400'
                     }`}>
-                      {urgentFollowUps.length > 0 ? `${urgentFollowUps.length} عاجلة` : followUpsList.length}
+                      {urgentFollowUps.length}
                     </span>
                   </button>
                 </div>
@@ -334,7 +340,19 @@ export const Header: React.FC<HeaderProps> = ({
 
                 {/* Tab 2: Recent Alerts History */}
                 {activeNotifyTab === 'alerts' && (
-                  <div className="max-h-64 overflow-y-auto divide-y divide-slate-100 dark:divide-white/5">
+                  <div className="max-h-64 overflow-y-auto space-y-1">
+                    {recentAlerts.length > 0 && onClearAllAlerts && (
+                      <div className="flex items-center justify-between pb-1 mb-1 border-b border-slate-100 dark:border-white/5 text-[10px]">
+                        <span className="text-slate-400 dark:text-[#859394]">تنبيهات العيادة الحالية</span>
+                        <button
+                          type="button"
+                          onClick={onClearAllAlerts}
+                          className="text-rose-500 hover:text-rose-600 font-bold hover:underline cursor-pointer"
+                        >
+                          مسح الكل
+                        </button>
+                      </div>
+                    )}
                     {recentAlerts.length === 0 ? (
                       <div className="py-6 text-center text-xs text-slate-400 dark:text-[#859394]">
                         <span className="material-symbols-outlined text-2xl mb-1 text-slate-300 dark:text-slate-600 block">
@@ -344,7 +362,7 @@ export const Header: React.FC<HeaderProps> = ({
                       </div>
                     ) : (
                       recentAlerts.map((alert) => (
-                        <div key={alert.id} className="py-2.5 px-1 flex items-start gap-2.5">
+                        <div key={alert.id} className="py-2 px-1 flex items-start gap-2 hover:bg-slate-50 dark:hover:bg-[#111A2E] rounded-lg transition-colors group">
                           <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
                             alert.type === 'finish'
                               ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
@@ -357,7 +375,19 @@ export const Header: React.FC<HeaderProps> = ({
                             </span>
                           </div>
                           <div className="text-xs min-w-0 flex-1">
-                            <p className="font-semibold text-slate-900 dark:text-[#dde2f5]">{alert.title}</p>
+                            <div className="flex items-center justify-between gap-1">
+                              <p className="font-semibold text-slate-900 dark:text-[#dde2f5] truncate">{alert.title}</p>
+                              {onDismissAlert && (
+                                <button
+                                  type="button"
+                                  onClick={() => onDismissAlert(alert.id)}
+                                  className="text-slate-400 hover:text-rose-500 p-0.5 rounded cursor-pointer transition-colors"
+                                  title="إخفاء التنبيه"
+                                >
+                                  <span className="material-symbols-outlined text-xs">close</span>
+                                </button>
+                              )}
+                            </div>
                             <p className="text-[11px] text-slate-500 dark:text-[#bbc9ca] mt-0.5 leading-snug">
                               {alert.message}
                             </p>
@@ -371,42 +401,41 @@ export const Header: React.FC<HeaderProps> = ({
                   </div>
                 )}
 
-                {/* Tab 3: Upcoming Follow-ups & WhatsApp Reminders */}
+                {/* Tab 3: Upcoming Follow-ups (< 2 days only) & WhatsApp Reminders */}
                 {activeNotifyTab === 'followups' && (
                   <div className="max-h-64 overflow-y-auto divide-y divide-slate-100 dark:divide-white/5 space-y-1">
-                    {followUpsList.length === 0 ? (
+                    {urgentFollowUps.length === 0 ? (
                       <div className="py-6 text-center text-xs text-slate-400 dark:text-[#859394]">
-                        <span className="material-symbols-outlined text-2xl mb-1 text-slate-300 dark:text-slate-600 block">
-                          event_available
+                        <span className="material-symbols-outlined text-2xl mb-1 text-emerald-500 block">
+                          task_alt
                         </span>
-                        لا توجد متابعات مسجلة من الطبيب
+                        لا توجد متابعات مستحقة خلال أقل من يومين
                       </div>
                     ) : (
-                      followUpsList.slice(0, 10).map((f) => {
-                        const isUrgent = f.daysRemaining >= 0 && f.daysRemaining <= 2;
+                      urgentFollowUps.map((f) => {
                         return (
                           <div
                             key={f.id}
-                            className={`py-2 px-2 flex items-center justify-between gap-2 rounded-lg transition-colors ${
-                              isUrgent
-                                ? 'bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-900/40'
-                                : 'hover:bg-slate-50 dark:hover:bg-[#111A2E]'
-                            }`}
+                            className="py-2 px-2 flex items-center justify-between gap-2 rounded-lg bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-900/40 transition-colors"
                           >
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5">
                                 <span className="font-bold text-xs text-slate-900 dark:text-[#dde2f5] truncate">
                                   {f.patientName}
                                 </span>
-                                {isUrgent && (
-                                  <span className="bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300 text-[9px] font-bold px-1.5 py-0.2 rounded border border-amber-200 dark:border-transparent">
-                                    أقل من يومين ⚠️
-                                  </span>
-                                )}
+                                <span className="bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300 text-[9px] font-bold px-1.5 py-0.2 rounded border border-amber-200 dark:border-transparent">
+                                  أقل من يومين ⚠️
+                                </span>
                               </div>
                               <p className="text-[10px] text-slate-400 dark:text-[#859394] mt-0.5">
                                 موعد المتابعة: <strong className="font-mono text-slate-700 dark:text-slate-300">{f.dueDate}</strong>
-                                {f.daysRemaining === 0 ? ' (اليوم)' : f.daysRemaining === 1 ? ' (غداً)' : ` (متبقي ${f.daysRemaining} يوم)`}
+                                <span className="text-amber-700 dark:text-amber-400 font-bold mr-1">
+                                  {f.daysRemaining < 0
+                                    ? `(متأخر منذ ${Math.abs(f.daysRemaining)} يوم)`
+                                    : f.daysRemaining === 0
+                                    ? ' (الموعد اليوم - 0 يوم)'
+                                    : ' (غداً - متبقي 1 يوم)'}
+                                </span>
                               </p>
                             </div>
 

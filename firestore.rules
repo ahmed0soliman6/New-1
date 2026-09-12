@@ -349,7 +349,9 @@ service cloud.firestore {
 
     match /doctorSettings/{settingId} {
       allow read: if isUserActive();
-      allow create, update, delete: if isAdmin() || isDoctor() || hasPermission('system-settings', 'update');
+      allow create, update, delete: if isUserActive() && (
+        isAdmin() || isDoctor() || hasPermission('system-settings', 'update') || settingId == 'clinicStatus'
+      );
     }
 
     match /systemSettings/{settingId} {
@@ -360,7 +362,7 @@ service cloud.firestore {
 
     match /settings/{settingId} {
       allow read: if isUserActive();
-      allow create, update: if isAdmin() || hasPermission('system-settings', 'update') || hasPermission('prescription-pad', 'update');
+      allow create, update: if isAdmin() || hasPermission('system-settings', 'update') || hasPermission('prescription-pad', 'update') || (isUserActive() && settingId == 'clinicStatus');
       allow delete: if isAdmin();
     }
 

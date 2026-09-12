@@ -209,9 +209,9 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
     return followUps || [];
   }, [followUps]);
 
-  // Filtered follow-ups
+  // Filtered follow-ups sorted by urgency / nearest due date
   const displayedFollowUps = useMemo(() => {
-    return activeFollowUps.filter((f) => {
+    const list = activeFollowUps.filter((f) => {
       if (!followupSearch.trim()) return true;
       const q = followupSearch.toLowerCase();
       return (
@@ -220,6 +220,7 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
         f.medicalCode.toLowerCase().includes(q)
       );
     });
+    return list.sort((a, b) => a.daysRemaining - b.daysRemaining);
   }, [activeFollowUps, followupSearch]);
 
   // Update Status handler:
@@ -1010,9 +1011,30 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
                     </div>
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-slate-500 dark:text-[#859394]">موعد المتابعة المستحق:</span>
-                      <span className="font-mono font-bold text-[#008f97] dark:text-[#00c2cb]">
-                        {fu.dueDate}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                        <span className="font-mono font-bold text-[#008f97] dark:text-[#00c2cb]">
+                          {fu.dueDate}
+                        </span>
+                        <span
+                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
+                            fu.daysRemaining < 0
+                              ? 'bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-900/30'
+                              : fu.daysRemaining === 0
+                              ? 'bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-900/30'
+                              : fu.daysRemaining === 1
+                              ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900/30'
+                              : 'bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-400 border border-teal-200 dark:border-teal-900/30'
+                          }`}
+                        >
+                          {fu.daysRemaining < 0
+                            ? `(متأخر ${Math.abs(fu.daysRemaining)} يوم)`
+                            : fu.daysRemaining === 0
+                            ? '(اليوم - 0 يوم متبقي)'
+                            : fu.daysRemaining === 1
+                            ? '(غداً - متبقي 1 يوم)'
+                            : `(متبقي ${fu.daysRemaining} يوم)`}
+                        </span>
+                      </div>
                     </div>
                     {fu.diagnosis && (
                       <div className="text-xs pt-1 border-t border-slate-100 dark:border-white/5 text-slate-700 dark:text-slate-300">
