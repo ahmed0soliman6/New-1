@@ -7,6 +7,7 @@ import {
   ScreenType,
 } from '../types';
 import { INITIAL_SERVICES } from '../data/database';
+import { toEnglishDigits } from '../utils/numberUtils';
 
 export interface GlobalSearchBarProps {
   patients: PatientListItem[];
@@ -423,15 +424,15 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
                                       {p.name}
                                     </h5>
                                     <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-[#00c2cb]/15 text-[#008f97] dark:text-[#45dee7] font-bold">
-                                      {p.medicalCode || `P-${p.fileNumber || '00'}`}
+                                      ملف #{toEnglishDigits(p.fileNumber || 1)}
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-1 flex-wrap">
                                     <span dir="ltr" className="font-mono">
-                                      {p.phone}
+                                      {toEnglishDigits(p.phone)}
                                     </span>
                                     <span>•</span>
-                                    <span>{p.age ? `${p.age} سنة` : 'العمر غير مسجل'}</span>
+                                    <span>{p.age ? `${toEnglishDigits(p.age)} سنة` : 'العمر غير مسجل'}</span>
                                     {p.governorate && (
                                       <>
                                         <span>•</span>
@@ -695,8 +696,8 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
                                   <h5 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate">
                                     {t.patientName}
                                   </h5>
-                                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-slate-200 dark:bg-white/10 font-bold">
-                                    فاتورة #{t.receiptNumber || t.receiptNo || t.id.slice(0, 6)}
+                                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-bold">
+                                    فاتورة سداد
                                   </span>
                                 </div>
                                 <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
@@ -707,7 +708,7 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
 
                               <div className="text-left shrink-0">
                                 <span className="text-xs font-black font-mono text-emerald-600 dark:text-emerald-400">
-                                  +{t.paidAmount || t.amount || t.totalAmount || 0} ج.م
+                                  +{toEnglishDigits(t.paidAmount || t.amount || t.totalAmount || 0)} ج.م
                                 </span>
                               </div>
                             </div>

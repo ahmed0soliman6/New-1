@@ -3,6 +3,9 @@ import { CLINIC_INFO } from '../../data/previewClinicData';
 import { PatientListItem, ScreenType } from '../../types';
 import { usePermissions } from '../../context/AuthContext';
 import { exportPatientMedicalDossierPdf } from '../../utils/exportPatientDossierPdf';
+import { toEnglishDigits } from '../../utils/numberUtils';
+import { printPrescriptionDocument, printVisitReportDocument } from '../../utils/printPrescription';
+import { getPrescriptionDoctorInfo } from '../../utils/prescriptionDoctor';
 import type {
   FollowUp,
   Invoice,
@@ -237,8 +240,8 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
   const handleSendPatientSummaryWhatsapp = () => {
     const message = `مرحباً بك أستاذ/ة *${fullName || patient.name}* 🌸
 ملفكم الطبي مسجل لدى *عيادة ${CLINIC_INFO.doctorName}* 🩺
-كود الملف: *${patient.medicalCode}*
-تاريخ فتح الملف: *${patient.registrationDate || '2024-02-10'}*
+رقم الملف: *#${toEnglishDigits(patient.fileNumber || 1)}*
+تاريخ فتح الملف: *${toEnglishDigits(patient.registrationDate || '2024-02-10')}*
 
 مع تمنياتنا لكم بتمام الصحة والعافية ✨
 للاستفسار والتواصل: 01092847162`;
@@ -297,7 +300,7 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
             <div className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
               <span>{fullName || patient.name}</span>
               <span className="bg-[#00c2cb]/15 text-[#008f97] dark:text-[#45dee7] font-mono text-xs px-2 py-0.5 rounded-md border border-[#00c2cb]/20">
-                #{patient.medicalCode}
+                ملف #{toEnglishDigits(patient.fileNumber || 1)}
               </span>
             </div>
           </div>
@@ -390,7 +393,7 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
                   {fullName || patient.name}
                 </h2>
                 <span className="bg-[#00c2cb]/15 text-[#008f97] dark:text-[#45dee7] text-xs font-mono font-bold px-2.5 py-0.5 rounded-lg border border-[#00c2cb]/30">
-                  كود: #{patient.medicalCode}
+                  ملف #{toEnglishDigits(patient.fileNumber || 1)}
                 </span>
                 {bloodType && bloodType !== 'غير محدد' && (
                   <span className="bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 text-xs font-mono font-bold px-2.5 py-0.5 rounded-lg border border-rose-200/80 dark:border-rose-900/40 flex items-center gap-1">
@@ -399,14 +402,14 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
                   </span>
                 )}
                 <span className="bg-slate-100 dark:bg-[#18233C] text-slate-600 dark:text-[#bbc9ca] text-xs font-bold px-2.5 py-0.5 rounded-lg border border-slate-200 dark:border-white/10">
-                  {gender === 'male' ? 'ذكر' : 'أنثى'} • {age} سنة
+                  {gender === 'male' ? 'ذكر' : 'أنثى'} • {toEnglishDigits(age)} سنة
                 </span>
               </div>
 
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-[#859394]">
                 <span className="flex items-center gap-1 font-mono">
                   <span className="material-symbols-outlined text-sm text-[#008f97] dark:text-[#00c2cb]">call</span>
-                  <span>{phone || 'لا يوجد هاتف مسجل'}</span>
+                  <span>{toEnglishDigits(phone || 'لا يوجد هاتف مسجل')}</span>
                 </span>
                 {address && (
                   <span className="flex items-center gap-1">
@@ -594,7 +597,7 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
                     <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb] text-base">badge</span>
                     <span>البيانات الشخصية والتعريفية</span>
                   </span>
-                  <span className="text-[11px] text-slate-400 font-mono">#{patient.medicalCode}</span>
+                  <span className="text-[11px] text-slate-400 font-mono">ملف #{toEnglishDigits(patient.fileNumber || 1)}</span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 text-xs">
@@ -757,7 +760,7 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
                     </span>
                   </div>
                   <span className="text-xs bg-[#00c2cb]/15 text-[#008f97] dark:text-[#45dee7] px-2.5 py-1 rounded-md font-mono font-bold">
-                    #{patient.medicalCode}
+                    ملف #{toEnglishDigits(patient.fileNumber || 1)}
                   </span>
                 </div>
 
@@ -1103,6 +1106,8 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
                   (fu) => (fu.sourceVisitId === v.visitId || fu.patientId === patient.id) && fu.status !== 'CANCELLED'
                 );
 
+                const allMeds = vPrescriptions.flatMap((pr) => pr.items || []);
+
                 const handleSendVisitWhatsapp = () => {
                   const visitDateStr = new Date(v.createdAt).toLocaleDateString('ar-EG', {
                     year: 'numeric',
@@ -1114,8 +1119,6 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
                     v.clinicalData?.diagnosis && v.clinicalData.diagnosis.length > 0
                       ? v.clinicalData.diagnosis.join('، ')
                       : 'فحص واستشارة باطنة';
-
-                  const allMeds = vPrescriptions.flatMap((pr) => pr.items || []);
 
                   let medsSection = '';
                   if (allMeds.length > 0) {
@@ -1196,15 +1199,70 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={handleSendVisitWhatsapp}
-                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs"
-                        title="إرسال تقرير الكشف الكامل إلى المريض عبر واتساب"
-                      >
-                        <span className="material-symbols-outlined text-sm">chat</span>
-                        <span>إرسال تقرير الزيارة (واتساب)</span>
-                      </button>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const doctorInfo = getPrescriptionDoctorInfo();
+                            printVisitReportDocument({
+                              config: {
+                                doctorName: doctorInfo.doctorName,
+                                doctorNameEn: doctorInfo.doctorNameEn,
+                                specialtyAr: doctorInfo.specialtyAr,
+                                specialtyEn: doctorInfo.specialtyEn,
+                                degreesAr: doctorInfo.degreesAr,
+                                degreesEn: doctorInfo.degreesEn,
+                                phone: doctorInfo.phone,
+                                logoUrl: doctorInfo.logoUrl,
+                              },
+                              patient: {
+                                fullName: fullName || patient.name,
+                                fileNumber: patient.fileNumber || patientCanonical?.patientId || 1,
+                                age: age || patient.age,
+                                gender: gender === 'male' ? 'ذكر' : gender === 'female' ? 'أنثى' : undefined,
+                                phone: phone || patient.phone,
+                              },
+                              visit: {
+                                visitId: v.visitId,
+                                visitType: v.visitType,
+                                createdAt: v.createdAt,
+                                vitalSigns: v.vitalSigns,
+                                clinicalData: v.clinicalData,
+                                receptionistData: v.receptionistData,
+                              },
+                              medications: allMeds.map((m) => ({
+                                name: m.name,
+                                strength: m.strength,
+                                dose: m.dose,
+                                duration: m.duration,
+                                instructions: m.instructions,
+                              })),
+                              labOrders: vLabs,
+                              radiologyOrders: vRads,
+                              followUp: vFollowUp
+                                ? { scheduledDate: vFollowUp.scheduledDate, notes: vFollowUp.notes }
+                                : undefined,
+                            });
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#18233C] dark:hover:bg-white/10 text-slate-800 dark:text-[#dde2f5] border border-slate-300 dark:border-white/10 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs"
+                          title="طباعة تقرير الكشف والزيارة الطبية"
+                        >
+                          <span className="material-symbols-outlined text-sm text-[#008f97] dark:text-[#00c2cb]">
+                            print
+                          </span>
+                          <span>طباعة تقرير الزيارة</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleSendVisitWhatsapp}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs"
+                          title="إرسال تقرير الكشف الكامل إلى المريض عبر واتساب"
+                        >
+                          <span className="material-symbols-outlined text-sm">chat</span>
+                          <span>إرسال تقرير الزيارة (واتساب)</span>
+                        </button>
+                      </div>
                     </div>
 
                     {/* Vital Signs Grid if available */}
@@ -1339,14 +1397,95 @@ ${pr.notes ? `📝 *إرشادات الطبيب:* ${pr.notes}\n\n` : ''}مع ت�
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={handleSendRxWhatsapp}
-                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all"
-                      >
-                        <span className="material-symbols-outlined text-sm">chat</span>
-                        <span>إرسال الروشتة عبر واتساب</span>
-                      </button>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const doctorInfo = getPrescriptionDoctorInfo();
+                            let prescriptionConfig: any = {
+                              doctorName: doctorInfo.doctorName,
+                              doctorNameEn: doctorInfo.doctorNameEn,
+                              specialtyAr: doctorInfo.specialtyAr,
+                              specialtyEn: doctorInfo.specialtyEn,
+                              degreesAr: doctorInfo.degreesAr,
+                              degreesEn: doctorInfo.degreesEn,
+                              phone: doctorInfo.phone,
+                              logoUrl: doctorInfo.logoUrl,
+                              showLogo: true,
+                              showHeader: true,
+                              showFooter: true,
+                              preprintedPaperMode: false,
+                              showQr: true,
+                              qrType: 'clinic',
+                              footerFontSize: 'medium',
+                              outerMargin: 'normal',
+                              headerMarginTop: 'balanced',
+                              footerMarginBottom: 'balanced',
+                              sectionSpacing: 'comfortable',
+                              branches: CLINIC_INFO.branches || [],
+                            };
+
+                            try {
+                              const cached = localStorage.getItem('soli_prescription_settings');
+                              if (cached) {
+                                const parsed = JSON.parse(cached);
+                                prescriptionConfig = { ...prescriptionConfig, ...parsed };
+                              }
+                            } catch {
+                              // fallback
+                            }
+
+                            const matchedVisit = (visits || []).find((vItem) => vItem.visitId === pr.visitId);
+                            const diagnosesList =
+                              matchedVisit?.clinicalData?.diagnosis?.map((d, i) => ({
+                                id: `d-${i}`,
+                                nameAr: d,
+                                isPrimary: i === 0,
+                              })) || [];
+
+                            printPrescriptionDocument({
+                              config: prescriptionConfig,
+                              patient: {
+                                name: fullName || patient.name,
+                                age: age || patient.age,
+                                phone: phone || patient.phone,
+                                fileNumber: patient.fileNumber || patientCanonical?.patientId || 1,
+                                date: pr.createdAt,
+                              },
+                              items: pr.items.map((it, idx) => ({
+                                id: `it-${idx}`,
+                                drugName: it.name,
+                                strength: it.strength,
+                                dosage: it.dose,
+                                dosageInstructions: it.instructions,
+                                duration: it.duration,
+                                notes: pr.notes,
+                              })),
+                              diagnoses: diagnosesList,
+                              lifestyleAdvice: pr.notes,
+                              followupDate: followUps.find((f) => f.patientId === (patient.id || patient.patientId))
+                                ?.scheduledDate,
+                            });
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#18233C] dark:hover:bg-white/10 text-slate-800 dark:text-[#dde2f5] border border-slate-300 dark:border-white/10 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs"
+                          title="طباعة الروشتة الطبية A5"
+                        >
+                          <span className="material-symbols-outlined text-sm text-purple-600 dark:text-[#d0bcff]">
+                            print
+                          </span>
+                          <span>طباعة الروشتة</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleSendRxWhatsapp}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all"
+                          title="إرسال الروشتة عبر واتساب"
+                        >
+                          <span className="material-symbols-outlined text-sm">chat</span>
+                          <span>إرسال الروشتة عبر واتساب</span>
+                        </button>
+                      </div>
                     </div>
 
                     {/* Drugs Grid */}
@@ -1613,7 +1752,7 @@ ${pr.notes ? `📝 *إرشادات الطبيب:* ${pr.notes}\n\n` : ''}مع ت�
                 تأكيد حذف ملف المريض نهائياً
               </h3>
               <p className="text-xs text-slate-500 dark:text-[#859394] leading-relaxed">
-                هل أنت متأكد من رغبتك في حذف ملف المريض <strong className="text-slate-800 dark:text-white">({fullName || patient.name})</strong> كود ملف <strong className="text-[#008f97] dark:text-[#00c2cb] font-mono">{patient.medicalCode}</strong>؟
+                هل أنت متأكد من رغبتك في حذف ملف المريض <strong className="text-slate-800 dark:text-white">({fullName || patient.name})</strong> رقم الملف <strong className="text-[#008f97] dark:text-[#00c2cb] font-mono">#{toEnglishDigits(patient.fileNumber || 1)}</strong>؟
               </p>
               <p className="text-[11px] text-rose-600 dark:text-rose-400 font-medium pt-1">
                 ⚠️ تحذير: سيتم حذف كافة البيانات الطبية والزيارات المرتبطة بهذا الملف ولا يمكن التراجع بعد الحذف.

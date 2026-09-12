@@ -4,12 +4,14 @@ import { useDoctorName } from '../hooks/useDoctorName';
 import { QueueItem, AppointmentListItem, PatientListItem, TransactionRecord, ScreenType } from '../types';
 import { ClinicAlertPayload } from '../utils/alertManager';
 import { GlobalSearchBar } from './GlobalSearchBar';
+import { toEnglishDigits } from '../utils/numberUtils';
 
 export interface FollowUpItem {
   id: string;
   patientName: string;
   phone: string;
-  medicalCode: string;
+  fileNumber?: number;
+  medicalCode?: string;
   lastVisitDate: string;
   dueDate: string;
   daysRemaining: number;
@@ -428,13 +430,13 @@ export const Header: React.FC<HeaderProps> = ({
                                 </span>
                               </div>
                               <p className="text-[10px] text-slate-400 dark:text-[#859394] mt-0.5">
-                                موعد المتابعة: <strong className="font-mono text-slate-700 dark:text-slate-300">{f.dueDate}</strong>
+                                موعد المتابعة: <strong className="font-mono text-slate-700 dark:text-slate-300">{toEnglishDigits(f.dueDate)}</strong>
                                 <span className="text-amber-700 dark:text-amber-400 font-bold mr-1">
                                   {f.daysRemaining < 0
-                                    ? `(متأخر منذ ${Math.abs(f.daysRemaining)} يوم)`
+                                    ? `(متأخر منذ ${toEnglishDigits(Math.abs(f.daysRemaining))} يوم)`
                                     : f.daysRemaining === 0
-                                    ? ' (الموعد اليوم - 0 يوم)'
-                                    : ' (غداً - متبقي 1 يوم)'}
+                                    ? ` (الموعد اليوم - ${toEnglishDigits(0)} يوم)`
+                                    : ` (غداً - متبقي ${toEnglishDigits(1)} يوم)`}
                                 </span>
                               </p>
                             </div>

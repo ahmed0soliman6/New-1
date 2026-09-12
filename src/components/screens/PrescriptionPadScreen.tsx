@@ -201,10 +201,39 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
     return () => unsubscribe();
   }, []);
 
-  // Instantly reflect prescription configuration changes (including doctor name) across all screens
+  // Instantly reflect prescription configuration changes (including doctor name) across all screens and auto-sync
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'saved' | 'saving'>('saved');
+
   useEffect(() => {
     localStorage.setItem('soli_prescription_settings', JSON.stringify(config));
     window.dispatchEvent(new Event('soli_prescription_updated'));
+    window.dispatchEvent(new Event('storage'));
+
+    setAutoSaveStatus('saving');
+    const timer = setTimeout(async () => {
+      try {
+        if (db) {
+          await saveSettingsDocument(db, 'prescriptionSettings', config as unknown as Record<string, unknown>);
+          await saveSettingsDocument(db, 'doctorProfile', {
+            doctorNameAr: config.doctorName,
+            doctorNameEn: config.doctorNameEn,
+            specialtyAr: config.specialtyAr,
+            specialtyEn: config.specialtyEn,
+            credentialsAr: [config.degreesAr],
+            credentialsEn: [config.degreesEn],
+            phone: config.phone,
+            logoUrl: config.logoUrl,
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      } catch (err) {
+        console.warn('Auto-save prescription settings background sync error:', err);
+      } finally {
+        setAutoSaveStatus('saved');
+      }
+    }, 600);
+
+    return () => clearTimeout(timer);
   }, [config]);
 
   const [activeTab, setActiveTab] = useState<'layout' | 'header' | 'qr' | 'branches' | 'printers'>('layout');
@@ -213,7 +242,8 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  // New branch form
+  // Branch form state (Add & Edit)
+  const [editingBranchId, setEditingBranchId] = useState<string | null>(null);
   const [newBranchName, setNewBranchName] = useState('');
   const [newBranchAddress, setNewBranchAddress] = useState('');
   const [newBranchPhone, setNewBranchPhone] = useState('');
@@ -285,27 +315,63 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
     }
   };
 
-  const handleAddBranch = (e: React.FormEvent) => {
+  const handleOpenAddBranch = () => {
+    setEditingBranchId(null);
+    setNewBranchName('');
+    setNewBranchAddress('');
+    setNewBranchPhone(config.phone || '01092847162');
+    setNewBranchHours('');
+    setShowAddBranchModal(true);
+  };
+
+  const handleOpenEditBranch = (branch: PrescriptionLayoutSettings['branches'][0]) => {
+    setEditingBranchId(branch.id);
+    setNewBranchName(branch.name);
+    setNewBranchAddress(branch.address || '');
+    setNewBranchPhone(branch.phone || config.phone || '');
+    setNewBranchHours(branch.workingHours || '');
+    setShowAddBranchModal(true);
+  };
+
+  const handleSaveBranch = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBranchName.trim()) return;
 
-    const newBranch = {
-      id: `branch-${Date.now()}`,
-      name: newBranchName.trim(),
-      address: newBranchAddress.trim() || undefined,
-      phone: newBranchPhone.trim() || config.phone,
-      workingHours: newBranchHours.trim() || undefined,
-    };
+    if (editingBranchId) {
+      setConfig((prev) => ({
+        ...prev,
+        branches: prev.branches.map((b) =>
+          b.id === editingBranchId
+            ? {
+                ...b,
+                name: newBranchName.trim(),
+                address: newBranchAddress.trim() || undefined,
+                phone: newBranchPhone.trim() || config.phone,
+                workingHours: newBranchHours.trim() || undefined,
+              }
+            : b
+        ),
+      }));
+    } else {
+      const newBranch = {
+        id: `branch-${Date.now()}`,
+        name: newBranchName.trim(),
+        address: newBranchAddress.trim() || undefined,
+        phone: newBranchPhone.trim() || config.phone,
+        workingHours: newBranchHours.trim() || undefined,
+      };
 
-    setConfig((prev) => ({
-      ...prev,
-      branches: [...prev.branches, newBranch],
-    }));
+      setConfig((prev) => ({
+        ...prev,
+        branches: [...prev.branches, newBranch],
+      }));
+    }
 
     setNewBranchName('');
     setNewBranchAddress('');
     setNewBranchPhone('');
     setNewBranchHours('');
+    setEditingBranchId(null);
     setShowAddBranchModal(false);
   };
 
@@ -355,16 +421,22 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
                 <span>إعدادات الروشتة والطباعة (A5 Print Settings)</span>
               </h1>
               <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
-                التحكم المباشر في هوية ورأس الروشتة، الشعار، رمز QR، الهوامش، والفروع بدون إدخال بيانات طبية
+                التحكم المباشر في هوية ورأس الروشتة، الشعار، رمز QR، الهوامش، والفروع مع حفظ تلقائي فوري
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 self-end sm:self-center">
+          <div className="flex items-center gap-2.5 self-end sm:self-center flex-wrap">
+            {/* Auto-save status indicator */}
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40 text-[11px] font-bold">
+              <span className={`w-2 h-2 rounded-full ${autoSaveStatus === 'saving' ? 'bg-amber-500 animate-ping' : 'bg-emerald-500'}`}></span>
+              <span>{autoSaveStatus === 'saving' ? 'جارٍ الحفظ التلقائي...' : 'تم الحفظ التلقائي ✓'}</span>
+            </div>
+
             <button
               type="button"
               onClick={handlePrintTest}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] hover:bg-slate-200 dark:hover:bg-white/10 text-xs font-bold transition-all cursor-pointer border border-slate-200 dark:border-white/5"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] hover:bg-slate-200 dark:hover:bg-white/10 text-xs font-bold transition-all cursor-pointer border border-slate-200 dark:border-white/5"
             >
               <span className="material-symbols-outlined text-base">print</span>
               <span>تجربة الطباعة الحية</span>
@@ -375,7 +447,7 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
                 type="button"
                 onClick={handleSaveSettings}
                 disabled={isSaving}
-                className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] text-xs font-bold shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] text-xs font-bold shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
               >
                 <span className="material-symbols-outlined text-base">save</span>
                 <span>{isSaving ? 'جارٍ الحفظ...' : 'حفظ الإعدادات'}</span>
@@ -916,37 +988,68 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => setShowAddBranchModal(true)}
-                  className="px-2.5 py-1.5 rounded-lg bg-teal-50 dark:bg-[#00c2cb]/20 text-teal-800 dark:text-[#45dee7] font-bold text-xs flex items-center gap-1 cursor-pointer"
+                  onClick={handleOpenAddBranch}
+                  className="px-3 py-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 dark:bg-[#00c2cb]/20 dark:hover:bg-[#00c2cb]/30 text-teal-800 dark:text-[#45dee7] font-bold text-xs flex items-center gap-1 cursor-pointer transition-colors"
                 >
                   <span className="material-symbols-outlined text-sm">add</span>
-                  <span>إضافة فرع</span>
+                  <span>إضافة فرع جديد</span>
                 </button>
               </div>
 
-              <div className="space-y-2.5">
+              <div className="space-y-3">
                 {config.branches.map((branch, idx) => (
                   <div
                     key={branch.id || idx}
-                    className="p-3 rounded-xl bg-slate-50 dark:bg-[#18233C] border border-slate-200 dark:border-white/5 flex items-start justify-between gap-2"
+                    className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#18233C] border border-slate-200 dark:border-white/5 flex items-start justify-between gap-3"
                   >
-                    <div className="space-y-1">
-                      <div className="font-bold text-slate-900 dark:text-white">{branch.name}</div>
-                      {branch.address && <div className="text-[11px] text-slate-500 dark:text-slate-400">{branch.address}</div>}
-                      <div className="text-[11px] text-teal-700 dark:text-[#45dee7] font-mono">{branch.phone}</div>
-                      {branch.workingHours && (
-                        <div className="text-[10px] text-slate-400">{branch.workingHours}</div>
+                    <div className="space-y-1.5 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-900 dark:text-white text-sm">{branch.name}</span>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-teal-50 dark:bg-[#00c2cb]/10 text-teal-800 dark:text-[#45dee7]">
+                          فرع #{idx + 1}
+                        </span>
+                      </div>
+                      {branch.address && (
+                        <div className="text-[11px] text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                          <span className="material-symbols-outlined text-[13px] text-slate-400">location_on</span>
+                          <span>{branch.address}</span>
+                        </div>
+                      )}
+                      <div className="text-[11px] text-teal-700 dark:text-[#45dee7] font-mono flex items-center gap-1" dir="ltr">
+                        <span className="material-symbols-outlined text-[13px] text-teal-600">call</span>
+                        <span>{branch.phone}</span>
+                      </div>
+                      {branch.workingHours ? (
+                        <div className="text-[11px] text-amber-800 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 px-2 py-1 rounded-lg border border-amber-200 dark:border-amber-900/30 flex items-center gap-1 font-medium">
+                          <span className="material-symbols-outlined text-[13px] text-amber-600 dark:text-amber-400">schedule</span>
+                          <span>مواعيد العمل: {branch.workingHours}</span>
+                        </div>
+                      ) : (
+                        <div className="text-[10.5px] text-slate-400 italic">
+                          لم يتم إدخال مواعيد العمل (انقر على تعديل لإضافتها)
+                        </div>
                       )}
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveBranch(branch.id)}
-                      className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-all cursor-pointer"
-                      title="حذف الفرع"
-                    >
-                      <span className="material-symbols-outlined text-base">delete</span>
-                    </button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditBranch(branch)}
+                        className="px-2.5 py-1.5 rounded-lg text-teal-700 dark:text-[#45dee7] bg-teal-50 hover:bg-teal-100 dark:bg-[#00c2cb]/15 dark:hover:bg-[#00c2cb]/25 transition-all cursor-pointer flex items-center gap-1 text-xs font-bold"
+                        title="تعديل بيانات ومواعيد عمل الفرع"
+                      >
+                        <span className="material-symbols-outlined text-sm">edit</span>
+                        <span>تعديل</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveBranch(branch.id)}
+                        className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-all cursor-pointer"
+                        title="حذف الفرع"
+                      >
+                        <span className="material-symbols-outlined text-base">delete</span>
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1269,7 +1372,7 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
                 <div className="flex items-end justify-between gap-3">
                   {/* Branches & Info */}
                   <div
-                    className={`flex-1 space-y-1 ${
+                    className={`flex-1 space-y-1.5 ${
                       config.footerFontSize === 'small'
                         ? 'text-[8px]'
                         : config.footerFontSize === 'large'
@@ -1278,14 +1381,24 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
                     } text-slate-600`}
                   >
                     {config.branches.map((b, i) => (
-                      <div key={b.id || i} className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-bold text-slate-900">{b.name}:</span>
-                        <span>{b.address || ''}</span>
-                        <span className="font-mono text-teal-700 font-bold">{b.phone}</span>
+                      <div key={b.id || i} className="border-b border-slate-100 last:border-b-0 pb-1 last:pb-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-slate-900 shrink-0">{b.name}:</span>
+                          {b.address && <span className="text-slate-700">{b.address}</span>}
+                          {b.phone && <span className="font-mono text-teal-700 font-bold shrink-0" dir="ltr">{b.phone}</span>}
+                          {b.workingHours && (
+                            <span className="text-slate-600 font-medium inline-flex items-center gap-1">
+                              <span className="text-slate-400">•</span>
+                              <span className="text-teal-700 font-bold">مواعيد العمل:</span>
+                              <span>{b.workingHours}</span>
+                            </span>
+                          )}
+                        </div>
                       </div>
                     ))}
-                    <div className="text-slate-500 pt-0.5">
-                      رقم الحجز والاستعلام: <span className="font-mono font-bold text-slate-800">{config.phone}</span>
+                    <div className="text-slate-500 pt-0.5 border-t border-slate-100 mt-1 flex items-center gap-1">
+                      <span>رقم الحجز والاستعلام:</span>
+                      <span className="font-mono font-bold text-slate-800" dir="ltr">{config.phone}</span>
                     </div>
                   </div>
 
@@ -1324,16 +1437,16 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
         </div>
       </div>
 
-      {/* Add Branch Modal */}
+      {/* Add / Edit Branch Modal */}
       {showAddBranchModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#111A2E] border border-slate-200 dark:border-white/10 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#111A2E] border border-slate-200 dark:border-white/10 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
             <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
               <span className="material-symbols-outlined text-teal-600">apartment</span>
-              <span>إضافة فرع عيادة جديد</span>
+              <span>{editingBranchId ? 'تعديل بيانات فرع العيادة' : 'إضافة فرع عيادة جديد'}</span>
             </h3>
 
-            <form onSubmit={handleAddBranch} className="space-y-3 text-xs">
+            <form onSubmit={handleSaveBranch} className="space-y-3 text-xs">
               <div className="space-y-1">
                 <label className="font-bold text-slate-700 dark:text-slate-300">اسم الفرع *</label>
                 <input
@@ -1341,57 +1454,63 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
                   required
                   value={newBranchName}
                   onChange={(e) => setNewBranchName(e.target.value)}
-                  placeholder="فرع مصر الجديدة"
+                  placeholder="مثال: الفرع الرئيسي - المهندسين"
                   className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-[#18233C] border border-slate-200 dark:border-white/10 text-slate-800 dark:text-white"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300">العنوان</label>
+                <label className="font-bold text-slate-700 dark:text-slate-300">العنوان بالتفصيل</label>
                 <input
                   type="text"
                   value={newBranchAddress}
                   onChange={(e) => setNewBranchAddress(e.target.value)}
-                  placeholder="شارع الأهرام - روكسي"
+                  placeholder="مثال: 24 شارع سوريا - تقاطع جزيرة العرب"
                   className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-[#18233C] border border-slate-200 dark:border-white/10 text-slate-800 dark:text-white"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300">رقم الهاتف للتواصل</label>
+                <label className="font-bold text-slate-700 dark:text-slate-300">رقم الهاتف للتواصل والحجز *</label>
                 <input
                   type="text"
+                  required
                   value={newBranchPhone}
                   onChange={(e) => setNewBranchPhone(e.target.value)}
-                  placeholder="0100 123 4567"
+                  placeholder="02-37618920 / 01092847162"
                   className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-[#18233C] border border-slate-200 dark:border-white/10 text-slate-800 dark:text-white font-mono"
+                  dir="ltr"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300">مواعيد العمل</label>
+                <label className="font-bold text-slate-700 dark:text-slate-300">مواعيد العمل (تظهر في أسفل الروشتة)</label>
                 <input
                   type="text"
                   value={newBranchHours}
                   onChange={(e) => setNewBranchHours(e.target.value)}
-                  placeholder="السبت والثلاثاء 05:00 م - 09:00 م"
+                  placeholder="مثال: السبت والإثنين والأربعاء 04:00 م - 10:00 م"
                   className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-[#18233C] border border-slate-200 dark:border-white/10 text-slate-800 dark:text-white"
                 />
+                <p className="text-[10px] text-slate-400">ستظهر هذه المواعيد مباشرة في تذييل الروشتة المطبوعة وتحت اسم الفرع.</p>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-white/5">
                 <button
                   type="button"
-                  onClick={() => setShowAddBranchModal(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-slate-300 font-bold"
+                  onClick={() => {
+                    setEditingBranchId(null);
+                    setShowAddBranchModal(false);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15 text-slate-700 dark:text-slate-300 font-bold transition-colors cursor-pointer"
                 >
                   إلغاء
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold"
+                  className="px-5 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer"
                 >
-                  إضافة الفرع
+                  {editingBranchId ? 'تحديث وحفظ التعديلات' : 'إضافة الفرع'}
                 </button>
               </div>
             </form>

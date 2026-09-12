@@ -21,6 +21,10 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { initArabicToEnglishDigitsGlobalListener } from './utils/numberUtils';
+
+// Initialize global Arabic to English numbers converter for all inputs
+initArabicToEnglishDigitsGlobalListener();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

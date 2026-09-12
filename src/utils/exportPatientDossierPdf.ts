@@ -2,6 +2,7 @@ import html2canvas from 'html2canvas-pro';
 import jsPDF from 'jspdf';
 import { CLINIC_INFO } from '../data/previewClinicData';
 import type { PatientListItem } from '../types';
+import { formatAppDate, toEnglishDigits } from './numberUtils';
 import type {
   FollowUp,
   Invoice,
@@ -67,11 +68,7 @@ export async function exportPatientMedicalDossierPdf(data: MedicalRecordPdfData)
     'position: fixed; left: -9999px; top: 0; width: 800px; background-color: #ffffff; color: #0f172a; font-family: "Segoe UI", Tahoma, Arial, sans-serif; direction: rtl; text-align: right; padding: 24px; box-sizing: border-box; z-index: -9999;'
   );
 
-  const printDate = new Date().toLocaleDateString('ar-EG', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
+  const printDate = formatAppDate(new Date());
 
   let htmlContent = `
     <div style="border: 2px solid #008f97; border-radius: 12px; padding: 20px; background: #ffffff; margin-bottom: 20px;">
@@ -95,14 +92,14 @@ export async function exportPatientMedicalDossierPdf(data: MedicalRecordPdfData)
       <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; font-size: 12px;">
           <div><span style="color: #64748b;">اسم المريض:</span> <strong style="font-size: 14px; color: #0f172a;">${patientName}</strong></div>
-          <div><span style="color: #64748b;">كود الملف:</span> <strong style="color: #008f97; font-family: monospace;">#${patient.medicalCode}</strong></div>
-          <div><span style="color: #64748b;">رقم الهاتف:</span> <strong>${phone}</strong></div>
-          <div><span style="color: #64748b;">السن / النوع:</span> <strong>${age} سنة • ${genderStr}</strong></div>
+          <div><span style="color: #64748b;">رقم الملف:</span> <strong style="color: #008f97; font-family: monospace;">#${toEnglishDigits(patient.fileNumber || 1)}</strong></div>
+          <div><span style="color: #64748b;">رقم الهاتف:</span> <strong>${toEnglishDigits(phone)}</strong></div>
+          <div><span style="color: #64748b;">السن / النوع:</span> <strong>${toEnglishDigits(age)} سنة • ${genderStr}</strong></div>
           <div><span style="color: #64748b;">فصيلة الدم:</span> <strong style="color: #e11d48;">${bloodType}</strong></div>
           <div><span style="color: #64748b;">العنوان:</span> <strong>${address}</strong></div>
-          <div><span style="color: #64748b;">طوارئ:</span> <strong>${emergencyName} (${emergencyPhone})</strong></div>
-          <div><span style="color: #64748b;">تاريخ التسجيل:</span> <strong>${patient.registrationDate || '2024-02-10'}</strong></div>
-          <div><span style="color: #64748b;">إجمالي الزيارات:</span> <strong>${pVisits.length} زيارة</strong></div>
+          <div><span style="color: #64748b;">طوارئ:</span> <strong>${emergencyName} (${toEnglishDigits(emergencyPhone)})</strong></div>
+          <div><span style="color: #64748b;">تاريخ التسجيل:</span> <strong>${toEnglishDigits(patient.registrationDate || '2024-02-10')}</strong></div>
+          <div><span style="color: #64748b;">إجمالي الزيارات:</span> <strong>${toEnglishDigits(pVisits.length)} زيارة</strong></div>
         </div>
       </div>
 
@@ -134,14 +131,14 @@ export async function exportPatientMedicalDossierPdf(data: MedicalRecordPdfData)
             ${pPrescriptions.map((pr) => `
               <div style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; background: #fafafa; font-size: 11.5px;">
                 <div style="display: flex; justify-content: space-between; font-weight: bold; color: #008f97; margin-bottom: 6px; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px;">
-                  <span>روشتة طبية - ${new Date(pr.createdAt).toLocaleDateString('ar-EG')}</span>
-                  <span>${pr.items.length} أصناف دوائية</span>
+                  <span>روشتة طبية - ${formatAppDate(pr.createdAt)}</span>
+                  <span>${toEnglishDigits(pr.items.length)} أصناف دوائية</span>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
                   ${pr.items.map((it, idx) => `
                     <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 4px; padding: 4px 8px;">
-                      <strong>${idx + 1}. ${it.name} ${it.strength || ''}</strong>
-                      <div style="color: #0f766e; font-size: 10.5px;">${it.dose || ''} ${it.instructions ? `• ${it.instructions}` : ''} ${it.duration ? `• ${it.duration}` : ''}</div>
+                      <strong>${toEnglishDigits(idx + 1)}. ${it.name} ${it.strength || ''}</strong>
+                      <div style="color: #0f766e; font-size: 10.5px;">${toEnglishDigits(it.dose || '')} ${it.instructions ? `• ${toEnglishDigits(it.instructions)}` : ''} ${it.duration ? `• ${toEnglishDigits(it.duration)}` : ''}</div>
                     </div>
                   `).join('')}
                 </div>
@@ -155,19 +152,19 @@ export async function exportPatientMedicalDossierPdf(data: MedicalRecordPdfData)
       <!-- Section: Clinical Visits History -->
       <div style="margin-top: 20px; margin-bottom: 16px;">
         <div style="background: #008f97; color: #ffffff; padding: 6px 12px; font-size: 13px; font-weight: bold; border-radius: 6px; margin-bottom: 10px;">
-          🩺 سجل الزيارات والكشوفات الإكلينيكية (${pVisits.length})
+          🩺 سجل الزيارات والكشوفات الإكلينيكية (${toEnglishDigits(pVisits.length)})
         </div>
         ${pVisits.length === 0 ? '<div style="font-size: 11.5px; color: #94a3b8; padding: 8px;">لا توجد زيارات مسجلة.</div>' : `
           <div style="display: flex; flex-direction: column; gap: 8px;">
             ${pVisits.map((v) => `
               <div style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; background: #ffffff; font-size: 11.5px;">
                 <div style="display: flex; justify-content: space-between; font-weight: bold; color: #1e293b; margin-bottom: 4px;">
-                  <span>${new Date(v.createdAt).toLocaleDateString('ar-EG')} — ${v.visitType === 'NEW' ? 'كشف جديد' : 'متابعة / استشارة'}</span>
+                  <span>${formatAppDate(v.createdAt)} — ${v.visitType === 'NEW' ? 'كشف جديد' : 'متابعة / استشارة'}</span>
                   <span style="color: #008f97;">${v.clinicalData?.chiefComplaint || v.receptionistData?.symptoms || 'كشف باطنة'}</span>
                 </div>
                 ${v.vitalSigns ? `
                   <div style="font-size: 10.5px; color: #475569; background: #f8fafc; padding: 4px 8px; border-radius: 4px; margin-bottom: 4px;">
-                    العلامات الحيوية: ضغط: ${v.vitalSigns.bloodPressure || '120/80'} | نبض: ${v.vitalSigns.pulse || 76} | حرارة: ${v.vitalSigns.temperature || 37}°C | سكر عشوائي: ${v.vitalSigns.randomBloodSugar || 110} mg/dL | وزن: ${v.vitalSigns.weight || 75} كجم
+                    العلامات الحيوية: ضغط: ${toEnglishDigits(v.vitalSigns.bloodPressure || '120/80')} | نبض: ${toEnglishDigits(v.vitalSigns.pulse || 76)} | حرارة: ${toEnglishDigits(v.vitalSigns.temperature || 37)}°C | سكر عشوائي: ${toEnglishDigits(v.vitalSigns.randomBloodSugar || 110)} mg/dL | وزن: ${toEnglishDigits(v.vitalSigns.weight || 75)} كجم
                   </div>
                 ` : ''}
                 ${v.clinicalData?.diagnosis && v.clinicalData.diagnosis.length > 0 ? `
@@ -191,15 +188,15 @@ export async function exportPatientMedicalDossierPdf(data: MedicalRecordPdfData)
         <!-- Labs -->
         <div>
           <div style="background: #0d9488; color: #ffffff; padding: 5px 10px; font-size: 12px; font-weight: bold; border-radius: 6px; margin-bottom: 8px;">
-            🧪 الفحوصات والتحاليل المعملية (${pLabOrders.length})
+            🧪 الفحوصات والتحاليل المعملية (${toEnglishDigits(pLabOrders.length)})
           </div>
           ${pLabOrders.length === 0 ? '<div style="font-size: 11px; color: #94a3b8;">لا توجد تحاليل مسجلة.</div>' : `
             <div style="display: flex; flex-direction: column; gap: 6px; font-size: 11px;">
               ${pLabOrders.map((l) => `
                 <div style="border: 1px solid #e2e8f0; border-radius: 4px; padding: 6px 8px; background: #fafafa;">
                   <div style="font-weight: bold; color: #0f172a;">${l.testName}</div>
-                  <div style="font-size: 10px; color: #64748b;">${new Date(l.orderedAt).toLocaleDateString('ar-EG')}</div>
-                  ${l.result ? `<div style="color: #15803d; font-weight: bold; margin-top: 2px;">النتيجة: ${l.result}</div>` : '<div style="color: #b45309;">بانتظار النتيجة</div>'}
+                  <div style="font-size: 10px; color: #64748b;">${formatAppDate(l.orderedAt)}</div>
+                  ${l.result ? `<div style="color: #15803d; font-weight: bold; margin-top: 2px;">النتيجة: ${toEnglishDigits(l.result)}</div>` : '<div style="color: #b45309;">بانتظار النتيجة</div>'}
                 </div>
               `).join('')}
             </div>
@@ -209,15 +206,15 @@ export async function exportPatientMedicalDossierPdf(data: MedicalRecordPdfData)
         <!-- Radiology -->
         <div>
           <div style="background: #7c3aed; color: #ffffff; padding: 5px 10px; font-size: 12px; font-weight: bold; border-radius: 6px; margin-bottom: 8px;">
-            🩻 الأشعة والتصوير الطبي (${pRadiologyOrders.length})
+            🩻 الأشعة والتصوير الطبي (${toEnglishDigits(pRadiologyOrders.length)})
           </div>
           ${pRadiologyOrders.length === 0 ? '<div style="font-size: 11px; color: #94a3b8;">لا توجد فحوصات أشعة مسجلة.</div>' : `
             <div style="display: flex; flex-direction: column; gap: 6px; font-size: 11px;">
               ${pRadiologyOrders.map((r) => `
                 <div style="border: 1px solid #e2e8f0; border-radius: 4px; padding: 6px 8px; background: #fafafa;">
                   <div style="font-weight: bold; color: #0f172a;">${r.radiologyName}</div>
-                  <div style="font-size: 10px; color: #64748b;">${new Date(r.orderedAt).toLocaleDateString('ar-EG')}</div>
-                  ${r.report || r.result ? `<div style="color: #6b21a8; font-size: 10.5px; margin-top: 2px;">التقرير: ${r.report || r.result}</div>` : '<div style="color: #b45309;">بانتظار التقرير</div>'}
+                  <div style="font-size: 10px; color: #64748b;">${formatAppDate(r.orderedAt)}</div>
+                  ${r.report || r.result ? `<div style="color: #6b21a8; font-size: 10.5px; margin-top: 2px;">التقرير: ${toEnglishDigits(r.report || r.result)}</div>` : '<div style="color: #b45309;">بانتظار التقرير</div>'}
                 </div>
               `).join('')}
             </div>
@@ -229,10 +226,10 @@ export async function exportPatientMedicalDossierPdf(data: MedicalRecordPdfData)
       <div style="margin-top: 20px; border-top: 2px solid #e2e8f0; pt-3;">
         <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px;">
           <div>
-            <strong>إجمالي المعاملات المالية المسجلة:</strong> ${pInvoices.length} فاتورة
+            <strong>إجمالي المعاملات المالية المسجلة:</strong> ${toEnglishDigits(pInvoices.length)} فاتورة
           </div>
           <div style="color: #008f97; font-weight: bold; font-size: 13px;">
-            إجمالي المدفوعات: ${patient.totalPaid || 0} ج.م
+            إجمالي المدفوعات: ${toEnglishDigits(patient.totalPaid || 0)} ج.م
           </div>
         </div>
       </div>
@@ -285,7 +282,7 @@ export async function exportPatientMedicalDossierPdf(data: MedicalRecordPdfData)
       heightLeft -= pageHeight;
     }
 
-    pdf.save(`الملف_الطبي_${patientName.replace(/\s+/g, '_')}_${patient.medicalCode}.pdf`);
+    pdf.save(`الملف_الطبي_${patientName.replace(/\s+/g, '_')}_file_${toEnglishDigits(patient.fileNumber || 1)}.pdf`);
   } catch (err) {
     console.error('Error generating medical dossier PDF:', err);
     alert('حدث خطأ أثناء تحميل الملف الطبي، يرجى المحاولة مرة أخرى.');

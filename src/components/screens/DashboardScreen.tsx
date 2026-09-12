@@ -6,6 +6,7 @@ import { usePermissions } from '../../context/AuthContext';
 import { usePrescriptionDoctor } from '../../utils/prescriptionDoctor';
 import { loadMedicalServices, MedicalServiceItem } from '../../utils/financeManager';
 import { ClinicAlertPayload } from '../../utils/alertManager';
+import { toEnglishDigits } from '../../utils/numberUtils';
 
 interface DashboardScreenProps {
   onNavigate: (screen: ScreenType) => void;
@@ -1199,13 +1200,13 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
           </div>
         )}
 
-        {/* Tab 3 Content: Upcoming Follow-ups (Strictly < 3 days remaining) */}
+        {/* Tab 3 Content: Upcoming Follow-ups (Strictly < 2 days remaining) */}
         {activeAlertsCardTab === 'followups' && (
           <div className="space-y-3">
             <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-[#111A2E] p-2.5 rounded-xl border border-slate-200 dark:border-white/5">
               <span className="flex items-center gap-1 font-semibold text-purple-700 dark:text-purple-400">
                 <span className="material-symbols-outlined text-sm">schedule</span>
-                <span>تصفية تلقائية: تعرض فقط من لديه متابعة خلال أقل من 3 أيام (بالترتيب)</span>
+                <span>تصفية تلقائية: تعرض فقط من لديه متابعة خلال أقل من يومين (بالترتيب)</span>
               </span>
               <button
                 type="button"
@@ -1230,7 +1231,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                           {item.patientName}
                         </h4>
                         <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
-                          كود: {item.patientCode || 'P-00'}
+                          رقم الملف: #{toEnglishDigits(item.fileNumber || item.patientCode || 1)}
                         </span>
                       </div>
 
@@ -1247,7 +1248,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                           ? 'اليوم ⚠️'
                           : item.daysRemaining === 1
                           ? 'غداً ⏰'
-                          : 'متبقي يومين 🗓️'}
+                          : `متبقي ${toEnglishDigits(item.daysRemaining)} يوم`}
                       </span>
                     </div>
 
@@ -1256,11 +1257,11 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                         <span className="text-slate-400">تاريخ المتابعة:</span>
                         <div className="flex items-center gap-1.5 flex-wrap justify-end">
                           <span className="font-bold text-slate-800 dark:text-slate-200 font-mono" dir="ltr">
-                            {item.dueDate}
+                            {toEnglishDigits(item.dueDate)}
                           </span>
                           <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">
                             {item.daysRemaining < 0
-                              ? `(متأخر ${Math.abs(item.daysRemaining)} يوم)`
+                              ? `(متأخر ${toEnglishDigits(Math.abs(item.daysRemaining))} يوم)`
                               : item.daysRemaining === 0
                               ? '(اليوم)'
                               : '(غداً - متبقي 1 يوم)'}

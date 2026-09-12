@@ -4,12 +4,14 @@ import { db } from '../../services/firebase';
 import { CLINIC_INFO } from '../../data/previewClinicData';
 import { AppointmentListItem, ScreenType, PatientListItem } from '../../types';
 import { usePermissions } from '../../context/AuthContext';
+import { toEnglishDigits } from '../../utils/numberUtils';
 
 export interface FollowUpItem {
   id: string;
   patientName: string;
   phone: string;
-  medicalCode: string;
+  fileNumber?: number;
+  medicalCode?: string;
   lastVisitDate: string;
   dueDate: string;
   daysRemaining: number;
@@ -217,7 +219,8 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
       return (
         f.patientName.toLowerCase().includes(q) ||
         f.phone.includes(q) ||
-        f.medicalCode.toLowerCase().includes(q)
+        String(f.fileNumber || '').includes(q) ||
+        (f.medicalCode && f.medicalCode.toLowerCase().includes(q))
       );
     });
     return list.sort((a, b) => a.daysRemaining - b.daysRemaining);
@@ -998,22 +1001,22 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
 
                   <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-[#859394] mt-1.5">
                     <span className="font-mono text-slate-700 dark:text-slate-300" dir="ltr">
-                      {fu.phone}
+                      {toEnglishDigits(fu.phone)}
                     </span>
                     <span>•</span>
-                    <span>كود: {fu.medicalCode}</span>
+                    <span>ملف #{toEnglishDigits(fu.fileNumber || 1)}</span>
                   </div>
 
                   <div className="mt-2.5 p-2.5 rounded-xl bg-white dark:bg-[#111A2E] border border-slate-200 dark:border-white/5 space-y-1">
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-slate-500 dark:text-[#859394]">تاريخ آخر كشف:</span>
-                      <span className="font-mono font-medium">{fu.lastVisitDate}</span>
+                      <span className="font-mono font-medium">{toEnglishDigits(fu.lastVisitDate)}</span>
                     </div>
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-slate-500 dark:text-[#859394]">موعد المتابعة المستحق:</span>
                       <div className="flex items-center gap-1.5 flex-wrap justify-end">
                         <span className="font-mono font-bold text-[#008f97] dark:text-[#00c2cb]">
-                          {fu.dueDate}
+                          {toEnglishDigits(fu.dueDate)}
                         </span>
                         <span
                           className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
@@ -1027,12 +1030,12 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
                           }`}
                         >
                           {fu.daysRemaining < 0
-                            ? `(متأخر ${Math.abs(fu.daysRemaining)} يوم)`
+                            ? `(متأخر ${toEnglishDigits(Math.abs(fu.daysRemaining))} يوم)`
                             : fu.daysRemaining === 0
-                            ? '(اليوم - 0 يوم متبقي)'
+                            ? `(اليوم - ${toEnglishDigits(0)} يوم متبقي)`
                             : fu.daysRemaining === 1
-                            ? '(غداً - متبقي 1 يوم)'
-                            : `(متبقي ${fu.daysRemaining} يوم)`}
+                            ? `(غداً - متبقي ${toEnglishDigits(1)} يوم)`
+                            : `(متبقي ${toEnglishDigits(fu.daysRemaining)} يوم)`}
                         </span>
                       </div>
                     </div>

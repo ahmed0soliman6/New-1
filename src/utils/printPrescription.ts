@@ -6,6 +6,8 @@
  * isolated printable A5 document in an invisible iframe.
  */
 
+import { toEnglishDigits } from './numberUtils';
+
 export interface PrintPrescriptionData {
   config: {
     doctorName?: string;
@@ -32,12 +34,15 @@ export interface PrintPrescriptionData {
       name: string;
       address?: string;
       phone: string;
+      workingHours?: string;
     }>;
   };
   patient?: {
     name?: string;
     age?: number | string;
     phone?: string;
+    fileNumber?: number | string;
+    date?: string;
   } | null;
   items?: Array<{
     id?: string;
@@ -60,6 +65,75 @@ export interface PrintPrescriptionData {
   }>;
   lifestyleAdvice?: string;
   followupDate?: string;
+}
+
+export interface PrintVisitReportData {
+  config?: {
+    doctorName?: string;
+    doctorNameEn?: string;
+    specialtyAr?: string;
+    specialtyEn?: string;
+    degreesAr?: string;
+    degreesEn?: string;
+    phone?: string;
+    logoUrl?: string | null;
+    branches?: Array<{
+      name: string;
+      phone: string;
+      address?: string;
+    }>;
+  };
+  patient: {
+    fullName: string;
+    fileNumber?: number | string;
+    age?: number | string;
+    gender?: string;
+    phone?: string;
+  };
+  visit: {
+    visitId: string;
+    visitType?: string;
+    createdAt?: string;
+    vitalSigns?: {
+      bloodPressure?: string;
+      pulse?: number | string;
+      temperature?: number | string;
+      randomBloodSugar?: number | string;
+      oxygenSaturation?: number | string;
+      weight?: number | string;
+      height?: number | string;
+      bmi?: number | string;
+    };
+    clinicalData?: {
+      chiefComplaint?: string;
+      diagnosis?: string[];
+      treatment?: string;
+      notes?: string;
+    };
+    receptionistData?: {
+      symptoms?: string;
+      chronicDiseases?: string[];
+    };
+  };
+  medications?: Array<{
+    name: string;
+    strength?: string;
+    dose?: string;
+    duration?: string;
+    instructions?: string;
+  }>;
+  labOrders?: Array<{
+    testName: string;
+    status?: string;
+  }>;
+  radiologyOrders?: Array<{
+    radiologyName: string;
+    status?: string;
+  }>;
+  followUp?: {
+    scheduledDate?: string;
+    notes?: string;
+  };
 }
 
 const MARGIN_MAP: Record<string, string> = {
@@ -141,10 +215,11 @@ export function printPrescriptionDocument(data: PrintPrescriptionData) {
   // Branches HTML
   const branchesHtml = (config.branches || [])
     .map(b => `
-      <div style="margin-bottom: 2px;">
-        <strong style="color: #0f172a;">${b.name}:</strong>
-        <span>${b.address || ''}</span>
-        <span style="font-family: monospace; font-weight: 700; color: #0d9488; direction: ltr; display: inline-block;">${b.phone}</span>
+      <div style="margin-bottom: 3px; font-size: ${footerSize}; line-height: 1.4; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px;">
+        <strong style="color: #0f172a; white-space: nowrap;">${b.name}:</strong>
+        ${b.address ? `<span style="color: #334155;">${b.address}</span>` : ''}
+        ${b.phone ? `<span style="font-family: monospace; font-weight: 700; color: #0d9488; direction: ltr; white-space: nowrap; margin: 0 2px;">${toEnglishDigits(b.phone)}</span>` : ''}
+        ${b.workingHours ? `<span style="color: #475569; display: inline-flex; align-items: center; gap: 3px;">• <strong style="color: #0f766e;">مواعيد العمل:</strong> ${toEnglishDigits(b.workingHours)}</span>` : ''}
       </div>
     `)
     .join('');
@@ -337,8 +412,9 @@ export function printPrescriptionDocument(data: PrintPrescriptionData) {
           <!-- Patient Meta Strip -->
           <div class="patient-bar">
             <div><strong>المريض:</strong> ${patient?.name || 'مريض غير مسجل'}</div>
-            <div><strong>السن:</strong> ${patient?.age ? `${patient.age} سنة` : '-'}</div>
-            <div><strong>التاريخ:</strong> <span style="font-family: monospace;">${new Date().toLocaleDateString('ar-EG')}</span></div>
+            ${patient?.fileNumber ? `<div><strong>رقم الملف:</strong> #${toEnglishDigits(patient.fileNumber)}</div>` : ''}
+            <div><strong>السن:</strong> ${patient?.age ? `${toEnglishDigits(patient.age)} سنة` : '-'}</div>
+            <div><strong>التاريخ:</strong> <span style="font-family: monospace;">${toEnglishDigits(patient?.date || new Date().toLocaleDateString('ar-EG'))}</span></div>
           </div>
         </div>
 
@@ -432,3 +508,349 @@ export function printPrescriptionDocument(data: PrintPrescriptionData) {
     }
   }, 250);
 }
+
+export function printVisitReportDocument(data: PrintVisitReportData) {
+  const { config = {}, patient, visit, medications = [], labOrders = [], radiologyOrders = [], followUp } = data;
+
+  const doctorName = config.doctorName || 'د. حازم سمير القاضي';
+  const doctorNameEn = config.doctorNameEn || 'Dr. Hazem El-Kady';
+  const specialtyAr = config.specialtyAr || 'استشاري أمراض الباطنة والقلب والسكر والغدد الصماء';
+  const specialtyEn = config.specialtyEn || 'Consultant of Internal Medicine & Cardiology';
+  const degreesAr = config.degreesAr || 'زميل الكلية الملكية للأطباء (لندن) • دكتوراه الباطنة العامة (قصر العيني)';
+  const degreesEn = config.degreesEn || 'M.D., MRCP (London) • Cairo University';
+  const phone = config.phone || '01092847162';
+
+  const visitDateObj = visit.createdAt ? new Date(visit.createdAt) : new Date();
+  const formattedVisitDate = toEnglishDigits(
+    visitDateObj.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' })
+  );
+  const formattedVisitTime = toEnglishDigits(
+    visitDateObj.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
+  );
+
+  const complaint = visit.clinicalData?.chiefComplaint || visit.receptionistData?.symptoms || 'كشف ومتابعة طبية عامة';
+  const diagnoses = visit.clinicalData?.diagnosis || [];
+  const treatment = visit.clinicalData?.treatment || '';
+  const notes = visit.clinicalData?.notes || '';
+
+  const vitals = visit.vitalSigns;
+  const vitalsHtml = vitals
+    ? `
+    <div style="margin-top: 14px; margin-bottom: 14px;">
+      <div style="font-size: 12px; font-weight: 700; color: #0f766e; margin-bottom: 6px; border-bottom: 1px solid #ccfbf1; padding-bottom: 3px;">
+        🫀 العلامات الحيوية (Vital Signs)
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; text-align: center;">
+        <div style="padding: 6px 4px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;">
+          <span style="font-size: 9px; color: #64748b; display: block; font-weight: bold;">ضغط الدم</span>
+          <strong style="font-size: 11px; color: #0f172a; font-family: monospace;">${toEnglishDigits(vitals.bloodPressure || '120/80')}</strong>
+        </div>
+        <div style="padding: 6px 4px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;">
+          <span style="font-size: 9px; color: #64748b; display: block; font-weight: bold;">النبض</span>
+          <strong style="font-size: 11px; color: #0f172a; font-family: monospace;">${toEnglishDigits(vitals.pulse || 76)} نبضة</strong>
+        </div>
+        <div style="padding: 6px 4px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;">
+          <span style="font-size: 9px; color: #64748b; display: block; font-weight: bold;">الحرارة</span>
+          <strong style="font-size: 11px; color: #0f172a; font-family: monospace;">${toEnglishDigits(vitals.temperature || 37)} °C</strong>
+        </div>
+        <div style="padding: 6px 4px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;">
+          <span style="font-size: 9px; color: #64748b; display: block; font-weight: bold;">سكر عشوائي</span>
+          <strong style="font-size: 11px; color: #0f172a; font-family: monospace;">${toEnglishDigits(vitals.randomBloodSugar || 110)} mg/dL</strong>
+        </div>
+        <div style="padding: 6px 4px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;">
+          <span style="font-size: 9px; color: #64748b; display: block; font-weight: bold;">الأكسجين</span>
+          <strong style="font-size: 11px; color: #0f172a; font-family: monospace;">${toEnglishDigits(vitals.oxygenSaturation || 98)}%</strong>
+        </div>
+        <div style="padding: 6px 4px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;">
+          <span style="font-size: 9px; color: #64748b; display: block; font-weight: bold;">الوزن</span>
+          <strong style="font-size: 11px; color: #0f172a; font-family: monospace;">${toEnglishDigits(vitals.weight || 75)} كجم</strong>
+        </div>
+      </div>
+    </div>
+  `
+    : '';
+
+  const diagnosisHtml =
+    diagnoses.length > 0
+      ? `
+    <div style="margin-bottom: 12px; padding: 8px 12px; background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 8px;">
+      <strong style="color: #0f766e; font-size: 12px;">📋 التشخيص الإكلينيكي: </strong>
+      <span style="color: #134e4a; font-size: 12px; font-weight: 600;">${diagnoses.join('، ')}</span>
+    </div>
+  `
+      : '';
+
+  const medsHtml =
+    medications.length > 0
+      ? `
+    <div style="margin-bottom: 14px;">
+      <div style="font-size: 12px; font-weight: 700; color: #0f766e; margin-bottom: 6px; border-bottom: 1px solid #ccfbf1; padding-bottom: 3px;">
+        💊 الخطة العلاجية والأدوية الموصوفة (${toEnglishDigits(medications.length)})
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; direction: ltr; text-align: left;">
+        ${medications
+          .map(
+            (m, idx) => `
+          <div style="padding: 6px 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;">
+            <div style="font-size: 12px; font-weight: 700; color: #0f172a;">
+              ${idx + 1}. ${m.name} ${m.strength ? `(${m.strength})` : ''}
+            </div>
+            <div style="font-size: 11px; color: #0f766e; font-weight: 600;">
+              ${m.dose || 'قرص'} ${m.duration ? `• لمدة ${m.duration}` : ''}
+            </div>
+            ${m.instructions ? `<div style="font-size: 10px; color: #64748b; font-style: italic;">${m.instructions}</div>` : ''}
+          </div>
+        `
+          )
+          .join('')}
+      </div>
+    </div>
+  `
+      : treatment
+      ? `
+    <div style="margin-bottom: 12px; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
+      <strong style="color: #0f172a; font-size: 12px;">💊 العلاج والتعليمات: </strong>
+      <span style="color: #334155; font-size: 12px;">${treatment}</span>
+    </div>
+  `
+      : '';
+
+  const labsHtml =
+    labOrders.length > 0
+      ? `
+    <div style="margin-bottom: 10px; padding: 8px 12px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; font-size: 11.5px; color: #92400e;">
+      <strong>🧪 التحاليل المخبرية المطلوبة: </strong>
+      <span>${labOrders.map((l) => l.testName).join('، ')}</span>
+    </div>
+  `
+      : '';
+
+  const radsHtml =
+    radiologyOrders.length > 0
+      ? `
+    <div style="margin-bottom: 10px; padding: 8px 12px; background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 8px; font-size: 11.5px; color: #6b21a8;">
+      <strong>🩻 الفحوصات والأشعة المطلوبة: </strong>
+      <span>${radiologyOrders.map((r) => r.radiologyName).join('، ')}</span>
+    </div>
+  `
+      : '';
+
+  const followUpHtml = followUp?.scheduledDate
+    ? `
+    <div style="margin-bottom: 10px; padding: 8px 12px; background: #f0fdfa; border: 1px solid #a7f3d0; border-radius: 8px; font-size: 12px; color: #065f46; font-weight: bold;">
+      🗓 موعد الاستشارة والمتابعة القادمة: <span style="font-family: monospace;">${toEnglishDigits(followUp.scheduledDate)}</span>
+      ${followUp.notes ? ` <span style="font-size: 11px; font-weight: normal; color: #047857;">(${followUp.notes})</span>` : ''}
+    </div>
+  `
+    : '';
+
+  const notesHtml = notes
+    ? `
+    <div style="margin-bottom: 10px; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 11.5px; color: #475569;">
+      <strong>📝 ملاحظات وتوصيات طبية: </strong>
+      <span>${notes}</span>
+    </div>
+  `
+    : '';
+
+  const reportHtml = `
+    <!DOCTYPE html>
+    <html dir="rtl" lang="ar">
+    <head>
+      <meta charset="UTF-8" />
+      <title>تقرير زيارة طبية - ${patient.fullName}</title>
+      <style>
+        @page {
+          size: A4 portrait;
+          margin: 10mm 12mm;
+        }
+        @media print {
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+        body {
+          font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+          margin: 0;
+          padding: 0;
+          background: #fff;
+          color: #0f172a;
+          line-height: 1.5;
+        }
+        .report-container {
+          width: 100%;
+          max-width: 190mm;
+          margin: 0 auto;
+          box-sizing: border-box;
+        }
+        .header {
+          border-bottom: 2.5px solid #00c2cb;
+          padding-bottom: 10px;
+          margin-bottom: 12px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        .doctor-ar { text-align: right; }
+        .doctor-en { text-align: left; direction: ltr; }
+        .doctor-name { font-size: 15px; font-weight: 800; color: #08101c; }
+        .doctor-title { font-size: 11px; font-weight: 700; color: #008f97; margin-top: 1px; }
+        .doctor-credentials { font-size: 9.5px; color: #64748b; margin-top: 1px; }
+        .logo-box { text-align: center; }
+        .patient-bar {
+          background-color: #f1f5f9;
+          border: 1px solid #cbd5e1;
+          border-radius: 8px;
+          padding: 8px 14px;
+          margin-bottom: 12px;
+          display: grid;
+          grid-template-columns: 2fr 1fr 1fr 1.2fr;
+          gap: 8px;
+          font-size: 11.5px;
+        }
+        .visit-type-badge {
+          display: inline-block;
+          padding: 2px 8px;
+          background: #e0f2fe;
+          color: #0369a1;
+          border-radius: 6px;
+          font-size: 11px;
+          font-weight: bold;
+        }
+        .footer {
+          margin-top: 20px;
+          border-top: 1.5px solid #e2e8f0;
+          padding-top: 10px;
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-end;
+          font-size: 10.5px;
+          color: #64748b;
+        }
+        .signature-area {
+          text-align: center;
+          width: 140px;
+          border-top: 1px dashed #94a3b8;
+          padding-top: 4px;
+          font-size: 10px;
+          color: #475569;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="report-container">
+        <!-- Header -->
+        <div class="header">
+          <div class="doctor-ar">
+            <div class="doctor-name">${doctorName}</div>
+            <div class="doctor-title">${specialtyAr}</div>
+            <div class="doctor-credentials">${degreesAr}</div>
+          </div>
+          <div class="logo-box">
+            <div style="width: 42px; height: 42px; background: #08101c; color: #00c2cb; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 15px; margin: 0 auto;">
+              SOLI
+            </div>
+            <div style="font-size: 7.5px; font-weight: bold; color: #64748b; margin-top: 2px;">CLINICAL REPORT</div>
+          </div>
+          <div class="doctor-en">
+            <div class="doctor-name">${doctorNameEn}</div>
+            <div class="doctor-title">${specialtyEn}</div>
+            <div class="doctor-credentials">${degreesEn}</div>
+          </div>
+        </div>
+
+        <!-- Title -->
+        <div style="text-align: center; margin-bottom: 10px;">
+          <h2 style="margin: 0; font-size: 15px; color: #0f172a;">تقرير كشف وزيارة طبية (Medical Visit Report)</h2>
+          <span style="font-size: 11px; color: #64748b;">تاريخ التقرير: ${formattedVisitDate} — الساعة: ${formattedVisitTime}</span>
+        </div>
+
+        <!-- Patient Info Bar -->
+        <div class="patient-bar">
+          <div><strong>اسم المريض:</strong> ${patient.fullName}</div>
+          <div><strong>رقم الملف:</strong> #${toEnglishDigits(patient.fileNumber || 1)}</div>
+          <div><strong>السن:</strong> ${patient.age ? `${toEnglishDigits(patient.age)} سنة` : '-'}</div>
+          <div><strong>نوع الزيارة:</strong> <span class="visit-type-badge">${visit.visitType === 'NEW' ? 'كشف جديد' : 'استشارة / متابعة'}</span></div>
+        </div>
+
+        <!-- Chief Complaint -->
+        <div style="margin-bottom: 10px; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 11.5px;">
+          <strong style="color: #0f172a;">الشكوى والأعراض الرئيسية: </strong>
+          <span style="color: #334155;">${complaint}</span>
+        </div>
+
+        <!-- Vital Signs -->
+        ${vitalsHtml}
+
+        <!-- Diagnosis -->
+        ${diagnosisHtml}
+
+        <!-- Medications / Treatment -->
+        ${medsHtml}
+
+        <!-- Labs & Radiology -->
+        ${labsHtml}
+        ${radsHtml}
+
+        <!-- Follow-up -->
+        ${followUpHtml}
+
+        <!-- Clinical Notes -->
+        ${notesHtml}
+
+        <!-- Footer -->
+        <div class="footer">
+          <div>
+            <div>عيادة سولي التخصصية — للحجز والاستفسار: <strong style="color: #0f172a; font-family: monospace;">${phone}</strong></div>
+            <div style="font-size: 9.5px; color: #94a3b8; margin-top: 2px;">صدر هذا التقرير رسمياً من المنظومة الطبية الإلكترونية للعيادة</div>
+          </div>
+          <div class="signature-area">
+            توقيع / ختم الطبيب المعالج
+          </div>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  // Print using invisible iframe
+  const existingFrame = document.getElementById('soli-print-iframe');
+  if (existingFrame) {
+    existingFrame.remove();
+  }
+
+  const printIframe = document.createElement('iframe');
+  printIframe.id = 'soli-print-iframe';
+  printIframe.style.position = 'fixed';
+  printIframe.style.top = '-9999px';
+  printIframe.style.left = '-9999px';
+  printIframe.style.width = '210mm';
+  printIframe.style.height = '297mm';
+  printIframe.style.border = 'none';
+  printIframe.style.zIndex = '-9999';
+
+  document.body.appendChild(printIframe);
+
+  const iframeDoc = printIframe.contentDocument || printIframe.contentWindow?.document;
+  if (!iframeDoc) {
+    window.print();
+    return;
+  }
+
+  iframeDoc.open();
+  iframeDoc.write(reportHtml);
+  iframeDoc.close();
+
+  setTimeout(() => {
+    try {
+      if (printIframe.contentWindow) {
+        printIframe.contentWindow.focus();
+        printIframe.contentWindow.print();
+      } else {
+        window.print();
+      }
+    } catch (err) {
+      console.warn('Iframe print failed, falling back to window.print():', err);
+      window.print();
+    }
+  }, 250);
+}
+

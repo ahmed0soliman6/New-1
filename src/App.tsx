@@ -131,6 +131,7 @@ import {
   ClinicAlertPayload,
 } from './utils/alertManager';
 import { setCachedRecurringTemplates } from './utils/recurringTemplatesManager';
+import { toEnglishDigits, formatAppDate, formatAppTime } from './utils/numberUtils';
 
 // Merged full initial reference catalogs combining database.ts and previewMedicalCatalogs.ts
 const INITIAL_RADIOLOGY_FULL: RadiologyType[] = (() => {
@@ -632,8 +633,8 @@ function ClinicApp() {
       const calculatedAge = birthYear ? Math.max(1, new Date().getFullYear() - birthYear) : 0;
 
       const createdDateObj = p.createdAt ? new Date(p.createdAt) : new Date();
-      const registrationDate = createdDateObj.toLocaleDateString('ar-EG');
-      const registrationTime = createdDateObj.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+      const registrationDate = formatAppDate(createdDateObj);
+      const registrationTime = formatAppTime(createdDateObj);
 
       return {
         id: p.patientId,
@@ -650,8 +651,8 @@ function ClinicApp() {
         bloodType: p.bloodType || 'غير محدد',
         bloodGroup: p.bloodType || 'غير محدد',
         emergencyContact: p.emergencyContact,
-        lastVisitDate: lastVisit ? new Date(lastVisit.createdAt).toLocaleDateString('ar-EG') : undefined,
-        lastVisitTime: lastVisit ? new Date(lastVisit.createdAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : undefined,
+        lastVisitDate: lastVisit ? formatAppDate(lastVisit.createdAt) : undefined,
+        lastVisitTime: lastVisit ? formatAppTime(lastVisit.createdAt) : undefined,
         registrationDate,
         registrationTime,
         visitsCount: pCompletedVisits.length || 1,
@@ -687,7 +688,7 @@ function ClinicApp() {
           bloodType: pat?.bloodType || 'غير محدد',
           chronicConditions: pat?.chronicDiseases || v.receptionistData?.chronicDiseases || [],
           visitType: v.visitType === 'NEW' ? 'كشف جديد' : 'استشارة / متابعة',
-          arrivalTime: new Date(v.createdAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+          arrivalTime: formatAppTime(v.createdAt),
           elapsedMinutes: Math.max(1, Math.floor((Date.now() - new Date(v.createdAt).getTime()) / 60000)),
           paidAmount: payment?.amount || invoice?.paidAmount || 0,
           paymentMethod: (payment?.method === 'CARD' ? 'فيزا / كارت' : 'نقدي') as any,
@@ -764,7 +765,7 @@ function ClinicApp() {
         paymentMethod: (p.method === 'CARD' ? 'فيزا / كارت' : 'نقدي'),
         method: (p.method === 'CARD' ? 'فيزا / كارت' : 'نقدي'),
         status: (inv?.status === 'PAID' || paidAmount >= totalAmount) ? 'مدفوعة' : 'غير مدفوعة',
-        time: new Date(rawIso).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+        time: formatAppTime(rawIso),
         date: rawIso.includes('T') ? rawIso.split('T')[0] : rawIso,
         rawTimestamp: rawIso,
         category: 'كشوفات وخدمات طبية',
@@ -793,7 +794,7 @@ function ClinicApp() {
           paymentMethod: 'نقدي',
           method: 'نقدي',
           status: inv.status === 'PAID' ? 'مدفوعة' : 'غير مدفوعة',
-          time: new Date(rawIso).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+          time: formatAppTime(rawIso),
           date: rawIso.includes('T') ? rawIso.split('T')[0] : rawIso,
           rawTimestamp: rawIso,
           category: 'فواتير كشوفات',
@@ -965,12 +966,84 @@ function ClinicApp() {
     setCallingBanner(null);
   };
 
-  // Real-time synchronization of Doctor/Clinic Break Status across all connected accounts via Firestore
+  // Real-time synchronization of Doctor/Clinic Break Status across all connected accounts via Firestore & BroadcastChannel
   const isInitialClinicStatusRef = useRef(true);
   const lastClinicStatusRef = useRef<'available' | 'break'>('available');
 
+  const triggerDoctorStatusAlert = (newStatus: 'available' | 'break', updatedBy?: string) => {
+    const alertConfig = loadAlertSettings();
+    if (newStatus === 'break') {
+      if (alertConfig.audioEnabled) {
+        playSingleAlertSound('call');
+      }
+      if (alertConfig.visualEnabled) {
+        registerAlert({
+          id: `break-${Date.now()}`,
+          type: 'call',
+          title: 'تنبيه: الطبيب في فترة استراحة ☕',
+          message: `أعلن (${updatedBy || 'الطبيب'}) بدء فترة استراحة مؤقتة. يرجى التوقف عن تحويل المرضى لغرفة الكشف.`,
+          timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+        });
+        setTimeout(() => setCallingBanner(null), 6000);
+      }
+    } else {
+      if (alertConfig.audioEnabled) {
+        playSingleAlertSound('finish');
+      }
+      if (alertConfig.visualEnabled) {
+        registerAlert({
+          id: `avail-${Date.now()}`,
+          type: 'new_visit',
+          title: 'تنبيه: الطبيب متاح للكشف الآن 🟢',
+          message: 'انتهت فترة الاستراحة، الطبيب جاهز ومستعد لاستقبال وفحص المريض التالي في طابور الانتظار.',
+          timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+        });
+        setTimeout(() => setCallingBanner(null), 6000);
+      }
+    }
+  };
+
   useEffect(() => {
-    if (!db) return;
+    // 1. Cross-tab & Multi-window BroadcastChannel listener
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel('soli_clinic_channel');
+      channel.onmessage = (event) => {
+        if (event.data?.type === 'STATUS_CHANGE' && event.data.status) {
+          const newStatus = event.data.status as 'available' | 'break';
+          if (lastClinicStatusRef.current !== newStatus) {
+            setDoctorStatus(newStatus);
+            lastClinicStatusRef.current = newStatus;
+            triggerDoctorStatusAlert(newStatus, event.data.updatedBy);
+          }
+        }
+      };
+    } catch {
+      // BroadcastChannel unsupported fallback
+    }
+
+    // 2. Storage event listener (for cross-tab storage changes)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'soli_clinic_status_event' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (parsed.status && lastClinicStatusRef.current !== parsed.status) {
+            const newStatus = parsed.status as 'available' | 'break';
+            setDoctorStatus(newStatus);
+            lastClinicStatusRef.current = newStatus;
+            triggerDoctorStatusAlert(newStatus, parsed.updatedBy);
+          }
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+
+    // 3. Firestore live subscription
+    if (!db) return () => {
+      channel?.close();
+      window.removeEventListener('storage', handleStorageChange);
+    };
+
     const unsub = subscribeToClinicStatus(
       db,
       (clinicData) => {
@@ -980,43 +1053,19 @@ function ClinicApp() {
 
         // If status changed and it's not the initial mount, broadcast audio & visual alert to all connected users
         if (!isInitialClinicStatusRef.current && lastClinicStatusRef.current !== newStatus) {
-          const alertConfig = loadAlertSettings();
-          if (newStatus === 'break') {
-            if (alertConfig.audioEnabled) {
-              playSingleAlertSound('call');
-            }
-            if (alertConfig.visualEnabled) {
-              registerAlert({
-                id: `break-${Date.now()}`,
-                type: 'call',
-                title: 'تنبيه: الطبيب في فترة استراحة ☕',
-                message: `أعلن (${clinicData.updatedBy || 'الطبيب'}) بدء فترة استراحة مؤقتة. يرجى التوقف عن تحويل المرضى لغرفة الكشف.`,
-                timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
-              });
-              setTimeout(() => setCallingBanner(null), 6000);
-            }
-          } else {
-            if (alertConfig.audioEnabled) {
-              playSingleAlertSound('finish');
-            }
-            if (alertConfig.visualEnabled) {
-              registerAlert({
-                id: `avail-${Date.now()}`,
-                type: 'new_visit',
-                title: 'تنبيه: الطبيب متاح للكشف الآن 🟢',
-                message: 'انتهت فترة الاستراحة، الطبيب جاهز ومستعد لاستقبال وفحص المريض التالي.',
-                timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
-              });
-              setTimeout(() => setCallingBanner(null), 6000);
-            }
-          }
+          triggerDoctorStatusAlert(newStatus, clinicData.updatedBy);
         }
         lastClinicStatusRef.current = newStatus;
         isInitialClinicStatusRef.current = false;
       },
       (err) => console.warn('Clinic status subscription error:', err)
     );
-    return () => unsub();
+
+    return () => {
+      channel?.close();
+      window.removeEventListener('storage', handleStorageChange);
+      unsub();
+    };
   }, [db]);
 
   // Real-time Firestore-driven notifications based on Visit status transitions (new_visit / call / finish)
@@ -1054,7 +1103,7 @@ function ClinicApp() {
             title: 'تسجيل كشف وزيارة جديدة',
             message: `تم تسجيل المريض (${patientName}) في قائمة الانتظار بنجاح.`,
             ticket,
-            timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+            timestamp: formatAppTime(new Date()),
             visitId: v.visitId,
             patientId: v.patientId,
           });
@@ -1073,7 +1122,7 @@ function ClinicApp() {
             title: 'نداء دخول المريض لغرفة الكشف',
             message: `تذكرة (${ticket}) — المريض (${patientName}) يتفضل لغرفة الطبيب للكشف`,
             ticket,
-            timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+            timestamp: formatAppTime(new Date()),
             visitId: v.visitId,
             patientId: v.patientId,
           });
@@ -1095,7 +1144,7 @@ function ClinicApp() {
             title: 'إشعار انتهاء الكشف الطبي',
             message: `تم الانتهاء من كشف المريض (${patientName}) واعتماد الروشتة. العيادة جاهزة لاستقبال المريض التالي.`,
             ticket,
-            timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+            timestamp: formatAppTime(new Date()),
             visitId: v.visitId,
             patientId: v.patientId,
           });
@@ -1110,40 +1159,25 @@ function ClinicApp() {
   const handleToggleDoctorStatus = async () => {
     const nextStatus = doctorStatus === 'available' ? 'break' : 'available';
     setDoctorStatus(nextStatus);
+    lastClinicStatusRef.current = nextStatus;
     const updatedBy = userProfile?.displayName || userProfile?.username || 'الطبيب';
 
-    const alertConfig = loadAlertSettings();
-    if (nextStatus === 'break') {
-      if (alertConfig.audioEnabled) {
-        playSingleAlertSound('call');
-      }
-      if (alertConfig.visualEnabled) {
-        registerAlert({
-          id: `break-${Date.now()}`,
-          type: 'call',
-          title: 'تنبيه: الطبيب في فترة استراحة ☕',
-          message: 'تم تفعيل وضع الاستراحة للطبيب، يرجى إيقاف تحويل المرضى لغرفة الكشف مؤقتاً لحين عودة الطبيب.',
-          timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
-        });
-        setTimeout(() => setCallingBanner(null), 6000);
-      }
-    } else {
-      if (alertConfig.audioEnabled) {
-        playSingleAlertSound('finish');
-      }
-      if (alertConfig.visualEnabled) {
-        registerAlert({
-          id: `avail-${Date.now()}`,
-          type: 'new_visit',
-          title: 'تنبيه: الطبيب متاح للكشف الآن 🟢',
-          message: 'الطبيب جاهز ومستعد لاستقبال وفحص المريض التالي في طابور الانتظار.',
-          timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
-        });
-        setTimeout(() => setCallingBanner(null), 6000);
-      }
-    }
+    // Trigger audio & visual alert in local session
+    triggerDoctorStatusAlert(nextStatus, updatedBy);
 
-    // Sync to Firestore immediately so all other connected accounts & devices receive the status update in real-time
+    // 1. Multi-tab BroadcastChannel
+    try {
+      const channel = new BroadcastChannel('soli_clinic_channel');
+      channel.postMessage({ type: 'STATUS_CHANGE', status: nextStatus, updatedBy, timestamp: Date.now() });
+      channel.close();
+    } catch {}
+
+    // 2. LocalStorage cross-tab sync
+    try {
+      localStorage.setItem('soli_clinic_status_event', JSON.stringify({ status: nextStatus, updatedBy, timestamp: Date.now() }));
+    } catch {}
+
+    // 3. Sync to Firestore immediately so all other connected accounts & devices receive the status update in real-time
     if (db) {
       try {
         await updateClinicStatusInFirestore(db, nextStatus, updatedBy);
@@ -1162,6 +1196,7 @@ function ClinicApp() {
       id: string;
       patientName: string;
       phone: string;
+      fileNumber?: number;
       medicalCode: string;
       lastVisitDate: string;
       dueDate: string;
@@ -1187,6 +1222,7 @@ function ClinicApp() {
         id: fu.followUpId,
         patientName: patient.fullName,
         phone: patient.phone,
+        fileNumber: patient.fileNumber,
         medicalCode: patient.medicalCode || `EG-${patient.fileNumber || 101}`,
         lastVisitDate: lastVisit?.createdAt?.split('T')[0] || fu.createdAt?.split('T')[0] || '',
         dueDate: fu.scheduledDate,
@@ -1214,6 +1250,7 @@ function ClinicApp() {
         id: app.appointmentId,
         patientName: patient.fullName,
         phone: patient.phone,
+        fileNumber: patient.fileNumber,
         medicalCode: patient.medicalCode || `EG-${patient.fileNumber || 101}`,
         lastVisitDate: app.createdAt?.split('T')[0] || '',
         dueDate: app.scheduledDate,
@@ -1876,7 +1913,7 @@ function ClinicApp() {
         title: 'نداء دخول المريض لغرفة الكشف',
         message: `تذكرة (${ticket}) — المريض (${name}) يتفضل لغرفة الطبيب للكشف`,
         ticket,
-        timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+        timestamp: formatAppTime(new Date()),
       });
       setTimeout(() => setCallingBanner(null), 5000);
     }
@@ -1967,7 +2004,7 @@ function ClinicApp() {
             title: 'تسجيل حضور موعد مسبق بالانتظار',
             message: `تم تأكيد حضور المريض (${patient.fullName}) وتحويله لصالة الانتظار.`,
             ticket: String(nextFileNumber),
-            timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+            timestamp: formatAppTime(new Date()),
           });
           setTimeout(() => setCallingBanner(null), 5000);
         }
@@ -2077,7 +2114,7 @@ function ClinicApp() {
             title: 'تسجيل كشف وزيارة جديدة',
             message: `تم تسجيل المريض (${item.patientName}) في قائمة الانتظار بنجاح.`,
             ticket: String(item.ticketNumber || nextFileNumber),
-            timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+            timestamp: formatAppTime(new Date()),
           });
           setTimeout(() => setCallingBanner(null), 5000);
         }
@@ -2250,7 +2287,7 @@ function ClinicApp() {
         title: 'إشعار السكرتارية: انتهاء الكشف الطبي',
         message: `تم الانتهاء من كشف المريض (${activeExamPatient?.name || 'المريض'}) واعتماد الروشتة. العيادة جاهزة لاستقبال المريض التالي.`,
         ticket: String(activeWaiting?.queueNumber || ''),
-        timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+        timestamp: formatAppTime(new Date()),
       });
       setTimeout(() => setCallingBanner(null), 6000);
     }

@@ -22,6 +22,12 @@ import {
   subscribeToExpenseCategories,
   subscribeToExpenses,
 } from '../../services/repositories';
+import {
+  toEnglishDigits,
+  convertArabicToEnglishDigits,
+  formatAppDate,
+  formatAppTime,
+} from '../../utils/numberUtils';
 
 interface FinanceScreenProps {
   transactions: TransactionRecord[];
@@ -138,24 +144,48 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
     }
   };
 
-  // Live System Inflow Transactions (sorted newest first)
+  // Robust timestamp extractor to guarantee newest first
+  const getRecordTimestamp = (item: any): number => {
+    if (!item) return 0;
+    if (item.rawTimestamp) {
+      const t = new Date(item.rawTimestamp).getTime();
+      if (!isNaN(t)) return t;
+    }
+    if (item.createdAt) {
+      const t = new Date(item.createdAt).getTime();
+      if (!isNaN(t)) return t;
+    }
+    if (item.date) {
+      const cleanDate = toEnglishDigits(item.date).trim();
+      const cleanTime = toEnglishDigits(item.time || '00:00').trim();
+      const timeMatch = cleanTime.match(/(\d{1,2}):(\d{2})/);
+      const timeStr = timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : '00:00';
+      const parsed = new Date(`${cleanDate}T${timeStr}:00`).getTime();
+      if (!isNaN(parsed)) return parsed;
+      const parsedDateOnly = new Date(cleanDate).getTime();
+      if (!isNaN(parsedDateOnly)) return parsedDateOnly;
+    }
+    return 0;
+  };
+
+  // Live System Inflow Transactions (sorted strictly newest first)
   const allInflowRecords = useMemo(() => {
     return [...transactions]
       .filter((t) => t.type !== 'out')
       .sort((a, b) => {
-        const timeA = new Date(`${a.date || '2026-01-01'} ${a.time || '00:00'}`).getTime();
-        const timeB = new Date(`${b.date || '2026-01-01'} ${b.time || '00:00'}`).getTime();
-        if (!isNaN(timeB) && !isNaN(timeA) && timeB !== timeA) return timeB - timeA;
+        const timeA = getRecordTimestamp(a);
+        const timeB = getRecordTimestamp(b);
+        if (timeB !== timeA) return timeB - timeA;
         return (b.id || '').localeCompare(a.id || '');
       });
   }, [transactions]);
 
-  // Live System Expenses (sorted newest first)
+  // Live System Expenses (sorted strictly newest first)
   const sortedExpenses = useMemo(() => {
     return [...expenses].sort((a, b) => {
-      const timeA = new Date(a.date || a.createdAt || '2026-01-01').getTime();
-      const timeB = new Date(b.date || b.createdAt || '2026-01-01').getTime();
-      if (!isNaN(timeB) && !isNaN(timeA) && timeB !== timeA) return timeB - timeA;
+      const timeA = getRecordTimestamp(a);
+      const timeB = getRecordTimestamp(b);
+      if (timeB !== timeA) return timeB - timeA;
       return (b.id || '').localeCompare(a.id || '');
     });
   }, [expenses]);
@@ -270,15 +300,15 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
 
   // Format currency with 2 decimals
   const formatCurrency = (val: number) => {
-    return `${val.toLocaleString('en-US', {
+    return `${toEnglishDigits(val.toLocaleString('en-US', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    })} ج.م`;
+    }))} ج.م`;
   };
 
-  // Filter records based on timeframe, month, year, and search query
+  // Filter records based on timeframe, month, year, and search query (strictly newest first)
   const filteredInflowRecords = useMemo(() => {
-    return allInflowRecords.filter((rec) => {
+    const list = allInflowRecords.filter((rec) => {
       // 1. Timeframe Filter
       if (selectedTimeframe !== 'all') {
         const parts = extractDateParts(rec.date);
@@ -306,17 +336,23 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
 
       // 2. Search Query Filter
       if (searchQuery.trim()) {
-        const q = searchQuery.trim().toLowerCase();
+        const q = toEnglishDigits(searchQuery.trim()).toLowerCase();
         const pat = (rec.patientName || '').toLowerCase();
         const desc = (rec.description || '').toLowerCase();
         const srv = (rec.serviceName || '').toLowerCase();
-        const receipt = (rec.receiptNo || rec.receiptNumber || '').toLowerCase();
-        if (!pat.includes(q) && !desc.includes(q) && !srv.includes(q) && !receipt.includes(q)) {
+        if (!pat.includes(q) && !desc.includes(q) && !srv.includes(q)) {
           return false;
         }
       }
 
       return true;
+    });
+
+    return list.sort((a, b) => {
+      const timeA = getRecordTimestamp(a);
+      const timeB = getRecordTimestamp(b);
+      if (timeB !== timeA) return timeB - timeA;
+      return (b.id || '').localeCompare(a.id || '');
     });
   }, [allInflowRecords, selectedTimeframe, tableFilterMonth, tableFilterYear, searchQuery]);
 
@@ -331,18 +367,18 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
   // Total visits display counter
   const totalVisitsCount = allInflowRecords.length;
 
-  // Format Date in Arabic readable
+  // Format Date in Arabic readable with English digits
   const formatArabicDate = (dateStr: string) => {
     try {
       const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return dateStr;
-      return d.toLocaleDateString('ar-EG', {
+      if (isNaN(d.getTime())) return toEnglishDigits(dateStr);
+      return formatAppDate(d, {
         day: 'numeric',
         month: 'long',
         year: 'numeric',
       });
     } catch {
-      return dateStr;
+      return toEnglishDigits(dateStr);
     }
   };
 
@@ -361,7 +397,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
         receiptNo: `INV-${Math.floor(Math.random() * 9000) + 1000}`,
         patientName: invPatientName.trim(),
         serviceName: invService,
-        description: `${invService}${invDiscount > 0 ? ` (خصم ${invDiscount} ج.م)` : ''}`,
+        description: `${invService}${invDiscount > 0 ? ` (خصم ${toEnglishDigits(invDiscount)} ج.م)` : ''}`,
         totalAmount: invAmount,
         discountAmount: invDiscount,
         paidAmount: finalPaid,
@@ -370,8 +406,9 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
         method: invPaymentMethod,
         paymentMethod: invPaymentMethod,
         status: invStatus,
-        time: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+        time: formatAppTime(new Date()),
         date: new Date().toISOString().split('T')[0],
+        rawTimestamp: new Date().toISOString(),
         category: 'خدمات طبية',
       };
 
@@ -381,7 +418,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
       setInvDiscount(0);
       setInvStatus('مدفوعة');
 
-      setToast(`تم إنشاء الفاتورة رقم ${newTx.receiptNo} بنجاح للمريض (${invPatientName})`);
+      setToast(`تم إنشاء الفاتورة بنجاح للمريض (${invPatientName})`);
       setTimeout(() => setToast(null), 3500);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'ليس لديك صلاحية لإنشاء الفواتير.');
@@ -391,7 +428,8 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
   // Submit Quick Expense
   const handleAddQuickExpense = (e: React.FormEvent) => {
     e.preventDefault();
-    const amountNum = Number(quickExpenseAmount);
+    const cleanAmountStr = toEnglishDigits(quickExpenseAmount);
+    const amountNum = Number(cleanAmountStr);
     if (!selectedExpenseCategory) {
       alert('يرجى اختيار بند المصروف');
       return;
@@ -403,14 +441,15 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
 
     try {
       assertPermission('billing.expenses', 'تسجيل مصروف للعيادة');
+      const now = new Date();
       const newExp: ClinicExpenseRecord = {
         id: `exp-${Date.now()}`,
         category: selectedExpenseCategory,
         amount: amountNum,
         date: quickExpenseDate,
-        time: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+        time: formatAppTime(now),
         notes: quickExpenseNotes.trim() || undefined,
-        createdAt: new Date().toISOString(),
+        createdAt: now.toISOString(),
         createdBy: userProfile?.displayName || 'الاستقبال',
       };
 
@@ -428,6 +467,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
         method: 'نقدي',
         time: newExp.time,
         date: newExp.date,
+        rawTimestamp: newExp.createdAt,
         category: 'مصروفات العيادة',
       };
       onAddTransaction(txExp);
@@ -947,23 +987,18 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
                         <tr key={tx.id} className="hover:bg-slate-50 dark:hover:bg-[#18233C]/60 transition-colors">
                           <td className="p-3 font-bold text-slate-900 dark:text-[#dde2f5]">
                             <div>{tx.patientName}</div>
-                            {tx.receiptNo && (
-                              <span className="text-[10px] text-[#008f97] dark:text-[#00c2cb] font-mono block">
-                                {tx.receiptNo}
-                              </span>
-                            )}
                           </td>
                           <td className="p-3 text-slate-700 dark:text-[#bbc9ca]">
                             {tx.serviceName || tx.description || 'كشف واستشارة طبية'}
                           </td>
                           <td className="p-3 text-center font-mono font-bold text-sm text-emerald-600 dark:text-[#10B981]">
-                            {amountDisplay.toLocaleString()} ج.م
+                            {toEnglishDigits(amountDisplay.toLocaleString('en-US'))} ج.م
                           </td>
                           <td className="p-3 text-center font-mono text-[11px] whitespace-nowrap">
-                            <div className="text-slate-800 dark:text-slate-200 font-bold">{tx.date || '—'}</div>
+                            <div className="text-slate-800 dark:text-slate-200 font-bold">{toEnglishDigits(tx.date || '—')}</div>
                             <div className="text-[10px] text-[#008f97] dark:text-[#00c2cb] font-bold flex items-center justify-center gap-1 mt-0.5">
                               <span className="material-symbols-outlined text-[12px]">schedule</span>
-                              <span>{tx.time ? `الساعة ${tx.time}` : '—'}</span>
+                              <span>{tx.time ? `الساعة ${toEnglishDigits(tx.time)}` : '—'}</span>
                             </div>
                           </td>
                           <td className="p-3 text-center">
@@ -1313,7 +1348,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
                     min="0"
                     required
                     value={invAmount}
-                    onChange={(e) => setInvAmount(Number(e.target.value))}
+                    onChange={(e) => setInvAmount(Number(toEnglishDigits(e.target.value)))}
                     className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-3 rounded-xl border border-slate-200 dark:border-white/10 font-mono font-bold focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
                   />
                 </div>
@@ -1327,7 +1362,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
                     type="number"
                     min="0"
                     value={invDiscount}
-                    onChange={(e) => setInvDiscount(Number(e.target.value))}
+                    onChange={(e) => setInvDiscount(Number(toEnglishDigits(e.target.value)))}
                     className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-3 rounded-xl border border-slate-200 dark:border-white/10 font-mono focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
                   />
                 </div>
@@ -1372,7 +1407,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
               <div className="p-3 bg-teal-50 dark:bg-[#00c2cb]/10 border border-[#00c2cb]/30 rounded-xl flex items-center justify-between text-xs">
                 <span className="font-bold text-slate-800 dark:text-[#dde2f5]">الصافي المطلوب تحصيله:</span>
                 <span className="font-mono font-extrabold text-base text-[#008f97] dark:text-[#45dee7]">
-                  {Math.max(0, invAmount - invDiscount)} ج.م
+                  {toEnglishDigits(Math.max(0, invAmount - invDiscount))} ج.م
                 </span>
               </div>
 
@@ -1421,12 +1456,8 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
 
             <div className="border-t border-b border-dashed border-slate-300 py-2.5 text-xs space-y-1">
               <div className="flex justify-between">
-                <span className="text-slate-500">رقم الإيصال:</span>
-                <span className="font-bold">{selectedReceipt.receiptNo}</span>
-              </div>
-              <div className="flex justify-between">
                 <span className="text-slate-500">التاريخ والوقت:</span>
-                <span>{selectedReceipt.time}</span>
+                <span>{toEnglishDigits(selectedReceipt.time)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">المريض:</span>
@@ -1442,7 +1473,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
               </div>
               <div className="flex justify-between text-sm font-bold pt-1 border-t border-slate-200">
                 <span>المبلغ المسدد:</span>
-                <span className="text-emerald-700">{selectedReceipt.amount} ج.م</span>
+                <span className="text-emerald-700">{toEnglishDigits(selectedReceipt.amount)} ج.م</span>
               </div>
             </div>
 
@@ -1485,7 +1516,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
                 تأكيد حذف الفاتورة
               </h3>
               <p className="text-xs text-slate-500 dark:text-[#859394] leading-relaxed">
-                هل أنت متأكد من حذف الفاتورة <strong className="text-slate-800 dark:text-white">({txToDelete.receiptNo})</strong> بمبلغ <strong className="text-[#008f97] dark:text-[#00c2cb] font-mono">{txToDelete.amount} ج.م</strong> لـ ({txToDelete.patientName})؟
+                هل أنت متأكد من حذف الفاتورة بمبلغ <strong className="text-[#008f97] dark:text-[#00c2cb] font-mono">{toEnglishDigits(txToDelete.amount)} ج.م</strong> للمريض <strong className="text-slate-800 dark:text-white">({txToDelete.patientName})</strong>؟
               </p>
             </div>
             <div className="flex items-center gap-2 pt-2">
@@ -1501,7 +1532,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
                 onClick={() => {
                   if (onDeleteTransaction && txToDelete) {
                     onDeleteTransaction(txToDelete.id);
-                    setToast(`تم حذف الفاتورة ${txToDelete.receiptNo} بنجاح`);
+                    setToast(`تم حذف الفاتورة بنجاح`);
                     setTimeout(() => setToast(null), 3000);
                     setTxToDelete(null);
                   }

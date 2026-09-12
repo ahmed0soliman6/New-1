@@ -95,6 +95,7 @@ export interface TransactionRecord {
   receiptNumber?: string;
   receiptNo?: string;
   timestamp?: string;
+  rawTimestamp?: string;
   time?: string;
   date?: string;
   patientName: string;

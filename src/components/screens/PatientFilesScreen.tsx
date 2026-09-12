@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { PatientListItem, ScreenType } from '../../types';
 import { usePermissions } from '../../context/AuthContext';
 import { PatientDetailFullScreen } from './PatientDetailFullScreen';
+import { toEnglishDigits } from '../../utils/numberUtils';
 import type {
   FollowUp,
   Invoice,
@@ -154,7 +155,7 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="بحث بالاسم، رقم الهاتف، أو كود الملف..."
+            placeholder="بحث بالاسم، رقم الهاتف، أو رقم الملف..."
             className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] placeholder:text-slate-400 dark:placeholder:text-[#859394] pr-10 pl-4 py-3 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#00c2cb] border border-slate-200 dark:border-white/5 shadow-xs transition-all"
             id="patient-search-input"
           />
@@ -206,7 +207,7 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
                           {p.name}
                         </span>
                         <span className="bg-teal-50 dark:bg-[#00c2cb]/15 text-[#008f97] dark:text-[#45dee7] text-[10px] font-mono font-bold px-2 py-0.5 rounded-md border border-teal-200/50 dark:border-transparent">
-                          ملف #{p.fileNumber || 1}
+                          ملف #{toEnglishDigits(p.fileNumber || 1)}
                         </span>
                         {p.bloodType && p.bloodType !== 'غير محدد' && (
                           <span className="bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 text-[10px] font-mono font-bold px-2 py-0.5 rounded-md border border-red-100 dark:border-transparent">
@@ -222,9 +223,9 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
                       </div>
 
                       <div className="text-xs text-slate-500 dark:text-[#859394] flex flex-wrap items-center gap-x-3 gap-y-1">
-                        <span className="font-mono">{p.phone || 'بدون هاتف'}</span>
+                        <span className="font-mono">{toEnglishDigits(p.phone || 'بدون هاتف')}</span>
                         <span>•</span>
-                        <span>{p.age} سنة</span>
+                        <span>{toEnglishDigits(p.age)} سنة</span>
                         {p.address && (
                           <>
                             <span>•</span>
@@ -233,11 +234,11 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
                         )}
                         <span>•</span>
                         <span className="text-[#008f97] dark:text-[#00c2cb] font-semibold">
-                          {pVisitsCount} كشوفات
+                          {toEnglishDigits(pVisitsCount)} كشوفات
                         </span>
                         <span>•</span>
                         <span className="text-purple-600 dark:text-[#d0bcff]">
-                          {pPrescriptionsCount} روشتات
+                          {toEnglishDigits(pPrescriptionsCount)} روشتات
                         </span>
                       </div>
 
@@ -245,19 +246,19 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
                       <div className="text-[11px] text-slate-500 dark:text-[#859394] flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 font-mono">
                         <div className="flex items-center gap-1 text-slate-700 dark:text-slate-300">
                           <span className="material-symbols-outlined text-[13px] text-[#008f97] dark:text-[#00c2cb]">calendar_today</span>
-                          <span>تاريخ التسجيل: {p.registrationDate || '—'}</span>
+                          <span>تاريخ التسجيل: {toEnglishDigits(p.registrationDate || '—')}</span>
                           {p.registrationTime && (
                             <span className="text-[#008f97] dark:text-[#00c2cb] font-bold">
-                              الساعة {p.registrationTime}
+                              الساعة {toEnglishDigits(p.registrationTime)}
                             </span>
                           )}
                         </div>
                         {p.lastVisitDate && (
                           <div className="flex items-center gap-1 text-teal-700 dark:text-teal-400">
                             <span className="material-symbols-outlined text-[13px]">history</span>
-                            <span>آخر زيارة: {p.lastVisitDate}</span>
+                            <span>آخر زيارة: {toEnglishDigits(p.lastVisitDate)}</span>
                             {p.lastVisitTime && (
-                              <span className="font-bold">الساعة {p.lastVisitTime}</span>
+                              <span className="font-bold">الساعة {toEnglishDigits(p.lastVisitTime)}</span>
                             )}
                           </div>
                         )}
@@ -332,7 +333,7 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
                 تأكيد حذف ملف المريض نهائياً
               </h3>
               <p className="text-xs text-slate-500 dark:text-[#859394] leading-relaxed">
-                هل أنت متأكد من رغبتك في حذف ملف المريض <strong className="text-slate-800 dark:text-white">({patientToDelete.name})</strong> كود ملف <strong className="text-[#008f97] dark:text-[#00c2cb] font-mono">{patientToDelete.medicalCode}</strong>؟
+                هل أنت متأكد من رغبتك في حذف ملف المريض <strong className="text-slate-800 dark:text-white">({patientToDelete.name})</strong> رقم الملف <strong className="text-[#008f97] dark:text-[#00c2cb] font-mono">#{toEnglishDigits(patientToDelete.fileNumber || 1)}</strong>؟
               </p>
               <p className="text-[11px] text-rose-600 dark:text-rose-400 font-medium pt-1">
                 ⚠️ تحذير: سيتم حذف كافة البيانات الطبية والزيارات المرتبطة بهذا الملف ولا يمكن التراجع بعد الحذف.

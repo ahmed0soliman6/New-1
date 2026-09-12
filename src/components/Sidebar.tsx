@@ -160,20 +160,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Doctor Availability, User Identity & Logout */}
         <div className="p-3 bg-[#080e1b] border-t border-white/10 space-y-2">
-          {role !== 'secretary' && (
-            <div className="p-2 rounded-xl bg-[#111A2E] flex items-center justify-between border border-white/10 shadow-xs">
-              <div className="flex items-center gap-2">
-                <span
-                  className={`w-2.5 h-2.5 rounded-full ring-2 ${
-                    doctorStatus === 'available'
-                      ? 'bg-emerald-500 ring-emerald-500/30'
-                      : 'bg-amber-400 ring-amber-400/30'
-                  }`}
-                ></span>
-                <span className="text-xs font-semibold text-[#f1f5f9]">
-                  {doctorStatus === 'available' ? 'متاح للكشف' : 'في استراحة'}
-                </span>
-              </div>
+          {/* Doctor Availability Indicator & Break Toggle */}
+          <div className="p-2 rounded-xl bg-[#111A2E] flex items-center justify-between border border-white/10 shadow-xs">
+            <div className="flex items-center gap-2">
+              <span
+                className={`w-2.5 h-2.5 rounded-full ring-2 ${
+                  doctorStatus === 'available'
+                    ? 'bg-emerald-500 ring-emerald-500/30'
+                    : 'bg-amber-400 ring-amber-400/30 animate-pulse'
+                }`}
+              ></span>
+              <span className="text-xs font-semibold text-[#f1f5f9]">
+                {doctorStatus === 'available' ? 'الطبيب متاح' : 'الطبيب في استراحة ☕'}
+              </span>
+            </div>
+            {role !== 'secretary' ? (
               <button
                 type="button"
                 onClick={handleToggleDoctor}
@@ -181,8 +182,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
               >
                 {doctorStatus === 'available' ? 'استراحة' : 'تفعيل'}
               </button>
-            </div>
-          )}
+            ) : (
+              <span className="text-[10px] text-slate-400 px-1.5 py-0.5 rounded bg-[#18233C]">
+                مباشر
+              </span>
+            )}
+          </div>
 
           {/* User Identity (Clean, No Image) + Logout */}
           <div className="p-2.5 rounded-xl bg-[#111A2E] border border-white/10 shadow-xs flex items-center justify-between gap-2">
