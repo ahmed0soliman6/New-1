@@ -112,7 +112,11 @@ service cloud.firestore {
         (
           !exists(/databases/$(database)/documents/_system/bootstrap) &&
           request.auth.uid == userId &&
-          request.resource.data.uid == request.auth.uid
+          request.resource.data.uid == request.auth.uid &&
+          (request.resource.data.role == 'ADMIN' || request.resource.data.role == 'admin') &&
+          request.resource.data.active == true &&
+          (!('customPermissions' in request.resource.data) || request.resource.data.customPermissions == null) &&
+          (!('allowedScreens' in request.resource.data) || request.resource.data.allowedScreens == null)
         ) ||
         (
           request.auth.uid == userId &&
