@@ -878,7 +878,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                 {!isEditingPatientInfo ? (
                   <div className="space-y-1.5">
                     <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                      <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-[#dde2f5] truncate max-w-full">
+                      <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-[#dde2f5] break-words max-w-full">
                         {editablePatientName}
                       </h1>
                       <span className="px-2.5 py-0.5 rounded-full bg-teal-100 dark:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#45dee7] text-[11px] font-bold whitespace-nowrap">

@@ -97,8 +97,8 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({
                   {item.patientName ? item.patientName.charAt(0) : 'P'}
                 </div>
 
-                <div className="min-w-0 space-y-1">
-                  <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white truncate">
+                <div className="min-w-0 space-y-1 flex-1">
+                  <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white break-words">
                     {item.patientName}
                   </h2>
 

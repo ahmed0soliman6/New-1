@@ -34,8 +34,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const { role, userProfile, canAccess } = usePermissions();
   const { language, toggleLanguage, t, isRTL } = useLanguage();
   const [internalDoctorStatus, setInternalDoctorStatus] = useState<'available' | 'break'>('available');
-  const [showDisplayMenu, setShowDisplayMenu] = useState(false);
-  
   const doctorStatus = externalDoctorStatus || internalDoctorStatus;
   const handleToggleDoctor = () => {
     if (onToggleDoctorStatus) {
@@ -103,78 +101,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="h-16 px-3 flex items-center justify-between bg-[#080e1b] border-b border-white/10 shrink-0">
           <SoliMedicalLogo size="md" showText={true} glow={true} />
 
-          <div className="flex items-center gap-1.5">
-            {/* Combined Display & Language Dropdown */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setShowDisplayMenu(!showDisplayMenu)}
-                className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer border shadow-2xs active:scale-95 ${
-                  showDisplayMenu
-                    ? 'bg-[#00c2cb] text-[#08101C] border-[#00c2cb]'
-                    : 'bg-[#18233C] hover:bg-[#242a38] text-[#45dee7] hover:text-white border-[#00c2cb]/30'
-                }`}
-                title={language === 'en' ? 'Display & Language Preferences' : 'تفضيلات اللغة والمظهر'}
-              >
-                <span className="material-symbols-outlined text-lg">tune</span>
-              </button>
+          <div className="flex items-center gap-2">
+            {/* Language Toggle Badge */}
+            <button
+              type="button"
+              onClick={toggleLanguage}
+              className="w-8 h-8 rounded-lg bg-[#18233C] hover:bg-[#242a38] text-[#45dee7] hover:text-white border border-[#00c2cb]/20 flex items-center justify-center transition-all cursor-pointer font-bold text-[11px] font-sans active:scale-95"
+              title={language === 'en' ? 'Switch to Arabic' : 'التحويل للغة الإنجليزية'}
+            >
+              {language === 'ar' ? 'EN' : 'AR'}
+            </button>
 
-              {/* Dropdown Menu */}
-              {showDisplayMenu && (
-                <>
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setShowDisplayMenu(false)}
-                  />
-                  <div className={`absolute top-full mt-2 ${isRTL ? 'left-0' : 'right-0'} z-50 w-56 bg-[#162035] border border-white/10 rounded-2xl shadow-2xl p-2 space-y-1 text-xs text-[#dde2f5]`}>
-                    <div className="px-2.5 py-1.5 border-b border-white/5 font-bold text-[11px] text-[#859394] flex items-center justify-between">
-                      <span>{language === 'en' ? 'Display Preferences' : 'إعدادات العرض واللغة'}</span>
-                      <span className="material-symbols-outlined text-sm text-[#00c2cb]">tune</span>
-                    </div>
-
-                    {/* Language Option */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        toggleLanguage();
-                        setShowDisplayMenu(false);
-                      }}
-                      className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-white/5 transition-colors cursor-pointer group"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="material-symbols-outlined text-base text-[#00c2cb]">translate</span>
-                        <span className="font-bold">{language === 'en' ? 'Language' : 'لغة الواجهة'}</span>
-                      </div>
-                      <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-lg bg-[#00c2cb]/20 text-[#45dee7] border border-[#00c2cb]/30">
-                        {language === 'ar' ? 'English (EN)' : 'العربية (AR)'}
-                      </span>
-                    </button>
-
-                    {/* Theme Option */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onToggleTheme();
-                        setShowDisplayMenu(false);
-                      }}
-                      className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-white/5 transition-colors cursor-pointer group"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="material-symbols-outlined text-base text-amber-400">
-                          {isDark ? 'light_mode' : 'dark_mode'}
-                        </span>
-                        <span className="font-bold">{language === 'en' ? 'Appearance' : 'المظهر العام'}</span>
-                      </div>
-                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                        {isDark
-                          ? (language === 'en' ? 'Light Mode' : 'الوضع النهاري')
-                          : (language === 'en' ? 'Dark Mode' : 'الوضع الليلي')}
-                      </span>
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
+            {/* Theme Toggle Sun/Moon Icon */}
+            <button
+              type="button"
+              onClick={onToggleTheme}
+              className="w-8 h-8 rounded-lg bg-[#18233C] hover:bg-[#242a38] text-amber-400 hover:text-amber-300 border border-amber-500/20 flex items-center justify-center transition-all cursor-pointer active:scale-95"
+              title={language === 'en' ? 'Toggle Theme' : 'تبديل المظهر والوضع'}
+            >
+              <span className="material-symbols-outlined text-base">
+                {isDark ? 'light_mode' : 'dark_mode'}
+              </span>
+            </button>
 
             {/* Mobile close button */}
             <button

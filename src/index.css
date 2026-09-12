@@ -4,7 +4,26 @@
 
 @layer base {
   html {
-    font-size: 17.5px; /* Proportional scaling for clear reading (1 to 2 degrees larger) */
+    /* Fluid responsive base font-size for seamless cross-device scaling */
+    font-size: 14px; /* Base for small mobile screens to prevent overflow */
+  }
+
+  @media (min-width: 640px) {
+    html {
+      font-size: 15px; /* Perfect scale for tablets (768px portrait/landscape) */
+    }
+  }
+
+  @media (min-width: 1024px) {
+    html {
+      font-size: 16.5px; /* Elegant, large typography for laptops/desktops */
+    }
+  }
+
+  @media (min-width: 1440px) {
+    html {
+      font-size: 17.5px; /* Maximum size for ultra-wide monitors */
+    }
   }
 
   html, body {

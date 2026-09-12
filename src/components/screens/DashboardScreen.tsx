@@ -515,8 +515,8 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
         {/* Doctor Identity & Information */}
         <div className="flex items-center gap-3 z-10 min-w-0 w-full">
           <div className="space-y-1 min-w-0 flex-1">
-            <h1 className="text-lg sm:text-2xl font-black text-white tracking-tight flex items-center gap-2 truncate">
-              <span className="truncate">{doctorInfo.doctorName}</span>
+            <h1 className="text-lg sm:text-2xl font-black text-white tracking-tight flex items-center gap-2 flex-wrap">
+              <span className="break-words">{doctorInfo.doctorName}</span>
               <span
                 className="material-symbols-outlined text-teal-400 text-base sm:text-xl shrink-0"
                 title="طبيب معتمد"
@@ -525,7 +525,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
               </span>
             </h1>
 
-            <p className="text-xs sm:text-sm text-[#00c2cb] font-bold truncate">
+            <p className="text-xs sm:text-sm text-[#00c2cb] font-bold">
               {doctorInfo.specialtyAr}
             </p>
           </div>

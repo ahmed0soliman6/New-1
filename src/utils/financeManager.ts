@@ -197,7 +197,10 @@ export function saveClinicExpenses(expenses: ClinicExpenseRecord[]) {
 export function addClinicExpense(expense: ClinicExpenseRecord): ClinicExpenseRecord[] {
   cachedClinicExpenses = [expense, ...cachedClinicExpenses];
   if (db) {
-    setDoc(doc(db, 'expenses', expense.id), expense).catch((err) =>
+    const cleanedExpense = Object.fromEntries(
+      Object.entries(expense).filter(([_, v]) => v !== undefined)
+    );
+    setDoc(doc(db, 'expenses', expense.id), cleanedExpense).catch((err) =>
       console.warn('Firestore expense sync error:', err)
     );
   }
