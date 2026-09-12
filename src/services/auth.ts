@@ -20,9 +20,9 @@ const internalEmail = (username: string) => `${normalizeUsername(username)}@auth
 
 const DEMO_CREDENTIALS: Record<string, { role: UserRole; displayName: string; defaultPass: string }> = {
   admin: { role: 'ADMIN', displayName: 'مدير النظام (Admin)', defaultPass: 'admin1234' },
-  doctor: { role: 'DOCTOR', displayName: 'د. حازم القاضي (Doctor)', defaultPass: 'doctor1234' },
+  doctor: { role: 'DOCTOR', displayName: 'طبيب العيادة (Doctor)', defaultPass: 'doctor1234' },
   secretary: { role: 'SECRETARY', displayName: 'سارة عبد المنعم (Secretary)', defaultPass: 'secret1234' },
-  dr_hazem: { role: 'DOCTOR', displayName: 'د. حازم القاضي', defaultPass: 'doctor1234' },
+  dr_hazem: { role: 'DOCTOR', displayName: 'طبيب العيادة', defaultPass: 'doctor1234' },
   sara_rec: { role: 'SECRETARY', displayName: 'سارة عبد المنعم', defaultPass: 'secret1234' },
 };
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { QrCodeImage } from '../QrCodeImage';
 import { exportPrescriptionToPdf } from '../../utils/exportPrescriptionPdf';
 import { printPrescriptionDocument } from '../../utils/printPrescription';
 import { CLINIC_INFO } from '../../data/previewClinicData';
@@ -2311,9 +2312,12 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                 {prescriptionConfig.showQr && (
                   <div className="flex flex-col items-center shrink-0">
                     <div className="w-[50px] h-[50px] bg-white p-1 rounded-lg border border-slate-300 flex items-center justify-center">
-                      <svg viewBox="0 0 100 100" className="w-full h-full text-slate-900" fill="currentColor">
-                        <path d="M10 10h30v30h-30zM15 15v20h20v-20zM22 22h6v6h-6zM60 10h30v30h-30zM65 15v20h20v-20zM72 22h6v6h-6zM10 60h30v30h-30zM15 65v20h20v-20zM22 72h6v6h-6zM60 60h10v10h-10zM80 60h10v10h-10zM70 70h10v10h-10zM60 80h10v10h-10zM80 80h10v10h-10zM45 10h10v80h-10z" />
-                      </svg>
+                      <QrCodeImage
+                        qrType={prescriptionConfig.qrType}
+                        qrWhatsappPhone={prescriptionConfig.qrWhatsappPhone}
+                        qrCustomUrl={prescriptionConfig.qrCustomUrl}
+                        className="w-full h-full text-slate-900"
+                      />
                     </div>
                     <span className="text-[7.5px] font-bold text-slate-500 mt-0.5">
                       {prescriptionConfig.qrType === 'whatsapp' ? 'واتساب العيادة' : 'موقع العيادة'}
@@ -2525,9 +2529,12 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                         {prescriptionConfig.showQr && (
                           <div className="flex flex-col items-center shrink-0">
                             <div className="w-[42px] h-[42px] bg-white p-0.5 rounded border border-slate-300 flex items-center justify-center">
-                              <svg viewBox="0 0 100 100" className="w-full h-full text-slate-900" fill="currentColor">
-                                <path d="M10 10h30v30h-30zM15 15v20h20v-20zM22 22h6v6h-6zM60 10h30v30h-30zM65 15v20h20v-20zM72 22h6v6h-6zM10 60h30v30h-30zM15 65v20h20v-20zM22 72h6v6h-6zM60 60h10v10h-10zM80 60h10v10h-10zM70 70h10v10h-10zM60 80h10v10h-10zM80 80h10v10h-10zM45 10h10v80h-10z" />
-                              </svg>
+                              <QrCodeImage
+                                qrType={prescriptionConfig.qrType}
+                                qrWhatsappPhone={prescriptionConfig.qrWhatsappPhone}
+                                qrCustomUrl={prescriptionConfig.qrCustomUrl}
+                                className="w-full h-full text-slate-900"
+                              />
                             </div>
                           </div>
                         )}

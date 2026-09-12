@@ -12,17 +12,17 @@ export function getDynamicDoctorName(): string {
   } catch {
     // ignore
   }
-  return 'د. حازم سمير القاضي';
+  return 'طبيب العيادة';
 }
 
 export const CLINIC_INFO = {
-  name: 'سولي ميديكال كلينيك',
+  name: 'العيادة الطبية المتكاملة',
   enName: 'Soli Medical Clinic',
   get doctorName() {
     return getDynamicDoctorName();
   },
-  doctorTitle: 'استشاري الباطنة والقلب والسكر والغدد الصماء',
-  doctorCredentials: 'زميل الكلية الملكية للأطباء - دكتوراه الباطنة العامة (قصر العيني)',
+  doctorTitle: 'التخصص الطبي العام للعيادة',
+  doctorCredentials: 'الدرجات العلمية والشهادات المهنية والزمالات المسجلة للعيادة',
   syndicateNumber: 'EG-DOC-48291-GZ',
   licenseYear: '48291 / 2006 جيزة',
   logoUrl: 'https://lh3.googleusercontent.com/aida/AEtjO1Vrz2i_HQu2ilGlpVeZEGuk5DJ-Hht9rT6kliDB3hw3PS9-J_HHQDvOL2_3KTsKZltGHed8eeV6j-T92TfU71y81R42_shFQGUbl8PoChY9f9-JS7WVLRy1Rm_MIs9jdOIENTv9rc4cn1CZ2mYRpZ99A_xBMuvFOOecFL44A0vQxciThRZCgZkB1qBCOh6IxAZL5w9rIeWEToXoP_cI9IlvDyLX0g8MJLfxYOFzk31i-sXkrAu1lN-FsiaoTggRuYle0SUD-iLa',

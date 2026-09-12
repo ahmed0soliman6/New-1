@@ -14,13 +14,13 @@ export interface PrescriptionDoctorInfo {
 
 export function getPrescriptionDoctorInfo(): PrescriptionDoctorInfo {
   const fallback: PrescriptionDoctorInfo = {
-    doctorName: CLINIC_INFO.doctorName || 'د. حازم سمير القاضي',
-    doctorNameEn: 'Dr. Hazem El-Kady',
-    specialtyAr: CLINIC_INFO.doctorTitle || 'استشاري الباطنة والقلب والسكر والغدد الصماء',
-    specialtyEn: 'Consultant of Internal Medicine & Cardiology',
-    degreesAr: CLINIC_INFO.doctorCredentials || 'زميل الكلية الملكية للأطباء - دكتوراه الباطنة العامة (قصر العيني)',
-    degreesEn: 'M.D., MRCP (London) • Cairo University',
-    phone: CLINIC_INFO.branches?.[0]?.mobile || '01092847162',
+    doctorName: CLINIC_INFO.doctorName || 'طبيب العيادة',
+    doctorNameEn: 'Clinic Doctor',
+    specialtyAr: CLINIC_INFO.doctorTitle || 'التخصص الطبي العام للعيادة',
+    specialtyEn: 'Clinic Medical Specialty',
+    degreesAr: CLINIC_INFO.doctorCredentials || 'الدرجات العلمية والشهادات المهنية المسجلة للعيادة',
+    degreesEn: 'Registered Medical Degrees & Professional Credentials',
+    phone: CLINIC_INFO.branches?.[0]?.mobile || '',
     logoUrl: CLINIC_INFO.logoUrl || null,
   };
 

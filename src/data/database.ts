@@ -27,8 +27,8 @@ import {
 export const INITIAL_USERS: User[] = [
   {
     userId: 'user-doc-1',
-    name: 'د. حازم سمير القاضي',
-    email: 'dr.hazem@solimedical.com',
+    name: 'طبيب العيادة',
+    email: 'doctor@solimedical.com',
     role: 'DOCTOR',
     active: true,
     preferredLanguage: 'ar',
@@ -59,14 +59,14 @@ export const INITIAL_USERS: User[] = [
 
 // 2. Doctor Profile (doctorProfile/main)
 export const INITIAL_DOCTOR_PROFILE: DoctorProfile = {
-  nameAr: 'د. حازم سمير القاضي',
-  nameEn: 'Dr. Hazem Samir El-Kady',
-  specialtyAr: 'استشاري الباطنة والقلب والسكر والغدد الصماء',
-  specialtyEn: 'Consultant of Internal Medicine, Cardiology & Endocrinology',
-  degreesAr: 'زميل الكلية الملكية للأطباء - دكتوراه الباطنة العامة (قصر العيني)',
-  degreesEn: 'FRCP (London) - M.D. Internal Medicine, Cairo University',
+  nameAr: 'طبيب العيادة',
+  nameEn: 'Clinic Doctor',
+  specialtyAr: 'التخصص الطبي العام للعيادة',
+  specialtyEn: 'Clinic Medical Specialty',
+  degreesAr: 'الدرجات العلمية والشهادات المهنية والزمالات المسجلة للعيادة',
+  degreesEn: 'Registered Medical Degrees & Professional Credentials',
   phone: '01092847162',
-  email: 'dr.hazem@solimedical.com',
+  email: 'doctor@solimedical.com',
   licenseNumber: 'EG-DOC-48291-GZ',
   logoUrl:
     'https://lh3.googleusercontent.com/aida/AEtjO1Vrz2i_HQu2ilGlpVeZEGuk5DJ-Hht9rT6kliDB3hw3PS9-J_HHQDvOL2_3KTsKZltGHed8eeV6j-T92TfU71y81R42_shFQGUbl8PoChY9f9-JS7WVLRy1Rm_MIs9jdOIENTv9rc4cn1CZ2mYRpZ99A_xBMuvFOOecFL44A0vQxciThRZCgZkB1qBCOh6IxAZL5w9rIeWEToXoP_cI9IlvDyLX0g8MJLfxYOFzk31i-sXkrAu1lN-FsiaoTggRuYle0SUD-iLa',

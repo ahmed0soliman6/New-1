@@ -664,6 +664,13 @@ function ClinicApp() {
       subscribeToDoctorSettings(db, (settings) => { if (settings) setDoctorSettingsCanonical(settings); }, onError),
       subscribeToAlertSettings(db, (settings) => { if (settings) setCachedAlertSettings(settings); }, onError),
       subscribeToRecurringTemplates(db, (templates) => { if (templates) setCachedRecurringTemplates(templates); }, onError),
+      subscribeToPrescriptionSettings(db, (settings) => {
+        if (settings && Object.keys(settings).length > 0) {
+          localStorage.setItem('soli_prescription_settings', JSON.stringify(settings));
+          window.dispatchEvent(new Event('soli_prescription_updated'));
+          window.dispatchEvent(new Event('storage'));
+        }
+      }, onError),
     ];
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
   }, [syncRetryCounter]);

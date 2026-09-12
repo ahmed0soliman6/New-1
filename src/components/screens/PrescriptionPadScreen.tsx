@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { QrCodeImage } from '../QrCodeImage';
 import { doc, setDoc } from 'firebase/firestore';
 import { exportPrescriptionToPdf } from '../../utils/exportPrescriptionPdf';
 import { printPrescriptionDocument } from '../../utils/printPrescription';
@@ -726,7 +727,7 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
                   type="text"
                   value={config.doctorName}
                   onChange={(e) => setConfig({ ...config, doctorName: e.target.value })}
-                  placeholder="د. حازم سمير القاضي"
+                  placeholder="مثال: د. أحمد سليمان"
                   className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-[#18233C] border border-slate-200 dark:border-white/10 text-slate-800 dark:text-white font-medium"
                 />
               </div>
@@ -1305,68 +1306,109 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
             </div>
 
             {/* Prescription Body */}
-            <div
-              className={`flex-1 space-y-2.5 py-1 ${
-                config.sectionSpacing === 'compact'
-                  ? 'space-y-1.5'
-                  : config.sectionSpacing === 'comfortable'
-                  ? 'space-y-4'
-                  : 'space-y-2.5'
-              }`}
-            >
-              <div className="flex items-center gap-2 border-b border-slate-200 pb-1 text-left" dir="ltr">
-                <span className="text-2xl font-serif font-black text-[#008f97] italic">℞</span>
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Rx</span>
-              </div>
+            {(() => {
+              const previewItemsCount = items && items.length > 0 ? items.length : 2;
+              
+              let itemPaddingClass = 'p-2';
+              let itemGapClass = 'space-y-2';
+              let drugTextClass = 'text-xs';
+              let instructionTextClass = 'text-[11px]';
+              let noteTextClass = 'text-[10px]';
+              let diagPaddingClass = 'p-2';
+              let diagTextClass = 'text-[11px]';
+              let advicePaddingClass = 'p-2';
+              let adviceTextClass = 'text-[10px]';
 
-              {/* Items List */}
-              <div className="space-y-2 text-left" dir="ltr">
-                {items && items.length > 0 ? (
-                  items.map((item, idx) => (
-                    <div key={item.id || idx} className="p-2 rounded-lg bg-slate-50/80 border border-slate-100 flex items-start justify-between gap-2 text-xs">
-                      <div>
-                        <div className="font-bold text-slate-900">
-                          {idx + 1}. {item.drugName} {item.strength || ''} {item.dosageForm || ''} {item.scientificName ? `(${item.scientificName})` : ''}
-                        </div>
-                        <div className="text-[11px] text-teal-700 font-medium">
-                          {item.dosageInstructions || item.dosage || ''} {item.timing ? `• ${item.timing}` : ''} {item.duration ? `• لمدة ${item.duration}` : ''}
-                        </div>
-                        {item.notes && (
-                          <div className="text-[10px] text-slate-500 italic mt-0.5">توجيهات إضافية: {item.notes}</div>
-                        )}
-                      </div>
+              if (previewItemsCount >= 6) {
+                itemPaddingClass = 'p-1 px-1.5';
+                itemGapClass = 'space-y-1';
+                drugTextClass = 'text-[10.5px] leading-tight';
+                instructionTextClass = 'text-[9.5px] leading-tight';
+                noteTextClass = 'text-[8.5px] leading-tight';
+                diagPaddingClass = 'p-1 px-1.5';
+                diagTextClass = 'text-[10px]';
+                advicePaddingClass = 'p-1 px-1.5';
+                adviceTextClass = 'text-[9.5px]';
+              } else if (previewItemsCount >= 4) {
+                itemPaddingClass = 'p-1.5 px-2';
+                itemGapClass = 'space-y-1.5';
+                drugTextClass = 'text-[11px] leading-tight';
+                instructionTextClass = 'text-[10px] leading-tight';
+                noteTextClass = 'text-[9px] leading-tight';
+                diagPaddingClass = 'p-1.5 px-2';
+                diagTextClass = 'text-[10.5px]';
+                advicePaddingClass = 'p-1.5 px-2';
+                adviceTextClass = 'text-[10px]';
+              }
+
+              return (
+                <div
+                  className={`flex-1 space-y-2.5 py-1 ${
+                    config.sectionSpacing === 'compact'
+                      ? 'space-y-1.5'
+                      : config.sectionSpacing === 'comfortable'
+                      ? 'space-y-4'
+                      : 'space-y-2.5'
+                  }`}
+                >
+                  {/* Diagnosis Banner - now strictly placed ON TOP of treatments, strictly LTR and in English as requested */}
+                  <div dir="ltr" className={`${diagPaddingClass} rounded-lg bg-slate-50/90 border border-slate-200 text-slate-800 text-left font-medium ${diagTextClass}`}>
+                    <span className="font-bold text-[#008f97]">Diagnosis: </span>
+                    <span>{patient?.chronicConditions && patient.chronicConditions.length > 0 ? patient.chronicConditions.join(', ') : 'Essential Hypertension (I10)'}</span>
+                  </div>
+
+                  {/* Treatment section with Rx symbol positioned NEXT to the medication list */}
+                  <div className="flex items-start gap-3" dir="ltr">
+                    {/* Rx Icon Column */}
+                    <div className="flex flex-col items-center select-none pt-0.5 shrink-0">
+                      <span className="text-3xl font-serif font-black text-[#008f97] italic leading-none">℞</span>
                     </div>
-                  ))
-                ) : (
-                  <>
-                    <div className="p-2 rounded-lg bg-slate-50/80 border border-slate-100 flex items-start justify-between gap-2 text-xs">
-                      <div>
-                        <div className="font-bold text-slate-900">1. Nexium 40 mg Tab. (Esomeprazole)</div>
-                        <div className="text-[11px] text-teal-700 font-medium">قرص واحد قبل الإفطار بنصف ساعة • لمدة 30 يوماً</div>
-                      </div>
+
+                    {/* Medications List Column */}
+                    <div className={`flex-1 ${itemGapClass} text-left`} dir="ltr">
+                      {items && items.length > 0 ? (
+                        items.map((item, idx) => (
+                          <div key={item.id || idx} className={`${itemPaddingClass} rounded-lg bg-slate-50/80 border border-slate-100 flex items-start justify-between gap-2`}>
+                            <div className={drugTextClass}>
+                              <div className="font-bold text-slate-900">
+                                {idx + 1}. {item.drugName} {item.strength || ''} {item.dosageForm || ''} {item.scientificName ? `(${item.scientificName})` : ''}
+                              </div>
+                              <div className={`text-teal-700 font-medium ${instructionTextClass}`}>
+                                {item.dosageInstructions || item.dosage || ''} {item.timing ? `• ${item.timing}` : ''} {item.duration ? `• لمدة ${item.duration}` : ''}
+                              </div>
+                              {item.notes && (
+                                <div className={`text-slate-500 italic mt-0.5 ${noteTextClass}`}>توجيهات إضافية: {item.notes}</div>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <>
+                          <div className={`${itemPaddingClass} rounded-lg bg-slate-50/80 border border-slate-100 flex items-start justify-between gap-2`}>
+                            <div className={drugTextClass}>
+                              <div className="font-bold text-slate-900">1. Nexium 40 mg Tab. (Esomeprazole)</div>
+                              <div className={`text-teal-700 font-medium ${instructionTextClass}`}>قرص واحد قبل الإفطار بنصف ساعة • لمدة 30 يوماً</div>
+                            </div>
+                          </div>
+
+                          <div className={`${itemPaddingClass} rounded-lg bg-slate-50/80 border border-slate-100 flex items-start justify-between gap-2`}>
+                            <div className={drugTextClass}>
+                              <div className="font-bold text-slate-900">2. Concor 5 Plus Tab. (Bisoprolol / HCTZ)</div>
+                              <div className={`text-teal-700 font-medium ${instructionTextClass}`}>قرص واحد صباحاً بعد الإفطار • مستمر</div>
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </div>
+                  </div>
 
-                    <div className="p-2 rounded-lg bg-slate-50/80 border border-slate-100 flex items-start justify-between gap-2 text-xs">
-                      <div>
-                        <div className="font-bold text-slate-900">2. Concor 5 Plus Tab. (Bisoprolol / HCTZ)</div>
-                        <div className="text-[11px] text-teal-700 font-medium">قرص واحد صباحاً بعد الإفطار • مستمر</div>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {/* Diagnosis Banner - strictly LTR and in English as requested */}
-              <div dir="ltr" className="p-2 rounded-lg bg-slate-50/90 border border-slate-200 text-[11px] text-slate-800 text-left font-medium">
-                <span className="font-bold text-[#008f97]">Diagnosis: </span>
-                <span>{patient?.chronicConditions && patient.chronicConditions.length > 0 ? patient.chronicConditions.join(', ') : 'Essential Hypertension (I10)'}</span>
-              </div>
-
-              {/* Sample Advice */}
-              <div className="p-2 rounded-lg bg-teal-50/40 border border-teal-100 text-[10px] text-teal-900 leading-relaxed">
-                <span className="font-bold">تعليمات طبية:</span> تجنب الأطعمة الدسمة والمقليات، وممارسة رياضة المشي 30 دقيقة يومياً، والمتابعة الدورية.
-              </div>
-            </div>
+                  {/* Sample Advice */}
+                  <div className={`${advicePaddingClass} rounded-lg bg-teal-50/40 border border-teal-100 leading-relaxed ${adviceTextClass}`}>
+                    <span className="font-bold">تعليمات طبية:</span> تجنب الأطعمة الدسمة والمقليات، وممارسة رياضة المشي 30 دقيقة يومياً، والمتابعة الدورية.
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Footer Area */}
             {!config.preprintedPaperMode && config.showFooter ? (
@@ -1414,14 +1456,12 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
                         }}
                         className="bg-white p-1 rounded-lg border border-slate-300 shadow-xs flex items-center justify-center"
                       >
-                        {/* High Quality Standard QR SVG Icon with target payload */}
-                        <svg
-                          viewBox="0 0 100 100"
+                        <QrCodeImage
+                          qrType={config.qrType}
+                          qrWhatsappPhone={config.qrWhatsappPhone}
+                          qrCustomUrl={config.qrCustomUrl}
                           className="w-full h-full text-slate-900"
-                          fill="currentColor"
-                        >
-                          <path d="M10 10h30v30h-30zM15 15v20h20v-20zM22 22h6v6h-6zM60 10h30v30h-30zM65 15v20h20v-20zM72 22h6v6h-6zM10 60h30v30h-30zM15 65v20h20v-20zM22 72h6v6h-6zM60 60h10v10h-10zM80 60h10v10h-10zM70 70h10v10h-10zM60 80h10v10h-10zM80 80h10v10h-10zM45 10h10v80h-10z" />
-                        </svg>
+                        />
                       </div>
                       <span className="text-[7.5px] font-bold text-slate-500 mt-0.5">
                         {config.qrType === 'whatsapp' ? 'واتساب العيادة' : 'موقع العيادة'}

@@ -107,9 +107,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
               type="button"
               onClick={toggleLanguage}
               className="w-8 h-8 rounded-lg bg-[#18233C] hover:bg-[#242a38] text-[#45dee7] hover:text-white border border-[#00c2cb]/20 flex items-center justify-center transition-all cursor-pointer font-bold text-[11px] font-sans active:scale-95"
-              title={language === 'en' ? 'Switch to Arabic' : 'التحويل للغة الإنجليزية'}
+              title={language === 'en' ? 'التحويل للعربية (Switch to Arabic)' : 'التحويل للإنجليزية (Switch to English)'}
             >
-              {language === 'ar' ? 'EN' : 'AR'}
+              {language === 'ar' ? 'AR' : 'EN'}
             </button>
 
             {/* Theme Toggle Sun/Moon Icon */}

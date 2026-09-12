@@ -47,10 +47,10 @@ export const AuthScreen: React.FC = () => {
           type="button"
           onClick={toggleLanguage}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0c1524]/80 hover:bg-[#162338] text-[#45dee7] border border-[#00c2cb]/30 transition-all cursor-pointer text-xs font-bold shadow-lg active:scale-95"
-          title={language === 'ar' ? 'Switch to English' : 'التحويل للغة العربية'}
+          title={language === 'en' ? 'التحويل للعربية (Switch to Arabic)' : 'التحويل للإنجليزية (Switch to English)'}
         >
           <span className="material-symbols-outlined text-base">translate</span>
-          <span className="font-mono text-xs">{language === 'ar' ? 'EN' : 'عربي'}</span>
+          <span className="font-mono text-xs">{language === 'ar' ? 'AR' : 'EN'}</span>
         </button>
       </div>
 

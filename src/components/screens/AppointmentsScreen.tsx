@@ -1116,7 +1116,7 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
               value={whatsappRawText}
               onChange={(e) => setWhatsappRawText(e.target.value)}
               placeholder="الصق رسالة الواتساب هنا... مثال: 
-مرحباً دكتور حازم، عايز أحجز كشف باطنة باسم جمال على محمد ورقمي 01021434947 يوم الاثنين 9 صباحاً"
+مرحباً دكتور العيادة، عايز أحجز كشف باطنة باسم جمال على محمد ورقمي 01021434947 يوم الاثنين 9 صباحاً"
               className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] placeholder:text-slate-400 text-xs p-3.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-[#00c2cb] resize-none"
             />
 
@@ -1127,7 +1127,7 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
                 type="button"
                 onClick={() =>
                   setWhatsappRawText(
-                    'مساء الخير عيادة د. حازم، حجز كشف مستعجل، الاسم: جمال على محمد، هاتف: 01021434947'
+                    'مساء الخير العيادة الطبية، حجز كشف مستعجل، الاسم: جمال على محمد، هاتف: 01021434947'
                   )
                 }
                 className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-[11px] font-bold text-slate-700 dark:text-slate-300 cursor-pointer"

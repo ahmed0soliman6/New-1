@@ -6,6 +6,7 @@
  * isolated printable A5 document in an invisible iframe.
  */
 
+import QRCode from 'qrcode';
 import { toEnglishDigits } from './numberUtils';
 
 export interface PrintPrescriptionData {
@@ -24,6 +25,9 @@ export interface PrintPrescriptionData {
     preprintedPaperMode?: boolean;
     showQr?: boolean;
     qrType?: string;
+    qrWhatsappPhone?: string;
+    qrCustomUrl?: string;
+    qrSize?: string;
     footerFontSize?: string;
     outerMargin?: string;
     headerMarginTop?: string;
@@ -145,8 +149,30 @@ const MARGIN_MAP: Record<string, string> = {
   balanced: '7mm',
 };
 
-export function printPrescriptionDocument(data: PrintPrescriptionData) {
+export async function printPrescriptionDocument(data: PrintPrescriptionData) {
   const { config, patient, items = [], diagnoses = [], lifestyleAdvice, followupDate } = data;
+
+  let qrSvgHtml = '';
+  if (config.showQr) {
+    try {
+      const clean = (config.qrWhatsappPhone || '01092847162').replace(/\D/g, '');
+      const formatted = clean.startsWith('0') ? `2${clean}` : clean;
+      const link = config.qrType === 'whatsapp'
+        ? `https://wa.me/${formatted}`
+        : (config.qrCustomUrl || 'https://solimedical.com');
+
+      qrSvgHtml = await QRCode.toString(link, {
+        type: 'svg',
+        margin: 1,
+        color: {
+          dark: '#0f172a',
+          light: '#ffffff'
+        }
+      });
+    } catch (err) {
+      console.error('QR code generation failed:', err);
+    }
+  }
 
   const outerMargin = MARGIN_MAP[config.outerMargin || 'normal'] || '7mm';
   const headerMargin = config.preprintedPaperMode
@@ -170,25 +196,77 @@ export function printPrescriptionDocument(data: PrintPrescriptionData) {
       ? '12px'
       : '10.5px';
 
+  // Dynamic scaling parameters based on items count to fit A5 page perfectly
+  const itemsCount = items.length;
+  let itemPadding = '6px 10px';
+  let itemMarginBottom = '6px';
+  let drugFontSize = '13px';
+  let instructionFontSize = '11.5px';
+  let noteFontSize = '10px';
+  let containerGap = spacingClass;
+
+  let diagPadding = '6px 10px';
+  let diagFontSize = '11.5px';
+
+  let advicePadding = '6px 10px';
+  let adviceFontSize = '11px';
+
+  let followupPadding = '6px 10px';
+  let followupFontSize = '11px';
+
+  if (itemsCount >= 6) {
+    itemPadding = '3px 6px';
+    itemMarginBottom = '3px';
+    drugFontSize = '10.5px';
+    instructionFontSize = '9.5px';
+    noteFontSize = '8.5px';
+    containerGap = '4px';
+
+    diagPadding = '3px 6px';
+    diagFontSize = '10px';
+
+    advicePadding = '3px 6px';
+    adviceFontSize = '9.5px';
+
+    followupPadding = '3px 6px';
+    followupFontSize = '9.5px';
+  } else if (itemsCount >= 4) {
+    itemPadding = '4px 8px';
+    itemMarginBottom = '4px';
+    drugFontSize = '11.5px';
+    instructionFontSize = '10.5px';
+    noteFontSize = '9px';
+    containerGap = '6px';
+
+    diagPadding = '4px 8px';
+    diagFontSize = '10.5px';
+
+    advicePadding = '4px 8px';
+    adviceFontSize = '10px';
+
+    followupPadding = '4px 8px';
+    followupFontSize = '10px';
+  }
+
   // Build items HTML
   const itemsHtml = items.length > 0
     ? items.map((it, idx) => `
-        <div style="padding: 6px 10px; margin-bottom: 6px; border: 1px solid #e2e8f0; border-radius: 6px; background-color: #f8fafc; text-align: left; direction: ltr;">
-          <div style="font-size: 13px; font-weight: 700; color: #0f172a; margin-bottom: 2px;">
-            ${idx + 1}. ${it.drugName || ''} ${it.strength || ''} ${it.dosageForm || ''} ${it.scientificName ? `<span style="font-size: 11px; font-weight: normal; color: #475569;">(${it.scientificName})</span>` : ''}
+        <div style="padding: ${itemPadding}; margin-bottom: ${itemMarginBottom}; border: 1px solid #e2e8f0; border-radius: 6px; background-color: #f8fafc; text-align: left; direction: ltr;">
+          <div style="font-size: ${drugFontSize}; font-weight: 700; color: #0f172a; margin-bottom: 2px;">
+            ${idx + 1}. ${it.drugName || ''} ${it.strength || ''} ${it.dosageForm || ''} ${it.scientificName ? `<span style="font-size: calc(${drugFontSize} - 1.5px); font-weight: normal; color: #475569;">(${it.scientificName})</span>` : ''}
           </div>
-          <div style="font-size: 11.5px; color: #0f766e; font-weight: 600;">
+          <div style="font-size: ${instructionFontSize}; color: #0f766e; font-weight: 600;">
             ${it.dosageInstructions || it.dosage || ''} ${it.timing ? `&bull; ${it.timing}` : ''} ${it.duration ? `&bull; لمدة ${it.duration}` : ''}
           </div>
-          ${it.notes ? `<div style="font-size: 10px; color: #64748b; font-style: italic; margin-top: 2px;">توجيهات: ${it.notes}</div>` : ''}
+          ${it.notes ? `<div style="font-size: ${noteFontSize}; color: #64748b; font-style: italic; margin-top: 2px;">توجيهات: ${it.notes}</div>` : ''}
         </div>
       `).join('')
-    : '<div style="text-align: center; padding: 25px 0; color: #94a3b8; font-size: 12px;">لا توجد أدوية مضافة للروشتة حالياً.</div>';
+    : `<div style="text-align: center; padding: 25px 0; color: #94a3b8; font-size: 12px;">لا توجد أدوية مضافة للروشتة حالياً.</div>`;
 
   // Build diagnoses HTML - strictly LTR and in English as requested
   const diagnosesHtml = diagnoses.length > 0
     ? `
-      <div style="padding: 6px 10px; margin-top: 8px; border: 1px solid #e2e8f0; border-radius: 6px; background-color: #f8fafc; font-size: 11.5px; text-align: left; direction: ltr; color: #1e293b;">
+      <div style="padding: ${diagPadding}; border: 1px solid #e2e8f0; border-radius: 6px; background-color: #f8fafc; font-size: ${diagFontSize}; text-align: left; direction: ltr; color: #1e293b;">
         <strong style="color: #008f97;">Diagnosis:</strong> ${diagnoses.map(d => d.nameEn || d.nameAr || d.code).join(', ')}
       </div>
     `
@@ -197,7 +275,7 @@ export function printPrescriptionDocument(data: PrintPrescriptionData) {
   // Advice HTML
   const adviceHtml = lifestyleAdvice
     ? `
-      <div style="padding: 6px 10px; margin-top: 6px; border: 1px solid #ccfbf1; border-radius: 6px; background-color: #f0fdfa; font-size: 11px; text-align: right; color: #134e4a;">
+      <div style="padding: ${advicePadding}; border: 1px solid #ccfbf1; border-radius: 6px; background-color: #f0fdfa; font-size: ${adviceFontSize}; text-align: right; color: #134e4a;">
         <strong style="color: #0f766e;">تعليمات طبية:</strong> ${lifestyleAdvice}
       </div>
     `
@@ -206,7 +284,7 @@ export function printPrescriptionDocument(data: PrintPrescriptionData) {
   // Follow-up HTML
   const followupHtml = followupDate
     ? `
-      <div style="padding: 6px 10px; margin-top: 6px; border: 1px solid #fef3c7; border-radius: 6px; background-color: #fffbeb; font-size: 11px; text-align: right; color: #78350f; font-weight: 600;">
+      <div style="padding: ${followupPadding}; border: 1px solid #fef3c7; border-radius: 6px; background-color: #fffbeb; font-size: ${followupFontSize}; text-align: right; color: #78350f; font-weight: 600;">
         موعد الاستشارة القادمة: ${followupDate}
       </div>
     `
@@ -378,6 +456,11 @@ export function printPrescriptionDocument(data: PrintPrescriptionData) {
           width: 44px;
           height: 44px;
         }
+        .qr-code-wrapper svg {
+          width: 100% !important;
+          height: 100% !important;
+          display: block;
+        }
       </style>
     </head>
     <body>
@@ -388,9 +471,9 @@ export function printPrescriptionDocument(data: PrintPrescriptionData) {
             <div class="header">
               <div class="header-content">
                 <div class="doctor-ar">
-                  <div class="doctor-name">${config.doctorName || 'د. حازم القاضي'}</div>
-                  <div class="doctor-title">${config.specialtyAr || 'استشاري أمراض الباطنة والقلب'}</div>
-                  <div class="doctor-credentials">${config.degreesAr || 'دكتوراه أمراض القلب • زميل الكلية الملكية للأطباء'}</div>
+                  <div class="doctor-name">${config.doctorName || 'طبيب العيادة'}</div>
+                  <div class="doctor-title">${config.specialtyAr || 'التخصص الطبي العام'}</div>
+                  <div class="doctor-credentials">${config.degreesAr || 'الدرجات العلمية والشهادات المهنية والزمالات المسجلة'}</div>
                 </div>
 
                 ${config.showLogo ? `
@@ -419,18 +502,25 @@ export function printPrescriptionDocument(data: PrintPrescriptionData) {
         </div>
 
         <!-- Middle Section: Medications -->
-        <div class="content-body" style="direction: ltr; text-align: left;">
-          <div class="rx-header" style="display: flex; align-items: center; justify-content: flex-start; direction: ltr; border-bottom: 1.5px solid #e2e8f0; padding-bottom: 3px; margin-bottom: 8px;">
-            <span class="rx-symbol" style="font-family: Georgia, serif; font-size: 22px; font-weight: 900; font-style: italic; color: #008f97; margin-right: 8px;">℞</span>
-            <span style="font-size: 11px; font-weight: bold; color: #64748b; letter-spacing: 0.5px;">Rx</span>
+        <div class="content-body" style="direction: ltr; text-align: left; display: flex; flex-direction: column; gap: ${containerGap};">
+          <!-- Diagnosis section on top of medications -->
+          ${diagnosesHtml}
+
+          <!-- Treatment section with RX icon next to the medications -->
+          <div style="display: flex; gap: 12px; align-items: flex-start; direction: ltr;">
+            <!-- RX symbol next to the treatment list -->
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 2px;">
+              <span class="rx-symbol" style="font-family: Georgia, serif; font-size: 28px; font-weight: 900; font-style: italic; color: #008f97; margin: 0; line-height: 1;">℞</span>
+            </div>
+            
+            <!-- Treatment list -->
+            <div style="flex: 1; display: flex; flex-direction: column; gap: ${itemMarginBottom};">
+              ${itemsHtml}
+            </div>
           </div>
 
-          <div style="overflow: hidden; direction: ltr; text-align: left;">
-            ${itemsHtml}
-            ${diagnosesHtml}
-            ${adviceHtml}
-            ${followupHtml}
-          </div>
+          ${adviceHtml}
+          ${followupHtml}
         </div>
 
         <!-- Bottom Section: Footer -->
@@ -446,10 +536,12 @@ export function printPrescriptionDocument(data: PrintPrescriptionData) {
 
               ${config.showQr ? `
                 <div style="display: flex; flex-direction: column; align-items: center; margin-right: 8px;">
-                  <div style="width: 44px; height: 44px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 2px; background: #fff; display: flex; align-items: center; justify-content: center;">
-                    <svg viewBox="0 0 100 100" class="qr-code" fill="#0f172a">
-                      <path d="M10 10h30v30h-30zM15 15v20h20v-20zM22 22h6v6h-6zM60 10h30v30h-30zM65 15v20h20v-20zM72 22h6v6h-6zM10 60h30v30h-30zM15 65v20h20v-20zM22 72h6v6h-6zM60 60h10v10h-10zM80 60h10v10h-10zM70 70h10v10h-10zM60 80h10v10h-10zM80 80h10v10h-10zM45 10h10v80h-10z" />
-                    </svg>
+                  <div class="qr-code-wrapper" style="width: 44px; height: 44px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 2px; background: #fff; display: flex; align-items: center; justify-content: center; box-sizing: border-box; overflow: hidden;">
+                    ${qrSvgHtml || `
+                      <svg viewBox="0 0 100 100" class="qr-code" fill="#0f172a" style="width: 100%; height: 100%;">
+                        <path d="M10 10h30v30h-30zM15 15v20h20v-20zM22 22h6v6h-6zM60 10h30v30h-30zM65 15v20h20v-20zM72 22h6v6h-6zM10 60h30v30h-30zM15 65v20h20v-20zM22 72h6v6h-6zM60 60h10v10h-10zM80 60h10v10h-10zM70 70h10v10h-10zM60 80h10v10h-10zM80 80h10v10h-10zM45 10h10v80h-10z" />
+                      </svg>
+                    `}
                   </div>
                   <div style="font-size: 7px; color: #64748b; font-weight: bold; margin-top: 2px;">
                     ${config.qrType === 'whatsapp' ? 'واتساب العيادة' : 'موقع العيادة'}
@@ -512,12 +604,12 @@ export function printPrescriptionDocument(data: PrintPrescriptionData) {
 export function printVisitReportDocument(data: PrintVisitReportData) {
   const { config = {}, patient, visit, medications = [], labOrders = [], radiologyOrders = [], followUp } = data;
 
-  const doctorName = config.doctorName || 'د. حازم سمير القاضي';
-  const doctorNameEn = config.doctorNameEn || 'Dr. Hazem El-Kady';
-  const specialtyAr = config.specialtyAr || 'استشاري أمراض الباطنة والقلب والسكر والغدد الصماء';
-  const specialtyEn = config.specialtyEn || 'Consultant of Internal Medicine & Cardiology';
-  const degreesAr = config.degreesAr || 'زميل الكلية الملكية للأطباء (لندن) • دكتوراه الباطنة العامة (قصر العيني)';
-  const degreesEn = config.degreesEn || 'M.D., MRCP (London) • Cairo University';
+  const doctorName = config.doctorName || 'طبيب العيادة';
+  const doctorNameEn = config.doctorNameEn || 'Clinic Doctor';
+  const specialtyAr = config.specialtyAr || 'التخصص الطبي العام للعيادة';
+  const specialtyEn = config.specialtyEn || 'Clinic Medical Specialty';
+  const degreesAr = config.degreesAr || 'الدرجات العلمية والشهادات المهنية المسجلة للعيادة';
+  const degreesEn = config.degreesEn || 'Registered Medical Degrees & Professional Credentials';
   const phone = config.phone || '01092847162';
 
   const visitDateObj = visit.createdAt ? new Date(visit.createdAt) : new Date();
