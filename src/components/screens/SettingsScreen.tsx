@@ -124,9 +124,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onClearBrowserVisitsOnly = () => {},
   onClearAllBrowserAndCloud = async () => {},
 }) => {
-  const { hasPermission, assertPermission, role } = usePermissions();
+  const { hasPermission, assertPermission, role, canDelete, canPerform } = usePermissions();
   const { language, setLanguage, t, isRTL } = useLanguage();
   const isAdmin = role === 'admin';
+  const canDeleteSettings = isAdmin || canDelete('system-settings') || canPerform('system-settings', 'delete');
   const [activeSettingsSection, setActiveSettingsSection] = useState<
     'general' | 'catalogs' | 'users'
   >('general');
@@ -613,7 +614,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                           </div>
                         </div>
 
-                        {visitTypesList.length > 1 && (
+                        {canDeleteSettings && visitTypesList.length > 1 && (
                           deleteConfirmVisitId === vt.id ? (
                             <div className="flex items-center gap-1 bg-rose-50 dark:bg-rose-950/80 p-1 rounded-lg border border-rose-200 dark:border-rose-900 shrink-0">
                               <button
@@ -814,38 +815,40 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                           </div>
                         </div>
 
-                        {deleteConfirmServiceId === srv.id ? (
-                          <div className="flex items-center gap-1 bg-rose-50 dark:bg-rose-950/80 p-1 rounded-lg border border-rose-200 dark:border-rose-900 shrink-0">
+                        {canDeleteSettings && (
+                          deleteConfirmServiceId === srv.id ? (
+                            <div className="flex items-center gap-1 bg-rose-50 dark:bg-rose-950/80 p-1 rounded-lg border border-rose-200 dark:border-rose-900 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = removeMedicalService(srv.id);
+                                  setMedicalServicesList(updated);
+                                  setDeleteConfirmServiceId(null);
+                                  setSavedToast(`تم حذف الخدمة الطبية "${srv.name}" بنجاح ✓`);
+                                  setTimeout(() => setSavedToast(null), 3000);
+                                }}
+                                className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-[10px] rounded cursor-pointer transition-all"
+                              >
+                                تأكيد
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeleteConfirmServiceId(null)}
+                                className="px-1 text-slate-500 hover:text-slate-700 dark:text-slate-400 text-[10px] cursor-pointer"
+                              >
+                                إلغاء
+                              </button>
+                            </div>
+                          ) : (
                             <button
                               type="button"
-                              onClick={() => {
-                                const updated = removeMedicalService(srv.id);
-                                setMedicalServicesList(updated);
-                                setDeleteConfirmServiceId(null);
-                                setSavedToast(`تم حذف الخدمة الطبية "${srv.name}" بنجاح ✓`);
-                                setTimeout(() => setSavedToast(null), 3000);
-                              }}
-                              className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-[10px] rounded cursor-pointer transition-all"
+                              onClick={() => setDeleteConfirmServiceId(srv.id)}
+                              title="حذف الخدمة الطبية"
+                              className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer shrink-0"
                             >
-                              تأكيد
+                              <span className="material-symbols-outlined text-lg">delete</span>
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => setDeleteConfirmServiceId(null)}
-                              className="px-1 text-slate-500 hover:text-slate-700 dark:text-slate-400 text-[10px] cursor-pointer"
-                            >
-                              إلغاء
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setDeleteConfirmServiceId(srv.id)}
-                            title="حذف الخدمة الطبية"
-                            className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer shrink-0"
-                          >
-                            <span className="material-symbols-outlined text-lg">delete</span>
-                          </button>
+                          )
                         )}
                       </div>
                     ))}
@@ -938,38 +941,40 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                             </span>
                           </div>
 
-                          {deleteConfirmExpenseCatId === cat.id ? (
-                            <div className="flex items-center gap-1 bg-rose-50 dark:bg-rose-950/80 p-1 rounded-lg border border-rose-200 dark:border-rose-900 shrink-0">
+                          {canDeleteSettings && (
+                            deleteConfirmExpenseCatId === cat.id ? (
+                              <div className="flex items-center gap-1 bg-rose-50 dark:bg-rose-950/80 p-1 rounded-lg border border-rose-200 dark:border-rose-900 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = removeExpenseCategory(cat.id);
+                                    setExpenseCategoriesList(updated);
+                                    setDeleteConfirmExpenseCatId(null);
+                                    setSavedToast(`تم حذف بند المصروف "${cat.name}" بنجاح ✓`);
+                                    setTimeout(() => setSavedToast(null), 3000);
+                                  }}
+                                  className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-[10px] rounded cursor-pointer transition-all"
+                                >
+                                  تأكيد
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setDeleteConfirmExpenseCatId(null)}
+                                  className="px-1 text-slate-500 hover:text-slate-700 dark:text-slate-400 text-[10px] cursor-pointer"
+                                >
+                                  إلغاء
+                                </button>
+                              </div>
+                            ) : (
                               <button
                                 type="button"
-                                onClick={() => {
-                                  const updated = removeExpenseCategory(cat.id);
-                                  setExpenseCategoriesList(updated);
-                                  setDeleteConfirmExpenseCatId(null);
-                                  setSavedToast(`تم حذف بند المصروف "${cat.name}" بنجاح ✓`);
-                                  setTimeout(() => setSavedToast(null), 3000);
-                                }}
-                                className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-[10px] rounded cursor-pointer transition-all"
+                                onClick={() => setDeleteConfirmExpenseCatId(cat.id)}
+                                title="حذف بند المصروف"
+                                className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer shrink-0"
                               >
-                                تأكيد
+                                <span className="material-symbols-outlined text-base">delete</span>
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => setDeleteConfirmExpenseCatId(null)}
-                                className="px-1 text-slate-500 hover:text-slate-700 dark:text-slate-400 text-[10px] cursor-pointer"
-                              >
-                                إلغاء
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setDeleteConfirmExpenseCatId(cat.id)}
-                              title="حذف بند المصروف"
-                              className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer shrink-0"
-                            >
-                              <span className="material-symbols-outlined text-base">delete</span>
-                            </button>
+                            )
                           )}
                         </div>
                       ))}
@@ -1497,75 +1502,80 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                     </div>
                   </div>
 
-                  {/* Block 2: Clear Browser Patients, Visits and Invoices */}
-                  <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 space-y-3">
-                    <div className="space-y-1">
-                      <h4 className="font-bold text-slate-800 dark:text-white text-xs flex items-center gap-1.5">
-                        <span className="material-symbols-outlined text-blue-500 text-lg">phonelink_erase</span>
-                        <span>حذف بيانات المتصفح من ملفات المرضى والزيارات والفواتير</span>
-                      </h4>
-                      <p className="text-[11px] text-slate-500 dark:text-[#859394] leading-relaxed">
-                        تقوم هذه الميزة بحذف ملفات المرضى، كشف الزيارات، الحجوزات، الفواتير والمدفوعات من ذاكرة المتصفح الحالي فقط، مع بقاء الأدلة الطبية الثابتة وإعدادات وتنسيقات صفحة الروشتة وصفحة الإعدادات كاملة كما هي، ويتم استدعاء وجلب البيانات الرسمية المسجلة على السحابة (Firestore) تلقائياً لتحديث العرض.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={isClearingBrowserOnly}
-                      onClick={async () => {
-                        if (window.confirm('هل تريد حذف ملفات المرضى وكشف الزيارات والفواتير محلياً وإعادة استيراد وجلب البيانات المسجلة على السحابة؟')) {
-                          setIsClearingBrowserOnly(true);
-                          try {
-                            await onClearBrowserVisitsOnly();
-                          } catch (e) {
-                            console.error(e);
-                          } finally {
-                            setIsClearingBrowserOnly(false);
-                          }
-                        }
-                      }}
-                      className="px-4 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-[#18233C] dark:hover:bg-[#242a38] text-slate-700 dark:text-[#dde2f5] font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
-                    >
-                      <span className="material-symbols-outlined text-base">delete_sweep</span>
-                      <span>{isClearingBrowserOnly ? 'جاري المسح والاستدعاء...' : 'حذف بيانات المتصفح من المرضى والزيارات والفواتير'}</span>
-                    </button>
-                  </div>
+                  {/* Reset & Wipe Data Blocks (Admin or Delete Permission Only) */}
+                  {canDeleteSettings && (
+                    <>
+                      {/* Block 2: Clear Browser Patients, Visits and Invoices */}
+                      <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 space-y-3">
+                        <div className="space-y-1">
+                          <h4 className="font-bold text-slate-800 dark:text-white text-xs flex items-center gap-1.5">
+                            <span className="material-symbols-outlined text-blue-500 text-lg">phonelink_erase</span>
+                            <span>حذف بيانات المتصفح من ملفات المرضى والزيارات والفواتير</span>
+                          </h4>
+                          <p className="text-[11px] text-slate-500 dark:text-[#859394] leading-relaxed">
+                            تقوم هذه الميزة بحذف ملفات المرضى، كشف الزيارات، الحجوزات، الفواتير والمدفوعات من ذاكرة المتصفح الحالي فقط، مع بقاء الأدلة الطبية الثابتة وإعدادات وتنسيقات صفحة الروشتة وصفحة الإعدادات كاملة كما هي، ويتم استدعاء وجلب البيانات الرسمية المسجلة على السحابة (Firestore) تلقائياً لتحديث العرض.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={isClearingBrowserOnly}
+                          onClick={async () => {
+                            if (window.confirm('هل تريد حذف ملفات المرضى وكشف الزيارات والفواتير محلياً وإعادة استيراد وجلب البيانات المسجلة على السحابة؟')) {
+                              setIsClearingBrowserOnly(true);
+                              try {
+                                await onClearBrowserVisitsOnly();
+                              } catch (e) {
+                                console.error(e);
+                              } finally {
+                                setIsClearingBrowserOnly(false);
+                              }
+                            }
+                          }}
+                          className="px-4 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-[#18233C] dark:hover:bg-[#242a38] text-slate-700 dark:text-[#dde2f5] font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                        >
+                          <span className="material-symbols-outlined text-base">delete_sweep</span>
+                          <span>{isClearingBrowserOnly ? 'جاري المسح والاستدعاء...' : 'حذف بيانات المتصفح من المرضى والزيارات والفواتير'}</span>
+                        </button>
+                      </div>
 
-                  {/* Block 3: Complete Wipe with Heavy Warning */}
-                  <div className="p-4 rounded-xl bg-rose-500/5 border border-rose-500/20 space-y-3">
-                    <div className="space-y-1">
-                      <h4 className="font-bold text-rose-600 dark:text-rose-400 text-xs flex items-center gap-1.5">
-                        <span className="material-symbols-outlined text-lg">warning</span>
-                        <span>حذف بيانات المرضى والزيارات من السحابة نهائياً</span>
-                      </h4>
-                      <p className="text-[11px] text-slate-600 dark:text-[#bbc9ca] leading-relaxed">
-                        تحذير هام: سيؤدي هذا الإجراء إلى مسح كافة ملفات وسجلات المرضى، الزيارات، الحجوزات، الفواتير، والمدفوعات بشكل نهائي من المتصفح ومن قاعدة البيانات السحابية (Firestore). سيتم الإبقاء على البيانات الثابتة من الأدلة الطبية (الأدوية، التشخيصات، الفحوصات) وتنسيقات وإعدادات صفحة الروشتة وصفحة الإعدادات لتجنب إعادة ضبط البنية التحتية للعيادة.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={isClearingBrowserCloud}
-                      onClick={async () => {
-                        const code = 'حذف المرضى والزيارات';
-                        const confirmCode = window.prompt(`تحذير أمني هام! هذا الإجراء سيمسح سجلات المرضى والزيارات والفواتير من السحابة والمحلي بالكامل ولن تتمكن من استعادتها.\nلتأكيد الحذف النهائي، اكتب العبارة التالية بدقة في المربع: (${code})`);
-                        if (confirmCode === code) {
-                          setIsClearingBrowserCloud(true);
-                          try {
-                            await onClearAllBrowserAndCloud();
-                          } catch (e) {
-                            console.error(e);
-                          } finally {
-                            setIsClearingBrowserCloud(false);
-                          }
-                        } else if (confirmCode !== null) {
-                          alert('العبارة التي أدخلتها غير صحيحة. تم إلغاء العملية.');
-                        }
-                      }}
-                      className="w-full py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm disabled:opacity-50"
-                    >
-                      <span className="material-symbols-outlined text-base">delete_forever</span>
-                      <span>{isClearingBrowserCloud ? 'جاري مسح المرضى والزيارات من السحابة...' : 'حذف بيانات المرضى والزيارات من السحابة نهائياً'}</span>
-                    </button>
-                  </div>
+                      {/* Block 3: Complete Wipe with Heavy Warning */}
+                      <div className="p-4 rounded-xl bg-rose-500/5 border border-rose-500/20 space-y-3">
+                        <div className="space-y-1">
+                          <h4 className="font-bold text-rose-600 dark:text-rose-400 text-xs flex items-center gap-1.5">
+                            <span className="material-symbols-outlined text-lg">warning</span>
+                            <span>حذف بيانات المرضى والزيارات من السحابة نهائياً</span>
+                          </h4>
+                          <p className="text-[11px] text-slate-600 dark:text-[#bbc9ca] leading-relaxed">
+                            تحذير هام: سيؤدي هذا الإجراء إلى مسح كافة ملفات وسجلات المرضى، الزيارات، الحجوزات، الفواتير، والمدفوعات بشكل نهائي من المتصفح ومن قاعدة البيانات السحابية (Firestore). سيتم الإبقاء على البيانات الثابتة من الأدلة الطبية (الأدوية، التشخيصات، الفحوصات) وتنسيقات وإعدادات صفحة الروشتة وصفحة الإعدادات لتجنب إعادة ضبط البنية التحتية للعيادة.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={isClearingBrowserCloud}
+                          onClick={async () => {
+                            const code = 'حذف المرضى والزيارات';
+                            const confirmCode = window.prompt(`تحذير أمني هام! هذا الإجراء سيمسح سجلات المرضى والزيارات والفواتير من السحابة والمحلي بالكامل ولن تتمكن من استعادتها.\nلتأكيد الحذف النهائي، اكتب العبارة التالية بدقة في المربع: (${code})`);
+                            if (confirmCode === code) {
+                              setIsClearingBrowserCloud(true);
+                              try {
+                                await onClearAllBrowserAndCloud();
+                              } catch (e) {
+                                console.error(e);
+                              } finally {
+                                setIsClearingBrowserCloud(false);
+                              }
+                            } else if (confirmCode !== null) {
+                              alert('العبارة التي أدخلتها غير صحيحة. تم إلغاء العملية.');
+                            }
+                          }}
+                          className="w-full py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm disabled:opacity-50"
+                        >
+                          <span className="material-symbols-outlined text-base">delete_forever</span>
+                          <span>{isClearingBrowserCloud ? 'جاري مسح المرضى والزيارات من السحابة...' : 'حذف بيانات المرضى والزيارات من السحابة نهائياً'}</span>
+                        </button>
+                      </div>
+                    </>
+                  )}
 
                 </div>
               )}

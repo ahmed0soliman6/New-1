@@ -75,7 +75,7 @@ export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onSave })
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2.5 sm:gap-3">
         {/* Blood Pressure */}
         <div className="bg-slate-50 dark:bg-[#080e1b] p-3 rounded-xl border border-slate-200 dark:border-white/5 flex flex-col gap-1">
           <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-[#859394]">

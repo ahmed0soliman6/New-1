@@ -37,10 +37,12 @@ export const PermissionGuard: React.FC<PermissionGuardProps> = ({
   onNavigateToDashboard,
   children,
 }) => {
-  const { role: contextRole } = usePermissions();
+  const { role: contextRole, userProfile, canAccess } = usePermissions();
   const effectiveRole = overrideRole || contextRole;
 
-  const isAllowed = canAccessRoute(effectiveRole, screen);
+  const isAllowed = overrideRole
+    ? canAccessRoute(overrideRole, screen, userProfile?.allowedScreens, userProfile?.customPermissions)
+    : canAccess(screen);
   const [countdown, setCountdown] = useState(6);
 
   useEffect(() => {

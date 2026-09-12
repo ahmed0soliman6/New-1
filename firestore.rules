@@ -53,9 +53,9 @@ service cloud.firestore {
 
       return r == 'admin' ? true
         : r == 'doctor' ? (
-            (screen in ['dashboard', 'clinical-reports'] && action == 'view') ||
+            (screen in ['dashboard', 'clinical-reports', 'settings', 'system-settings', 'medicalCatalogs'] && action == 'view') ||
             (screen in ['waiting-queue'] && (action in ['view', 'update'])) ||
-            (screen in ['clinical-exam', 'upcoming-followups', 'appointments', 'medicalCatalogs', 'settings', 'system-settings'] && (action in ['view', 'create', 'update', 'delete'])) ||
+            (screen in ['clinical-exam', 'upcoming-followups', 'appointments'] && (action in ['view', 'create', 'update', 'delete'])) ||
             (screen in ['new-visit', 'visits', 'patient-records', 'patients', 'prescription-pad', 'prescriptions'] && (action in ['view', 'create', 'update'])) ||
             (screen in ['billing-payments', 'finance'] && action == 'view')
           )
@@ -106,11 +106,29 @@ service cloud.firestore {
       // All authenticated users can read users for profile and collaborator lookups
       allow read: if signedIn() && isUserActive();
 
-      // Creation allowed during initial bootstrap or by Admin
-      allow create: if signedIn() && (isAdmin() || request.auth.uid == userId);
+      // Creation allowed ONLY by Admin, initial system bootstrap (self-doc only), or unprivileged self-creation
+      allow create: if signedIn() && (
+        isAdmin() ||
+        (
+          !exists(/databases/$(database)/documents/_system/bootstrap) &&
+          request.auth.uid == userId &&
+          request.resource.data.uid == request.auth.uid
+        ) ||
+        (
+          request.auth.uid == userId &&
+          request.resource.data.uid == request.auth.uid &&
+          request.resource.data.role != 'ADMIN' &&
+          request.resource.data.role != 'admin' &&
+          request.resource.data.role != 'DOCTOR' &&
+          request.resource.data.role != 'doctor' &&
+          (!('customPermissions' in request.resource.data) || request.resource.data.customPermissions == null) &&
+          (!('allowedScreens' in request.resource.data) || request.resource.data.allowedScreens == null) &&
+          (!('active' in request.resource.data) || request.resource.data.active == true)
+        )
+      );
 
       // Updates: Admin has full access; normal user CANNOT escalate role or permissions
-      allow update: if signedIn() && (
+      allow update: if signedIn() && isUserActive() && (
         isAdmin() || (
           request.auth.uid == userId &&
           !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'customPermissions', 'allowedScreens', 'active', 'createdBy'])
@@ -127,7 +145,19 @@ service cloud.firestore {
     match /usernames/{usernameLower} {
       allow get: if true; // Single doc lookup for username resolution on login
       allow list: if signedIn() && isUserActive();
-      allow create, update: if signedIn() && (isAdmin() || request.resource.data.uid == request.auth.uid);
+      allow create: if signedIn() && (
+        isAdmin() || (
+          request.resource.data.uid == request.auth.uid &&
+          request.resource.data.usernameLower == usernameLower
+        )
+      );
+      allow update: if signedIn() && (
+        isAdmin() || (
+          resource != null &&
+          resource.data.uid == request.auth.uid &&
+          request.resource.data.uid == request.auth.uid
+        )
+      );
       allow delete: if signedIn() && isAdmin();
     }
 
@@ -239,7 +269,9 @@ service cloud.firestore {
 
     match /expenseCategories/{categoryId} {
       allow read: if isUserActive();
-      allow create, update, delete: if isAdmin() || hasPermission('system-settings', 'update') || hasPermission('billing-payments', 'create');
+      allow create: if isAdmin() || hasPermission('system-settings', 'create') || hasPermission('billing-payments', 'create');
+      allow update: if isAdmin() || hasPermission('system-settings', 'update') || hasPermission('billing-payments', 'update');
+      allow delete: if isAdmin() || hasPermission('system-settings', 'delete') || hasPermission('billing-payments', 'delete');
     }
 
     // =============================================================
@@ -339,19 +371,20 @@ service cloud.firestore {
     // =============================================================
     match /clinicLocations/{locationId} {
       allow read: if isUserActive();
-      allow create, update, delete: if isAdmin() || hasPermission('system-settings', 'update');
+      allow create, update: if isAdmin() || hasPermission('system-settings', 'update');
+      allow delete: if isAdmin() || hasPermission('system-settings', 'delete');
     }
 
     match /doctorProfile/{profileId} {
       allow read: if isUserActive();
-      allow create, update, delete: if isAdmin() || isDoctor() || hasPermission('system-settings', 'update');
+      allow create, update: if isAdmin() || isDoctor() || hasPermission('system-settings', 'update');
+      allow delete: if isAdmin() || hasPermission('system-settings', 'delete');
     }
 
     match /doctorSettings/{settingId} {
       allow read: if isUserActive();
-      allow create, update, delete: if isUserActive() && (
-        isAdmin() || isDoctor() || hasPermission('system-settings', 'update') || settingId == 'clinicStatus'
-      );
+      allow create, update: if isAdmin() || isDoctor() || hasPermission('system-settings', 'update') || hasPermission('waiting-queue', 'update');
+      allow delete: if isAdmin() || hasPermission('system-settings', 'delete');
     }
 
     match /systemSettings/{settingId} {
@@ -362,7 +395,7 @@ service cloud.firestore {
 
     match /settings/{settingId} {
       allow read: if isUserActive();
-      allow create, update: if isAdmin() || hasPermission('system-settings', 'update') || hasPermission('prescription-pad', 'update') || (isUserActive() && settingId == 'clinicStatus');
+      allow create, update: if isAdmin() || isDoctor() || hasPermission('system-settings', 'update') || hasPermission('prescription-pad', 'update') || hasPermission('waiting-queue', 'update');
       allow delete: if isAdmin();
     }
 

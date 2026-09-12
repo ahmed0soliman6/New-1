@@ -136,15 +136,15 @@ Wishing you great health and wellness ✨`
             <span className="material-symbols-outlined text-lg sm:text-xl">menu</span>
           </button>
 
-          {/* Sync Status Badge (متصل / غير متصل / جار المزامنة / خطأ) */}
+          {/* Sync Status Badge (متصل / غير متصل / جاري الاتصال) */}
           {syncStatus === 'connected' && (
             <button
               onClick={() => setShowSyncDetailsModal(true)}
-              className="flex items-center gap-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 dark:bg-[#18233C] px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-emerald-500/20 dark:border-[#00c2cb]/20 transition-all cursor-pointer group shrink-0"
-              title={language === 'en' ? 'System is online and real-time syncing' : 'النظام متصل وقيد المزامنة الفورية'}
+              className="flex items-center gap-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 dark:bg-emerald-950/30 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-emerald-500/20 dark:border-emerald-500/30 transition-all cursor-pointer group shrink-0"
+              title={language === 'en' ? 'System is online' : 'النظام متصل بالسحابة'}
             >
-              <span className="w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full bg-emerald-500 dark:bg-[#00c2cb] animate-pulse"></span>
-              <span className="text-[11px] sm:text-xs text-emerald-700 dark:text-[#45dee7] font-bold">
+              <span className="w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse"></span>
+              <span className="text-[11px] sm:text-xs text-emerald-700 dark:text-emerald-400 font-bold">
                 {t('header.connected')}
               </span>
             </button>
@@ -153,39 +153,25 @@ Wishing you great health and wellness ✨`
           {syncStatus === 'syncing' && (
             <button
               onClick={() => setShowSyncDetailsModal(true)}
-              className="flex items-center gap-1.5 bg-amber-500/10 hover:bg-amber-500/20 dark:bg-[#18233C] px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-amber-500/30 dark:border-amber-400/30 transition-all cursor-pointer shrink-0"
-              title={language === 'en' ? 'Syncing updates with cloud' : 'جاري مزامنة التحديثات مع السحابة'}
+              className="flex items-center gap-1.5 bg-amber-500/10 hover:bg-amber-500/20 dark:bg-amber-950/30 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-amber-500/30 dark:border-amber-400/30 transition-all cursor-pointer shrink-0"
+              title={language === 'en' ? 'Connecting and syncing...' : 'جاري الاتصال والمزامنة مع السحابة'}
             >
-              <span className="w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full bg-amber-500 animate-spin"></span>
-              <span className="text-[11px] sm:text-xs text-amber-700 dark:text-amber-300 font-bold">
+              <span className="w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-amber-500 animate-spin"></span>
+              <span className="text-[11px] sm:text-xs text-amber-700 dark:text-amber-400 font-bold">
                 {t('header.syncing')}
               </span>
             </button>
           )}
 
-          {syncStatus === 'offline' && (
+          {(syncStatus === 'offline' || syncStatus === 'error') && (
             <button
               onClick={() => setShowSyncDetailsModal(true)}
-              className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-[#18233C] px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-slate-300 dark:border-white/10 transition-all cursor-pointer shrink-0"
-              title={language === 'en' ? 'Working in local offline mode' : 'أنت تعمل بالوضع المحلي دون اتصال'}
+              className="flex items-center gap-1.5 bg-rose-500/10 hover:bg-rose-500/20 dark:bg-rose-950/30 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-rose-500/30 dark:border-rose-500/40 transition-all cursor-pointer group shrink-0"
+              title={language === 'en' ? 'Disconnected' : 'غير متصل بالشبكة أو حدث خطأ في الاتصال'}
             >
-              <span className="w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full bg-slate-400"></span>
-              <span className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 font-bold">
+              <span className="w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-rose-500 dark:bg-rose-400"></span>
+              <span className="text-[11px] sm:text-xs text-rose-700 dark:text-rose-400 font-bold">
                 {t('header.offline')}
-              </span>
-            </button>
-          )}
-
-          {syncStatus === 'error' && (
-            <button
-              onClick={() => setShowSyncDetailsModal(true)}
-              className="flex items-center gap-1.5 bg-rose-500/10 hover:bg-rose-500/20 dark:bg-rose-950/30 px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-rose-500/30 transition-all cursor-pointer group animate-pulse shrink-0"
-              title={language === 'en' ? 'Click to inspect sync issues' : 'انقر لعرض تفاصيل مشكلة المزامنة وحلها'}
-            >
-              <span className="w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full bg-rose-500"></span>
-              <span className="text-[11px] sm:text-xs text-rose-700 dark:text-rose-400 font-bold flex items-center gap-0.5">
-                <span>{t('header.syncError')}</span>
-                <span className="material-symbols-outlined text-xs sm:text-sm">help_outline</span>
               </span>
             </button>
           )}
@@ -217,35 +203,8 @@ Wishing you great health and wellness ✨`
           onCallPatient={onCallPatient}
         />
 
-        {/* Left Side / End Side: Controls & Notifications Hub */}
+        {/* Left Side / End Side: Notifications Hub */}
         <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-          {/* Language Switcher */}
-          <button
-            type="button"
-            onClick={toggleLanguage}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#161b29] dark:hover:bg-[#242a38] text-slate-700 dark:text-[#45dee7] border border-slate-200 dark:border-white/5 transition-all cursor-pointer text-xs font-bold shadow-2xs active:scale-95 shrink-0"
-            title={language === 'ar' ? 'Switch to English (التحويل للإنجليزية)' : 'التحويل للغة العربية (Switch to Arabic)'}
-          >
-            <span className="material-symbols-outlined text-[17px] text-[#00c2cb]">translate</span>
-            <span className="font-mono text-[11px] font-bold text-slate-800 dark:text-slate-100">
-              {language === 'ar' ? 'EN' : 'عربي'}
-            </span>
-          </button>
-
-          {/* Theme Switcher (Day / Night Mode) */}
-          {onToggleTheme && (
-            <button
-              type="button"
-              onClick={onToggleTheme}
-              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#161b29] dark:hover:bg-[#242a38] text-amber-500 dark:text-amber-400 flex items-center justify-center border border-slate-200 dark:border-white/5 transition-all cursor-pointer shadow-2xs active:scale-95 shrink-0"
-              title={isDark ? (language === 'en' ? 'Switch to Light Mode (الوضع النهاري)' : 'تفعيل الوضع النهاري') : (language === 'en' ? 'Switch to Dark Mode (الوضع الليلي)' : 'تفعيل الوضع الليلي')}
-            >
-              <span className="material-symbols-outlined text-lg sm:text-xl">
-                {isDark ? 'light_mode' : 'dark_mode'}
-              </span>
-            </button>
-          )}
-
           {/* Notifications Dropdown Button */}
           <div className="relative shrink-0">
             <button

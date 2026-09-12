@@ -35,6 +35,7 @@ import {
   loadExamDisplaySettings,
   ExamDisplaySettings,
 } from '../../utils/examDisplaySettings';
+import { useLanguage } from '../../i18n/LanguageContext';
 import {
   RecurringRxTemplate,
   loadRecurringTemplates,
@@ -124,6 +125,8 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
   allRadiologyOrders = [],
   currentVisitId,
 }) => {
+  const { isRTL, language } = useLanguage();
+
   // Navigation tabs / quick section jump
   const [activeTab, setActiveTab] = useState<'all' | 'vitals' | 'symptoms' | 'lab' | 'rad' | 'diag' | 'rx' | 'followup'>('all');
 
@@ -865,7 +868,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
       <div className="bg-white dark:bg-[#111A2E] p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs space-y-4">
         <div className="flex flex-col gap-4">
           {/* Patient Details Header */}
-          <div className="flex flex-col md:flex-row md:items-start justify-between gap-3 sm:gap-4 min-w-0">
+          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3 sm:gap-4 min-w-0">
             <div className="flex items-start gap-3.5 min-w-0 flex-1 w-full">
               <div className="w-12 h-12 rounded-2xl bg-teal-50 dark:bg-[#00c2cb]/15 text-[#008f97] dark:text-[#00c2cb] flex items-center justify-center font-bold text-lg shadow-xs shrink-0">
                 {(editablePatientName || patient.name || 'م').charAt(0)}
@@ -1064,7 +1067,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
             </div>
 
             {/* Action Buttons: Medical Dossier & Close / Select Another Patient */}
-            <div className="grid grid-cols-2 md:flex items-center gap-2 w-full md:w-auto shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100 dark:border-white/5">
+            <div className="grid grid-cols-2 lg:flex items-center gap-2 w-full lg:w-auto shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-100 dark:border-white/5">
               <button
                 type="button"
                 onClick={() => {
@@ -1811,7 +1814,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
       </div>
 
       {/* Floating Bottom Action Bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-[#080e1b]/95 backdrop-blur-md border-t border-slate-200 dark:border-white/10 p-3 sm:p-4 shadow-2xl">
+      <div className={`fixed bottom-0 ${isRTL ? 'right-0 lg:right-72 left-0' : 'left-0 lg:left-72 right-0'} z-40 bg-white/95 dark:bg-[#080e1b]/95 backdrop-blur-md border-t border-slate-200 dark:border-white/10 p-3 sm:p-4 shadow-2xl transition-all`}>
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-3 text-right w-full sm:w-auto">
             <span className="text-xs font-bold text-slate-800 dark:text-[#dde2f5] shrink-0">

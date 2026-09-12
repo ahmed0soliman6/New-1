@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { usePermissions } from '../../context/AuthContext';
 import {
   RadiologyCatalogItem,
   LabCatalogItem,
@@ -67,6 +68,9 @@ export const MedicalCatalogsManager: React.FC<MedicalCatalogsManagerProps> = ({
   onAddChronicCondition = (_item: ChronicItem) => {},
   onRemoveChronicCondition = (_id: string) => {},
 }) => {
+  const { canDelete, role } = usePermissions();
+  const allowDelete = role === 'admin' || canDelete('system-settings') || canDelete('medicalCatalogs');
+
   // Accordion state - ALL closed by default as requested
   const [openSections, setOpenSections] = useState<{ [key: string]: boolean }>({
     radiology: false,
@@ -548,14 +552,16 @@ export const MedicalCatalogsManager: React.FC<MedicalCatalogsManagerProps> = ({
                         {item.isFavorite ? 'star' : 'star_border'}
                       </span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => onRemoveRadiology(item.id)}
-                      className="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center justify-center transition-colors cursor-pointer text-xs"
-                      title="حذف من الدليل"
-                    >
-                      ✕
-                    </button>
+                    {allowDelete && (
+                      <button
+                        type="button"
+                        onClick={() => onRemoveRadiology(item.id)}
+                        className="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center justify-center transition-colors cursor-pointer text-xs"
+                        title="حذف من الدليل"
+                      >
+                        ✕
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -743,14 +749,16 @@ export const MedicalCatalogsManager: React.FC<MedicalCatalogsManagerProps> = ({
                         {item.isFavorite ? 'star' : 'star_border'}
                       </span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => onRemoveLab(item.id)}
-                      className="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center justify-center transition-colors cursor-pointer text-xs"
-                      title="حذف من الدليل"
-                    >
-                      ✕
-                    </button>
+                    {allowDelete && (
+                      <button
+                        type="button"
+                        onClick={() => onRemoveLab(item.id)}
+                        className="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center justify-center transition-colors cursor-pointer text-xs"
+                        title="حذف من الدليل"
+                      >
+                        ✕
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -924,14 +932,16 @@ export const MedicalCatalogsManager: React.FC<MedicalCatalogsManagerProps> = ({
                         {item.isFavorite ? 'star' : 'star_border'}
                       </span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => onRemoveDrug(item.id)}
-                      className="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center justify-center transition-colors cursor-pointer text-xs"
-                      title="حذف من الدليل"
-                    >
-                      ✕
-                    </button>
+                    {allowDelete && (
+                      <button
+                        type="button"
+                        onClick={() => onRemoveDrug(item.id)}
+                        className="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center justify-center transition-colors cursor-pointer text-xs"
+                        title="حذف من الدليل"
+                      >
+                        ✕
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -1082,14 +1092,16 @@ export const MedicalCatalogsManager: React.FC<MedicalCatalogsManagerProps> = ({
                         {item.isFavorite ? 'star' : 'star_border'}
                       </span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => onRemoveDiagnosis(item.id)}
-                      className="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center justify-center transition-colors cursor-pointer text-xs"
-                      title="حذف من الدليل"
-                    >
-                      ✕
-                    </button>
+                    {allowDelete && (
+                      <button
+                        type="button"
+                        onClick={() => onRemoveDiagnosis(item.id)}
+                        className="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center justify-center transition-colors cursor-pointer text-xs"
+                        title="حذف من الدليل"
+                      >
+                        ✕
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -1225,14 +1237,16 @@ export const MedicalCatalogsManager: React.FC<MedicalCatalogsManagerProps> = ({
                     <span className="text-[10px] text-purple-600 dark:text-[#d0bcff] block mt-0.5">{item.category}</span>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => onRemoveSymptom(item.id)}
-                    className="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center justify-center transition-colors cursor-pointer text-xs"
-                    title="حذف من الدليل"
-                  >
-                    ✕
-                  </button>
+                  {allowDelete && (
+                    <button
+                      type="button"
+                      onClick={() => onRemoveSymptom(item.id)}
+                      className="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center justify-center transition-colors cursor-pointer text-xs"
+                      title="حذف من الدليل"
+                    >
+                      ✕
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -1367,14 +1381,16 @@ export const MedicalCatalogsManager: React.FC<MedicalCatalogsManagerProps> = ({
                       </span>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => onRemoveChronicCondition(item.id)}
-                      className="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center justify-center transition-colors cursor-pointer text-xs"
-                      title="حذف من الدليل"
-                    >
-                      ✕
-                    </button>
+                    {allowDelete && (
+                      <button
+                        type="button"
+                        onClick={() => onRemoveChronicCondition(item.id)}
+                        className="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center justify-center transition-colors cursor-pointer text-xs"
+                        title="حذف من الدليل"
+                      >
+                        ✕
+                      </button>
+                    )}
                   </div>
                 ))
               ) : (
