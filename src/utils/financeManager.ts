@@ -84,6 +84,26 @@ export function loadMedicalServices(): MedicalServiceItem[] {
   return cachedServices;
 }
 
+export function getActiveVisitTypes(): { id: string; name: string; fee: number; price: number }[] {
+  const services = loadMedicalServices();
+  const list = services
+    .filter((s) => s.active !== false)
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      fee: s.price,
+      price: s.price,
+    }));
+
+  const uniqueMap = new Map<string, { id: string; name: string; fee: number; price: number }>();
+  list.forEach((item) => {
+    if (item && (item.id || item.name)) {
+      uniqueMap.set(item.id || item.name, item);
+    }
+  });
+  return Array.from(uniqueMap.values());
+}
+
 export function setCachedMedicalServices(services: MedicalServiceItem[]) {
   if (Array.isArray(services)) {
     cachedServices = services;

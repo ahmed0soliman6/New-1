@@ -74,14 +74,21 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
 
   // Dynamic visit types configured in Settings
   const activeVisitTypes = useMemo(() => {
-    if (visitTypesList && visitTypesList.length > 0) {
-      return visitTypesList;
-    }
-    return [
-      { id: 'vt-1', name: 'كشف جديد', fee: 300 },
-      { id: 'vt-2', name: 'استشارة / متابعة', fee: 150 },
-      { id: 'vt-3', name: 'كشف طوارئ', fee: 400 },
-    ];
+    const raw = (visitTypesList && visitTypesList.length > 0)
+      ? visitTypesList
+      : [
+          { id: 'vt-1', name: 'كشف جديد', fee: 300 },
+          { id: 'vt-2', name: 'استشارة / متابعة', fee: 150 },
+          { id: 'vt-3', name: 'كشف طوارئ', fee: 400 },
+        ];
+    const uniqueMap = new Map<string, { id: string; name: string; fee: number }>();
+    raw.forEach((item, index) => {
+      const key = item.id || `vt-${index}-${item.name}`;
+      if (!uniqueMap.has(key)) {
+        uniqueMap.set(key, item);
+      }
+    });
+    return Array.from(uniqueMap.values());
   }, [visitTypesList]);
 
   // Toast feedback state
@@ -414,33 +421,64 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
     let parsedName = '';
     let parsedPhone = '';
     let parsedVisitType = activeVisitTypes[0]?.name || 'كشف جديد';
+    let parsedDate = '';
+    let parsedTime = '';
+    let parsedBranch = '';
+    let parsedNotes = '';
 
-    // Extract phone
-    const phoneMatch = whatsappRawText.match(/(?:01[0125]\d{8}|\+?201[0125]\d{8})/);
-    if (phoneMatch) {
-      parsedPhone = phoneMatch[0];
+    const lines = whatsappRawText.split('\n').map((l) => l.trim()).filter(Boolean);
+
+    // 1. Structured Field Extraction
+    for (const line of lines) {
+      if (line.includes('الاسم:') || line.includes('اسم المريض:')) {
+        parsedName = line.split(':')[1]?.trim() || '';
+      } else if (line.includes('رقم الهاتف:') || line.includes('الهاتف:')) {
+        parsedPhone = line.split(':')[1]?.trim() || '';
+      } else if (line.includes('التاريخ:')) {
+        parsedDate = line.split(':')[1]?.trim() || '';
+      } else if (line.includes('الوقت:') || line.includes('الساعة:')) {
+        parsedTime = line.split(':')[1]?.trim() || '';
+      } else if (line.includes('فرع العيادة:') || line.includes('الفرع:') || line.includes('مكان الكشف:')) {
+        parsedBranch = line.split(':')[1]?.trim() || '';
+      } else if (line.includes('نوع الموعد:')) {
+        parsedVisitType = line.split(':')[1]?.trim() || parsedVisitType;
+      } else if (line.includes('ملاحظات الموعد:') || line.includes('ملاحظات:')) {
+        const val = line.split(':')[1]?.trim() || '';
+        if (val && !val.includes('لا توجد')) {
+          parsedNotes = val;
+        }
+      }
     }
 
-    // Extract name
-    const nameKeywords = ['اسمي', 'اسم', 'الاسم:', 'أنا', 'المريض:', 'المريض'];
-    for (const kw of nameKeywords) {
-      const idx = whatsappRawText.indexOf(kw);
-      if (idx !== -1) {
-        const after = whatsappRawText.slice(idx + kw.length).replace(/[:]/g, '').trim();
-        const words = after.split(/[\n,.-]/)[0].trim().split(/\s+/).slice(0, 3).join(' ');
-        if (words.length > 2) {
-          parsedName = words;
-          break;
+    // 2. Extract phone fallback via regex
+    if (!parsedPhone) {
+      const phoneMatch = whatsappRawText.match(/(?:01[0125]\d{8}|\+?201[0125]\d{8})/);
+      if (phoneMatch) {
+        parsedPhone = phoneMatch[0];
+      }
+    }
+
+    // 3. Extract name fallback
+    if (!parsedName) {
+      const nameKeywords = ['اسمي', 'اسم', 'الاسم:', 'أنا', 'المريض:', 'المريض'];
+      for (const kw of nameKeywords) {
+        const idx = whatsappRawText.indexOf(kw);
+        if (idx !== -1) {
+          const after = whatsappRawText.slice(idx + kw.length).replace(/[:]/g, '').trim();
+          const words = after.split(/[\n,.-]/)[0].trim().split(/\s+/).slice(0, 3).join(' ');
+          if (words.length > 2) {
+            parsedName = words;
+            break;
+          }
         }
       }
     }
 
     if (!parsedName) {
-      // Fallback: take first non-empty line
       const firstLine = whatsappRawText
         .split('\n')
         .map((l) => l.trim())
-        .filter((l) => l.length > 2)[0];
+        .filter((l) => l.length > 2 && !l.startsWith('طلب حجز') && !l.startsWith('---'))[0];
       if (firstLine && !firstLine.includes('01')) {
         parsedName = firstLine.slice(0, 30);
       } else {
@@ -448,7 +486,7 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
       }
     }
 
-    // Match visit type to active configured visit types
+    // 4. Match visit type
     const foundVt = activeVisitTypes.find((vt) =>
       whatsappRawText.includes(vt.name) ||
       (vt.name.includes('متابعة') && (whatsappRawText.includes('متابعة') || whatsappRawText.includes('استشارة'))) ||
@@ -459,15 +497,33 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
       parsedVisitType = foundVt.name;
     }
 
+    // 5. Match branch
+    if (parsedBranch) {
+      const matchedBranch = clinicBranches.find((b) => b.name.includes(parsedBranch) || parsedBranch.includes(b.name));
+      if (matchedBranch) {
+        setSelectedBranch(matchedBranch.name);
+      }
+    }
+
     // Populate form
     setPatientName(parsedName);
     if (parsedPhone) setPhone(parsedPhone);
+    if (parsedDate && /^\d{4}-\d{2}-\d{2}$/.test(parsedDate)) {
+      setScheduledDate(parsedDate);
+    }
+    if (parsedTime) {
+      setScheduledTime(parsedTime);
+    }
     setVisitType(parsedVisitType);
-    setAppointmentNotes(`طلب حجز عبر واتساب: ${whatsappRawText.slice(0, 80)}...`);
+    if (parsedNotes) {
+      setAppointmentNotes(parsedNotes);
+    } else {
+      setAppointmentNotes(`طلب حجز عبر واتساب (${new Date().toLocaleDateString('ar-EG')})`);
+    }
 
     setIsWhatsappModalOpen(false);
     setWhatsappRawText('');
-    setToastMessage('تم استخراج بيانات الموعد من رسالة واتساب وتعبئة النموذج');
+    setToastMessage('تم استخراج جميع بيانات الموعد تلقائياً وتعبئة النموذج بسرعة! ✓');
     setTimeout(() => setToastMessage(null), 3500);
   };
 
@@ -686,8 +742,8 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
                 onChange={(e) => setVisitType(e.target.value)}
                 className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-[#00c2cb] cursor-pointer font-bold shadow-2xs"
               >
-                {activeVisitTypes.map((vt) => (
-                  <option key={vt.id || vt.name} value={vt.name}>
+                {activeVisitTypes.map((vt, index) => (
+                  <option key={`${vt.id}-${index}`} value={vt.name}>
                     {vt.name} ({vt.fee} ج.م)
                   </option>
                 ))}

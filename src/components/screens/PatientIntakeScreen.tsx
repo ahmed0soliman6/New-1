@@ -759,9 +759,9 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
             <div className="flex flex-col gap-2">
               <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">نوع الزيارة / الكشف المتاح</label>
               <div className="flex flex-col gap-2">
-                {visitTypesList.map((vt) => (
+                {visitTypesList.map((vt, index) => (
                   <button
-                    key={vt.id || vt.name}
+                    key={`${vt.id}-${index}`}
                     type="button"
                     onClick={() => setSelectedVisitType(vt)}
                     className={`py-2.5 px-3.5 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-between ${

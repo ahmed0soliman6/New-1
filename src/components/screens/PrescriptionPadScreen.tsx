@@ -33,7 +33,7 @@ export interface PrescriptionLayoutSettings {
   showFooter: boolean;
   preprintedPaperMode: boolean;
   showQr: boolean;
-  qrType: 'whatsapp' | 'custom';
+  qrType: 'whatsapp' | 'booking' | 'custom';
   qrWhatsappPhone: string;
   qrCustomUrl: string;
   qrSize: 'small' | 'medium' | 'large'; // 14mm | 19mm | 25mm
@@ -264,6 +264,9 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
       const clean = config.qrWhatsappPhone.replace(/\D/g, '');
       const formatted = clean.startsWith('0') ? `2${clean}` : clean;
       return `https://wa.me/${formatted}`;
+    }
+    if (config.qrType === 'booking') {
+      return typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}#booking` : 'https://solimedical.com/booking';
     }
     return config.qrCustomUrl || 'https://solimedical.com';
   };
@@ -892,31 +895,44 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
                   {/* QR Link Type */}
                   <div className="space-y-1.5">
                     <label className="font-bold text-slate-700 dark:text-[#bbc9ca]">نوع الرابط الموجه إليه الـ QR</label>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-3 gap-2">
                       <button
                         type="button"
                         onClick={() => setConfig({ ...config, qrType: 'whatsapp' })}
-                        className={`py-2 px-3 rounded-xl border font-bold flex items-center justify-center gap-1.5 transition-all ${
+                        className={`py-2 px-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1 transition-all ${
                           config.qrType === 'whatsapp'
                             ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-500 text-emerald-800 dark:text-emerald-300'
                             : 'border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-[#18233C] text-slate-600 dark:text-slate-400'
                         }`}
                       >
                         <span className="material-symbols-outlined text-sm">chat</span>
-                        <span>محادثة WhatsApp</span>
+                        <span>محادثة الواتساب</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setConfig({ ...config, qrType: 'booking' })}
+                        className={`py-2 px-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1 transition-all ${
+                          config.qrType === 'booking'
+                            ? 'bg-teal-50 dark:bg-[#00c2cb]/20 border-teal-500 text-teal-800 dark:text-[#45dee7]'
+                            : 'border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-[#18233C] text-slate-600 dark:text-slate-400'
+                        }`}
+                      >
+                        <span className="material-symbols-outlined text-sm">calendar_month</span>
+                        <span>صفحة هبوط الحجز</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => setConfig({ ...config, qrType: 'custom' })}
-                        className={`py-2 px-3 rounded-xl border font-bold flex items-center justify-center gap-1.5 transition-all ${
+                        className={`py-2 px-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1 transition-all ${
                           config.qrType === 'custom'
-                            ? 'bg-teal-50 dark:bg-[#00c2cb]/20 border-teal-500 text-teal-800 dark:text-[#45dee7]'
+                            ? 'bg-purple-50 dark:bg-purple-950/30 border-purple-500 text-purple-800 dark:text-purple-300'
                             : 'border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-[#18233C] text-slate-600 dark:text-slate-400'
                         }`}
                       >
                         <span className="material-symbols-outlined text-sm">link</span>
-                        <span>رابط خارجي مخصص</span>
+                        <span>رابط مخصص</span>
                       </button>
                     </div>
                   </div>
@@ -936,6 +952,18 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
                       />
                       <p className="text-[10px] text-slate-500">
                         الرابط المتولد: <span className="font-mono text-teal-600 dark:text-[#45dee7]">{getEffectiveQrLink()}</span>
+                      </p>
+                    </div>
+                  ) : config.qrType === 'booking' ? (
+                    <div className="space-y-1 p-3 rounded-xl bg-teal-50/50 dark:bg-[#00c2cb]/10 border border-teal-200 dark:border-[#00c2cb]/20">
+                      <label className="font-bold text-slate-800 dark:text-slate-200 block mb-0.5">
+                        رابط صفحة هبوط الحجز المباشر
+                      </label>
+                      <p className="text-[11px] text-teal-700 dark:text-[#45dee7] font-mono font-bold break-all" dir="ltr">
+                        {getEffectiveQrLink()}
+                      </p>
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        يمكن للمريض مسح هذا الكود مباشرة بالهاتف لفتح صفحة الحجز وحجز الموعد بالفرع والساعة المناسبة.
                       </p>
                     </div>
                   ) : (
@@ -1471,7 +1499,7 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
                         />
                       </div>
                       <span className="text-[7.5px] font-bold text-slate-500 mt-0.5">
-                        {config.qrType === 'whatsapp' ? 'واتساب العيادة' : 'موقع العيادة'}
+                        {config.qrType === 'whatsapp' ? 'واتساب العيادة' : config.qrType === 'booking' ? 'صفحة حجز المواعيد' : 'موقع العيادة'}
                       </span>
                     </div>
                   )}

@@ -16,14 +16,21 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
   visitTypesList = [],
 }) => {
   const activeVisitTypes = useMemo(() => {
-    if (visitTypesList && visitTypesList.length > 0) {
-      return visitTypesList;
-    }
-    return [
-      { id: 'vt-1', name: 'كشف جديد', fee: 300 },
-      { id: 'vt-2', name: 'استشارة / متابعة', fee: 150 },
-      { id: 'vt-3', name: 'كشف طوارئ', fee: 400 },
-    ];
+    const raw = (visitTypesList && visitTypesList.length > 0)
+      ? visitTypesList
+      : [
+          { id: 'vt-1', name: 'كشف جديد', fee: 300 },
+          { id: 'vt-2', name: 'استشارة / متابعة', fee: 150 },
+          { id: 'vt-3', name: 'كشف طوارئ', fee: 400 },
+        ];
+    const uniqueMap = new Map<string, { id: string; name: string; fee: number }>();
+    raw.forEach((item, index) => {
+      const key = item.id || `vt-${index}-${item.name}`;
+      if (!uniqueMap.has(key)) {
+        uniqueMap.set(key, item);
+      }
+    });
+    return Array.from(uniqueMap.values());
   }, [visitTypesList]);
 
   const clinicBranches = useMemo(() => getClinicBranches(), []);
@@ -226,8 +233,8 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
                 }}
                 className="w-full bg-[#080e1b] text-[#dde2f5] text-xs p-2.5 rounded-xl border border-white/10 focus:outline-none cursor-pointer font-bold"
               >
-                {activeVisitTypes.map((vt) => (
-                  <option key={vt.id || vt.name} value={vt.name}>
+                {activeVisitTypes.map((vt, index) => (
+                  <option key={`${vt.id}-${index}`} value={vt.name}>
                     {vt.name} ({vt.fee} ج.م)
                   </option>
                 ))}

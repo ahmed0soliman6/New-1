@@ -10,10 +10,18 @@ interface QrCodeImageProps {
 }
 
 export function formatQrDestination(
-  qrType: 'whatsapp' | 'custom' | string,
+  qrType: 'whatsapp' | 'booking' | 'custom' | string,
   qrWhatsappPhone?: string,
   qrCustomUrl?: string
 ): { link: string; display: string } {
+  if (qrType === 'booking') {
+    const bookingUrl = typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}#booking` : 'https://solimedical.com/booking';
+    return {
+      link: bookingUrl,
+      display: 'صفحة هبوط حجز المواعيد',
+    };
+  }
+
   if (qrType === 'whatsapp') {
     let clean = (qrWhatsappPhone || '01092847162').replace(/\D/g, '');
     if (clean.startsWith('00')) {

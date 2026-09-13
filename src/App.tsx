@@ -85,6 +85,7 @@ import { PatientListItemsScreen } from './components/screens/PatientFilesScreen'
 import { FinanceScreen } from './components/screens/FinanceScreen';
 import { SettingsScreen } from './components/screens/SettingsScreen';
 import { ClinicalReportsScreen } from './components/screens/ClinicalReportsScreen';
+import { BookingLandingScreen } from './components/screens/BookingLandingScreen';
 import { NewAppointmentModal } from './components/modals/NewAppointmentModal';
 import { db } from './services/firebase';
 import { doc, deleteDoc, setDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
@@ -279,6 +280,7 @@ const VALID_SCREENS: ScreenType[] = [
   'finance',
   'clinical-reports',
   'prescription-pad',
+  'booking-landing',
   'system-settings',
   'settings',
 ];
@@ -288,6 +290,9 @@ function ClinicApp() {
   const { language, dir, isRTL, t } = useLanguage();
 
   const [activeScreen, setActiveScreen] = useState<ScreenType>(() => {
+    if (typeof window !== 'undefined' && (window.location.hash === '#booking' || window.location.search.includes('page=booking'))) {
+      return 'booking-landing';
+    }
     const saved = safeStorage.getItem(StorageKeys.ACTIVE_SCREEN) as ScreenType | null;
     if (saved && VALID_SCREENS.includes(saved)) {
       return saved;
@@ -297,6 +302,17 @@ function ClinicApp() {
     }
     return 'dashboard';
   });
+
+  // Hash listener for direct #booking navigation
+  useEffect(() => {
+    const handleHashChange = () => {
+      if (window.location.hash === '#booking') {
+        setActiveScreen('booking-landing');
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
   // Save active screen to localStorage whenever it changes
   useEffect(() => {
@@ -359,7 +375,14 @@ function ClinicApp() {
   const [visitTypesList, setVisitTypesList] = useState<{ id: string; name: string; fee: number }[]>(() => {
     const saved = safeStorage.getJSON<{ id: string; name: string; fee: number }[] | null>(StorageKeys.VISIT_TYPES, null);
     if (Array.isArray(saved) && saved.length > 0) {
-      return saved;
+      const map = new Map<string, { id: string; name: string; fee: number }>();
+      saved.forEach((item, index) => {
+        if (item) {
+          const key = item.id || `vt-${index}-${item.name}`;
+          map.set(key, { ...item, id: key });
+        }
+      });
+      return Array.from(map.values());
     }
     return [
       { id: 'vt-1', name: 'كشف جديد', fee: 300 },
@@ -2729,6 +2752,13 @@ function ClinicApp() {
                 <ClinicalReportsScreen />
               )}
 
+              {activeScreen === 'booking-landing' && (
+                <BookingLandingScreen
+                  onAddAppointment={handleAddAppointment}
+                  onNavigate={handleNavigate}
+                />
+              )}
+
               {(activeScreen === 'settings' || activeScreen === 'system-settings') && (
                 <SettingsScreen
                   presetChronicConditions={presetChronicConditions}
@@ -2815,8 +2845,64 @@ function ClinicApp() {
   );
 }
 
+function isPublicBookingRoute() {
+  if (typeof window === 'undefined') return false;
+  const hash = window.location.hash;
+  const search = window.location.search;
+  const path = window.location.pathname;
+  return (
+    hash === '#booking' ||
+    hash.startsWith('#booking') ||
+    search.includes('page=booking') ||
+    search.includes('booking=true') ||
+    path.endsWith('/booking') ||
+    path.endsWith('/booking.html')
+  );
+}
+
+function PublicBookingApp() {
+  return (
+    <div className="min-h-screen bg-[#080e1b] text-white p-4 sm:p-6 lg:p-8" dir="rtl">
+      <div className="max-w-4xl mx-auto space-y-4">
+        {/* Public Header Bar */}
+        <div className="flex items-center justify-between bg-[#111A2E] p-4 rounded-2xl border border-white/10 shadow-lg">
+          <div className="flex items-center gap-2">
+            <span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span className="text-xs font-bold text-slate-300">صفحة الحجز المباشر بالعيادة للمرضى</span>
+          </div>
+          <button
+            onClick={() => {
+              window.location.hash = '';
+              window.location.search = '';
+              window.location.reload();
+            }}
+            className="text-xs font-bold px-3 py-1.5 rounded-xl bg-teal-500/20 text-[#45dee7] border border-[#00c2cb]/30 hover:bg-[#00c2cb]/30 transition-colors cursor-pointer flex items-center gap-1"
+          >
+            <span className="material-symbols-outlined text-sm">lock</span>
+            <span>دخول الطاقم الطبي</span>
+          </button>
+        </div>
+
+        {/* Standalone Landing Page Component */}
+        <BookingLandingScreen />
+      </div>
+    </div>
+  );
+}
+
 function AuthenticatedApp() {
   const { currentUser, loading } = useAuth();
+  const [isPublic, setIsPublic] = useState(isPublicBookingRoute);
+
+  useEffect(() => {
+    const handleCheck = () => setIsPublic(isPublicBookingRoute());
+    window.addEventListener('hashchange', handleCheck);
+    return () => window.removeEventListener('hashchange', handleCheck);
+  }, []);
+
+  if (isPublic) {
+    return <PublicBookingApp />;
+  }
 
   if (loading) {
     return (

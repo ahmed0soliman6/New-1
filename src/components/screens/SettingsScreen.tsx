@@ -856,9 +856,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
                   {/* Visit Types Grid */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {visitTypesList.map((vt) => (
+                    {visitTypesList.map((vt, index) => (
                       <div
-                        key={vt.id || vt.name}
+                        key={`${vt.id}-${index}`}
                         className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex items-center justify-between gap-3 shadow-2xs"
                       >
                         <div className="space-y-1.5 min-w-0 flex-1">

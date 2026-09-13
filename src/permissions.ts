@@ -284,6 +284,15 @@ export const ALL_SYSTEM_SCREENS: SystemScreenDef[] = [
     description: 'إدارة المستخدمين، التحكم بصلاحيات الصفحات، أسعار الكشوفات، وأدلة النظام.',
     availableActions: ['view', 'create', 'update', 'delete'],
   },
+  {
+    id: 'booking-landing',
+    title: 'صفحة هبوط حجز المواعيد',
+    category: 'reception',
+    categoryLabel: 'حجز أونلاين',
+    icon: 'event_available',
+    description: 'صفحة الحجز المباشر بالعيادة والمخصصة للمرضى والواتساب.',
+    availableActions: ['view', 'create'],
+  },
 ];
 
 /**
@@ -300,6 +309,7 @@ const SCREEN_ALIASES: Record<string, string[]> = {
   'billing-payments': ['billing-payments', 'finance'],
   finance: ['billing-payments', 'finance'],
   'clinical-reports': ['clinical-reports', 'analytics'],
+  'booking-landing': ['booking-landing'],
   'prescriptions-catalog': ['prescriptions-catalog'],
   'prescription-pad': ['prescription-pad'],
   'system-settings': ['system-settings', 'settings'],
@@ -326,6 +336,10 @@ export function getDefaultRolePermissions(role: Role | string | undefined | null
   const result: CustomPermissionsMap = {};
 
   for (const screen of ALL_SYSTEM_SCREENS) {
+    if (screen.id === 'booking-landing') {
+      result[screen.id] = { view: true, create: true, update: true, delete: false };
+      continue;
+    }
     if (norm === 'admin') {
       result[screen.id] = { view: true, create: true, update: true, delete: true };
     } else if (norm === 'doctor') {
