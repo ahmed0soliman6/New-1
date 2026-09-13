@@ -6,13 +6,16 @@ import {
   formatBranchTime,
   isDateMatchingBranchDays,
   getNextValidWorkingDate,
-  getUpcomingDateSuggestions
+  getUpcomingDateSuggestions,
+  extractTimesFromWorkingHours
 } from '../../utils/clinicBranches';
-import { getPrescriptionDoctorInfo } from '../../utils/prescriptionDoctor';
+import { getPrescriptionDoctorInfo, PrescriptionDoctorInfo } from '../../utils/prescriptionDoctor';
 import { getActiveVisitTypes } from '../../utils/financeManager';
 import { AppointmentListItem } from '../../types';
 import { QrCodeImage } from '../QrCodeImage';
 import { safeStorage } from '../../services/storage';
+import { db } from '../../services/firebase';
+import { subscribeToPrescriptionSettings } from '../../services/repositories/settingsRepo';
 
 interface BookingLandingScreenProps {
   onAddAppointment?: (appointment: AppointmentListItem) => void;
@@ -44,15 +47,74 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
   onNavigateToAppointments,
   isEmbed = false,
 }) => {
-  const doctorInfo = useMemo(() => getPrescriptionDoctorInfo(), []);
+  const [doctorProfile, setDoctorProfile] = useState<PrescriptionDoctorInfo>(() => getPrescriptionDoctorInfo());
   const [branches, setBranches] = useState<ClinicBranchItem[]>(() => getClinicBranches());
   const visitTypes = useMemo(() => getActiveVisitTypes(), []);
+
+  const doctorInfo = useMemo(() => {
+    return {
+      name: doctorProfile.doctorName,
+      specialty: doctorProfile.specialtyAr,
+      credentials: doctorProfile.degreesAr,
+      phone: doctorProfile.phone,
+      logoUrl: doctorProfile.logoUrl
+    };
+  }, [doctorProfile]);
+
+  // Real-time Firestore subscription to fetch real doctor settings and clinic branches
+  useEffect(() => {
+    if (!db) return;
+
+    const unsub = subscribeToPrescriptionSettings(
+      db,
+      (settings: any) => {
+        if (settings && Object.keys(settings).length > 0) {
+          // Sync with local storage as secondary backup
+          localStorage.setItem('soli_prescription_settings', JSON.stringify(settings));
+
+          // Set branches
+          if (Array.isArray(settings.branches) && settings.branches.length > 0) {
+            const mappedBranches = settings.branches.map((b: any, index: number) => {
+              const parsed = extractTimesFromWorkingHours(b.workingHours);
+              return {
+                id: b.id || `branch-${index}`,
+                name: b.name || `فرع ${index + 1}`,
+                address: b.address || '',
+                phone: b.phone || b.mobile || '',
+                mobile: b.mobile || b.phone || '',
+                workingHours: b.workingHours || '',
+                startTime: b.startTime || parsed?.startTime || '16:00',
+                endTime: b.endTime || parsed?.endTime || '22:00',
+              };
+            });
+            setBranches(mappedBranches);
+          }
+
+          // Set doctor profile
+          setDoctorProfile({
+            doctorName: settings.doctorName?.trim() || 'طبيب العيادة',
+            doctorNameEn: settings.doctorNameEn?.trim() || 'Clinic Doctor',
+            specialtyAr: settings.specialtyAr?.trim() || 'التخصص الطبي العام للعيادة',
+            specialtyEn: settings.specialtyEn?.trim() || 'Clinic Medical Specialty',
+            degreesAr: settings.degreesAr?.trim() || 'الدرجات العلمية والشهادات المهنية المسجلة للعيادة',
+            degreesEn: settings.degreesEn?.trim() || 'Registered Medical Degrees & Professional Credentials',
+            phone: settings.phone?.trim() || '',
+            logoUrl: settings.logoUrl || null,
+          });
+        }
+      },
+      (err) => console.warn('Public Booking Live Settings Sync Error:', err)
+    );
+
+    return () => unsub();
+  }, []);
 
   // Update branches dynamically if saved in Settings
   useEffect(() => {
     const handleUpdateBranches = () => {
       const updated = getClinicBranches();
       setBranches(updated);
+      setDoctorProfile(getPrescriptionDoctorInfo());
     };
 
     window.addEventListener('soli_branches_updated', handleUpdateBranches);
@@ -70,10 +132,20 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
   const [patientName, setPatientName] = useState('');
   const [phone, setPhone] = useState('');
   const [scheduledDate, setScheduledDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [selectedBranchId, setSelectedBranchId] = useState<string>(() => branches[0]?.id || '');
+  const [selectedBranchId, setSelectedBranchId] = useState<string>('');
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>('');
   const [visitType, setVisitType] = useState<string>(() => visitTypes[0]?.name || 'كشف جديد');
   const [notes, setNotes] = useState('');
+
+  // Auto-select first real branch once branches list is populated
+  useEffect(() => {
+    if (branches.length > 0) {
+      const exists = branches.some(b => b.id === selectedBranchId);
+      if (!selectedBranchId || !exists) {
+        setSelectedBranchId(branches[0].id);
+      }
+    }
+  }, [branches, selectedBranchId]);
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [copiedText, setCopiedText] = useState(false);
@@ -346,44 +418,44 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
         </div>
       )}
 
-      {/* Top Banner & Doctor Card Header */}
-      <div className="bg-gradient-to-r from-slate-900 via-[#0a1829] to-[#0f2438] text-white p-6 rounded-3xl shadow-xl border border-white/10 relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-64 h-64 bg-[#00c2cb]/10 rounded-full blur-3xl pointer-events-none"></div>
+      {/* Sleek, Single-Row Doctor Header (صف واحد صغير ومنسق) */}
+      <div className="bg-gradient-to-r from-slate-950 via-[#0a1829] to-[#0f2438] text-white p-3.5 sm:p-4 rounded-2xl shadow-lg border border-white/10 relative overflow-hidden flex flex-col sm:flex-row items-center justify-between gap-4">
+        {/* Background shine */}
+        <div className="absolute top-0 left-0 w-32 h-32 bg-[#00c2cb]/5 rounded-full blur-2xl pointer-events-none"></div>
 
-        <div className="relative z-10 flex flex-col sm:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-4 text-right">
-            {/* Logo */}
-            {doctorInfo.logoUrl ? (
-              <img
-                src={doctorInfo.logoUrl}
-                alt="Clinic Logo"
-                className="w-16 h-16 rounded-2xl object-contain bg-white/10 p-2 border border-white/20 shadow-md shrink-0"
-              />
-            ) : (
-              <div className="w-16 h-16 rounded-2xl bg-[#00c2cb]/20 border border-[#00c2cb]/40 flex items-center justify-center text-[#00c2cb] shrink-0">
-                <span className="material-symbols-outlined text-3xl">medical_services</span>
-              </div>
-            )}
+        {/* Doctor Info and Logo Group */}
+        <div className="relative z-10 flex items-center gap-3 w-full sm:w-auto text-right">
+          {/* Logo */}
+          {doctorInfo.logoUrl ? (
+            <img
+              src={doctorInfo.logoUrl}
+              alt="Clinic Logo"
+              className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl object-contain bg-white/5 p-1 border border-white/10 shadow-md shrink-0"
+            />
+          ) : null}
 
-            <div>
-              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#00c2cb]/20 text-[#45dee7] border border-[#00c2cb]/30 inline-block mb-1">
-                بوابة الحجز المباشر بالعيادة 🏥
+          <div className="flex flex-col justify-center">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-sm sm:text-base font-black text-white">{doctorInfo.name}</h1>
+              <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-[#00c2cb]/15 text-[#45dee7] border border-[#00c2cb]/20">
+                {doctorInfo.specialty}
               </span>
-              <h1 className="text-xl sm:text-2xl font-black text-white">{doctorInfo.name}</h1>
-              <p className="text-xs text-[#00c2cb] font-bold mt-0.5">{doctorInfo.specialty}</p>
-              <p className="text-[11px] text-slate-300 mt-0.5 leading-tight">{doctorInfo.credentials}</p>
             </div>
+            {doctorInfo.credentials && (
+              <p className="text-[10px] text-slate-300 mt-0.5 max-w-md line-clamp-1">
+                {doctorInfo.credentials}
+              </p>
+            )}
           </div>
+        </div>
 
-          {/* Quick Contact Badge */}
-          <div className="flex flex-col items-center sm:items-end text-center sm:text-left bg-white/5 p-3 px-4 rounded-2xl border border-white/10 text-xs shrink-0">
-            <span className="text-[10px] text-slate-400 font-bold mb-0.5">للحجز والاستعلام مباشرة</span>
-            <span className="font-mono text-sm font-bold text-[#45dee7]" dir="ltr">{doctorInfo.phone}</span>
-            <span className="text-[10px] text-slate-300 mt-1 flex items-center gap-1">
-              <span className="material-symbols-outlined text-emerald-400 text-xs">chat</span>
-              واتساب متاح 24/7
-            </span>
-          </div>
+        {/* Quick Contact & WhatsApp Pill */}
+        <div className="relative z-10 flex items-center gap-2 sm:gap-3 bg-white/5 hover:bg-white/10 border border-white/10 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 w-full sm:w-auto justify-between sm:justify-start">
+          <span className="text-[10px] text-slate-400 font-bold">للحجز والاستعلام مباشرة:</span>
+          <a href={`tel:${doctorInfo.phone}`} className="font-mono text-xs font-black text-[#45dee7] hover:underline" dir="ltr">
+            {doctorInfo.phone}
+          </a>
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
         </div>
       </div>
 
@@ -525,58 +597,48 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
             </div>
           </div>
 
-          {/* Branch Working Hours & Details Info Card */}
+          {/* Branch Working Hours & Details Info Card (Slim horizontal metadata row) */}
           {activeBranch && (
-            <div className="p-4 rounded-2xl bg-slate-950/80 dark:bg-[#080e1b] border border-[#00c2cb]/30 text-xs space-y-2 shadow-inner">
-              <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-2">
-                <div className="flex items-center gap-2 text-[#45dee7] font-bold">
-                  <span className="material-symbols-outlined text-lg">storefront</span>
-                  <span className="text-sm">{activeBranch.name}</span>
-                </div>
-                <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-[#00c2cb]/20 text-[#00c2cb] border border-[#00c2cb]/30">
-                  مواعيد 15 دقيقة / مريض
-                </span>
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 p-3 px-4 rounded-2xl bg-slate-950/60 dark:bg-[#080e1b]/60 border border-[#00c2cb]/20 text-xs text-slate-300 shadow-inner">
+              {/* Branch Name Header */}
+              <div className="flex items-center gap-2 text-[#45dee7] font-bold shrink-0">
+                <span className="material-symbols-outlined text-base">storefront</span>
+                <span>{activeBranch.name}</span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              {/* Inline Metadata Grid */}
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] text-slate-300">
                 {activeBranch.workingHours && (
-                  <div className="text-emerald-400 font-bold flex items-start gap-1.5">
-                    <span className="material-symbols-outlined text-base text-emerald-400 shrink-0 mt-0.5">schedule</span>
-                    <div>
-                      <span className="text-slate-400 text-[10px] block font-normal">أيام وساعات العمل الرسمية:</span>
-                      <span>{activeBranch.workingHours}</span>
-                    </div>
+                  <div className="flex items-center gap-1.5 text-emerald-400 font-semibold">
+                    <span className="material-symbols-outlined text-sm">schedule</span>
+                    <span>{activeBranch.workingHours}</span>
                   </div>
                 )}
 
-                <div className="text-slate-200 flex items-start gap-1.5">
-                  <span className="material-symbols-outlined text-base text-[#00c2cb] shrink-0 mt-0.5">nest_clock_frequence</span>
-                  <div>
-                    <span className="text-slate-400 text-[10px] block font-normal">فترة الكشوفات بالفرع:</span>
-                    <span>من <strong className="text-white font-mono">{formatBranchTime(activeBranch.startTime || '16:00')}</strong> إلى <strong className="text-white font-mono">{formatBranchTime(activeBranch.endTime || '22:00')}</strong></span>
-                  </div>
+                <div className="flex items-center gap-1.5 text-slate-300">
+                  <span className="material-symbols-outlined text-sm text-[#00c2cb]">nest_clock_frequence</span>
+                  <span>الكشوفات: <strong className="font-mono text-white font-bold">{formatBranchTime(activeBranch.startTime || '16:00')}</strong> إلى <strong className="font-mono text-white font-bold">{formatBranchTime(activeBranch.endTime || '22:00')}</strong></span>
                 </div>
 
                 {activeBranch.address && (
-                  <div className="text-slate-300 flex items-start gap-1.5">
-                    <span className="material-symbols-outlined text-base text-slate-400 shrink-0 mt-0.5">location_on</span>
-                    <div>
-                      <span className="text-slate-400 text-[10px] block font-normal">عنوان العيادة:</span>
-                      <span>{activeBranch.address}</span>
-                    </div>
+                  <div className="flex items-center gap-1.5 text-slate-400">
+                    <span className="material-symbols-outlined text-sm">location_on</span>
+                    <span className="max-w-[180px] sm:max-w-xs truncate" title={activeBranch.address}>{activeBranch.address}</span>
                   </div>
                 )}
 
                 {activeBranch.phone && (
-                  <div className="text-slate-300 flex items-start gap-1.5">
-                    <span className="material-symbols-outlined text-base text-slate-400 shrink-0 mt-0.5">call</span>
-                    <div>
-                      <span className="text-slate-400 text-[10px] block font-normal">رقم العيادة للحجز المباشر:</span>
-                      <span className="font-mono text-[#45dee7] font-bold" dir="ltr">{activeBranch.phone}</span>
-                    </div>
+                  <div className="flex items-center gap-1.5 text-slate-400">
+                    <span className="material-symbols-outlined text-sm">call</span>
+                    <span className="font-mono text-[#45dee7] font-bold" dir="ltr">{activeBranch.phone}</span>
                   </div>
                 )}
               </div>
+
+              {/* Quick Badge */}
+              <span className="hidden sm:inline-block text-[9px] font-bold px-2 py-0.5 rounded-full bg-[#00c2cb]/10 text-[#00c2cb] border border-[#00c2cb]/20 shrink-0">
+                ١٥ دقيقة / مريض
+              </span>
             </div>
           )}
 

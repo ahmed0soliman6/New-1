@@ -2863,26 +2863,7 @@ function isPublicBookingRoute() {
 function PublicBookingApp() {
   return (
     <div className="min-h-screen bg-[#080e1b] text-white p-4 sm:p-6 lg:p-8" dir="rtl">
-      <div className="max-w-4xl mx-auto space-y-4">
-        {/* Public Header Bar */}
-        <div className="flex items-center justify-between bg-[#111A2E] p-4 rounded-2xl border border-white/10 shadow-lg">
-          <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="text-xs font-bold text-slate-300">صفحة الحجز المباشر بالعيادة للمرضى</span>
-          </div>
-          <button
-            onClick={() => {
-              window.location.hash = '';
-              window.location.search = '';
-              window.location.reload();
-            }}
-            className="text-xs font-bold px-3 py-1.5 rounded-xl bg-teal-500/20 text-[#45dee7] border border-[#00c2cb]/30 hover:bg-[#00c2cb]/30 transition-colors cursor-pointer flex items-center gap-1"
-          >
-            <span className="material-symbols-outlined text-sm">lock</span>
-            <span>دخول الطاقم الطبي</span>
-          </button>
-        </div>
-
+      <div className="max-w-4xl mx-auto">
         {/* Standalone Landing Page Component */}
         <BookingLandingScreen />
       </div>
