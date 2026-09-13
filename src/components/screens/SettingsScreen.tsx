@@ -36,6 +36,7 @@ import {
   ExpenseCategoryItem,
 } from '../../utils/financeManager';
 import { db } from '../../services/firebase';
+import { doc, writeBatch } from 'firebase/firestore';
 import { safeStorage, StorageKeys } from '../../services/storage';
 import { subscribeToServices, subscribeToExpenseCategories } from '../../services/repositories';
 
@@ -90,6 +91,16 @@ interface SettingsScreenProps {
   onClearAllData?: () => void;
   onClearBrowserVisitsOnly?: () => void;
   onClearAllBrowserAndCloud?: () => Promise<void>;
+
+  patients?: any[];
+  appointments?: any[];
+  visits?: any[];
+  invoices?: any[];
+  payments?: any[];
+  prescriptions?: any[];
+  labOrders?: any[];
+  radiologyOrders?: any[];
+  followUps?: any[];
 }
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
@@ -127,6 +138,16 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onClearAllData = () => {},
   onClearBrowserVisitsOnly = () => {},
   onClearAllBrowserAndCloud = async () => {},
+
+  patients = [],
+  appointments = [],
+  visits = [],
+  invoices = [],
+  payments = [],
+  prescriptions = [],
+  labOrders = [],
+  radiologyOrders = [],
+  followUps = [],
 }) => {
   const { hasPermission, assertPermission, role, canDelete, canPerform } = usePermissions();
   const { language, setLanguage, t, isRTL } = useLanguage();
@@ -296,7 +317,25 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       const backupData = {
         exportedAt: new Date().toISOString(),
         appName: 'Soli Medical Clinic System',
-        version: 'v2.6.0',
+        version: APP_VERSION || 'v2.6.0',
+        summary: {
+          patientsCount: (patients || []).length,
+          appointmentsCount: (appointments || []).length,
+          visitsCount: (visits || []).length,
+          invoicesCount: (invoices || []).length,
+          paymentsCount: (payments || []).length,
+          prescriptionsCount: (prescriptions || []).length,
+          catalogsCount: (drugCatalog || []).length + (radiologyCatalog || []).length + (labCatalog || []).length,
+        },
+        patients: patients || [],
+        appointments: appointments || [],
+        visits: visits || [],
+        invoices: invoices || [],
+        payments: payments || [],
+        prescriptions: prescriptions || [],
+        labOrders: labOrders || [],
+        radiologyOrders: radiologyOrders || [],
+        followUps: followUps || [],
         visitTypes: visitTypesList,
         freeFollowupDays,
         medicalServices: medicalServicesList,
@@ -312,13 +351,16 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         chronicConditions: presetChronicConditions,
       };
 
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
+      const jsonString = JSON.stringify(backupData, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
       const downloadAnchor = document.createElement('a');
-      downloadAnchor.setAttribute("href", dataStr);
-      downloadAnchor.setAttribute("download", `soli_clinic_backup_${new Date().toISOString().slice(0, 10)}.json`);
+      downloadAnchor.href = url;
+      downloadAnchor.download = `soli_clinic_backup_${new Date().toISOString().slice(0, 10)}.json`;
       document.body.appendChild(downloadAnchor);
       downloadAnchor.click();
       downloadAnchor.remove();
+      URL.revokeObjectURL(url);
 
       setSavedToast('تم تحميل وتصدير ملف النسخة الاحتياطية JSON بنجاح ✓');
       setTimeout(() => setSavedToast(null), 3000);
@@ -335,7 +377,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const content = event.target?.result as string;
         const data = JSON.parse(content);
@@ -401,7 +443,65 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           data.symptomsCatalog.forEach((item: SymptomCatalogItem) => onAddSymptom(item));
         }
 
-        setSavedToast(`تم استيراد واستعادة بيانات النسخة الاحتياطية (${file.name}) بنجاح ✓`);
+        let restoredRecordsCount = 0;
+        if (db && (Array.isArray(data.patients) || Array.isArray(data.visits) || Array.isArray(data.appointments))) {
+          const batch = writeBatch(db);
+          if (Array.isArray(data.patients)) {
+            data.patients.forEach((p: any) => {
+              if (p.patientId) {
+                batch.set(doc(db, 'patients', p.patientId), p, { merge: true });
+                restoredRecordsCount++;
+              }
+            });
+          }
+          if (Array.isArray(data.appointments)) {
+            data.appointments.forEach((a: any) => {
+              if (a.appointmentId) {
+                batch.set(doc(db, 'appointments', a.appointmentId), a, { merge: true });
+                restoredRecordsCount++;
+              }
+            });
+          }
+          if (Array.isArray(data.visits)) {
+            data.visits.forEach((v: any) => {
+              if (v.visitId) {
+                batch.set(doc(db, 'visits', v.visitId), v, { merge: true });
+                restoredRecordsCount++;
+              }
+            });
+          }
+          if (Array.isArray(data.invoices)) {
+            data.invoices.forEach((inv: any) => {
+              if (inv.invoiceId) {
+                batch.set(doc(db, 'invoices', inv.invoiceId), inv, { merge: true });
+                restoredRecordsCount++;
+              }
+            });
+          }
+          if (Array.isArray(data.payments)) {
+            data.payments.forEach((pay: any) => {
+              if (pay.paymentId) {
+                batch.set(doc(db, 'payments', pay.paymentId), pay, { merge: true });
+                restoredRecordsCount++;
+              }
+            });
+          }
+          if (Array.isArray(data.prescriptions)) {
+            data.prescriptions.forEach((rx: any) => {
+              if (rx.prescriptionId) {
+                batch.set(doc(db, 'prescriptions', rx.prescriptionId), rx, { merge: true });
+                restoredRecordsCount++;
+              }
+            });
+          }
+          await batch.commit();
+        }
+
+        const successMsg = restoredRecordsCount > 0
+          ? `تم استيراد واستعادة بيانات العيادة (${file.name}) مع ${restoredRecordsCount} سجل بنجاح ✓`
+          : `تم استيراد واستعادة إعدادات وأدلة العيادة من (${file.name}) بنجاح ✓`;
+
+        setSavedToast(successMsg);
         setTimeout(() => setSavedToast(null), 3500);
       } catch (err) {
         console.error(err);
@@ -502,6 +602,17 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               </PermissionGate>
             )}
           </div>
+
+          {/* Quick One-Click JSON Backup Button */}
+          <button
+            type="button"
+            onClick={handleExportBackup}
+            className="ms-auto flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#00c2cb]/15 hover:bg-[#00c2cb] text-[#008f97] dark:text-[#00c2cb] hover:text-slate-950 border border-[#00c2cb]/30 transition-all cursor-pointer shadow-2xs active:scale-95"
+            title="تنزيل نسخة احتياطية كاملة من بيانات وإعدادات العيادة بصيغة JSON بضغطة زر واحدة"
+          >
+            <span className="material-symbols-outlined text-base">cloud_download</span>
+            <span>{language === 'en' ? 'Quick Backup (JSON)' : 'تنزيل نسخة احتياطية (JSON)'}</span>
+          </button>
         </div>
       </div>
 

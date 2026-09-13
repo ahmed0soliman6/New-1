@@ -137,6 +137,7 @@ import {
 import { safeStorage, StorageKeys } from './services/storage';
 import { setCachedRecurringTemplates } from './utils/recurringTemplatesManager';
 import { toEnglishDigits, formatAppDate, formatAppTime } from './utils/numberUtils';
+import { findBranch } from './utils/clinicBranches';
 
 // Merged full initial reference catalogs combining database.ts and previewMedicalCatalogs.ts
 const INITIAL_RADIOLOGY_FULL: RadiologyType[] = (() => {
@@ -795,6 +796,7 @@ function ClinicApp() {
         date: a.scheduledDate,
         time: a.scheduledTime,
         timeSlot: a.scheduledTime || '05:00 م',
+        branch: findBranch(a.clinicLocationId || (a as any).branch)?.name || 'العيادة الرئيسية - المهندسين',
         visitType: a.visitType,
         status: a.status === 'ARRIVED' ? 'فى الانتظار حضر المريض' : a.status === 'CANCELLED' ? 'ملغي' : 'مجدول',
         expectedFee: dynamicFee,
@@ -2318,12 +2320,13 @@ function ClinicApp() {
       createdBy: userProfile?.username || 'receptionist',
     };
 
+    const resolvedBranch = findBranch(app.branch);
     const newApp: Appointment = {
       appointmentId: app.appointmentId || app.id || `app-${Date.now()}`,
       patientId: targetPatientId,
       patientName: cleanName || 'مريض محجوز',
       phone: cleanPhone,
-      clinicLocationId: 'loc-mohandessin',
+      clinicLocationId: resolvedBranch.id || resolvedBranch.name || 'loc-mohandessin',
       scheduledDate: app.date || new Date().toISOString().split('T')[0],
       scheduledTime: app.timeSlot || app.time || '07:30 م',
       visitType: app.visitType || 'كشف جديد',
@@ -2758,6 +2761,15 @@ function ClinicApp() {
                   onClearAllData={handleClearAllData}
                   onClearBrowserVisitsOnly={handleClearBrowserVisitsOnly}
                   onClearAllBrowserAndCloud={handleClearAllBrowserAndCloud}
+                  patients={patientsCanonical}
+                  appointments={appointmentsCanonical}
+                  visits={visitsCanonical}
+                  invoices={invoicesCanonical}
+                  payments={paymentsCanonical}
+                  prescriptions={prescriptionsCanonical}
+                  labOrders={labOrdersCanonical}
+                  radiologyOrders={radiologyOrdersCanonical}
+                  followUps={followUpsCanonical}
                 />
               )}
             </>
