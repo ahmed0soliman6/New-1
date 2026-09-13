@@ -397,7 +397,14 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
   };
 
   const handleExportPDF = () => {
-    exportPrescriptionToPdf('printable-prescription-pad', patient ? patient.name : 'مريض');
+    exportPrescriptionToPdf({
+      config,
+      patient,
+      items,
+      diagnoses: [{ id: 'd1', code: 'I10', nameAr: 'ارتفاع ضغط الدم الأولي', nameEn: 'Essential Hypertension', isPrimary: true }],
+      lifestyleAdvice: 'تقليل الملح في الطعام، ممارسة المشي 30 دقيقة يومياً وشرب الماء بانتظام.',
+      followupDate: '2026-09-24',
+    }, patient ? patient.name : 'مريض');
   };
 
   const isCustomUrlValid = config.qrType === 'custom' ? isValidUrl(config.qrCustomUrl) : true;
@@ -1183,7 +1190,10 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
                         <img
                           src={config.logoUrl}
                           alt="Clinic Logo"
-                          className="w-12 h-12 object-contain"
+                          className="w-11 h-11 object-contain"
+                          style={{ width: '44px', height: '44px', maxWidth: '44px', maxHeight: '44px', objectFit: 'contain' }}
+                          width={44}
+                          height={44}
                         />
                       ) : (
                         <div className="w-10 h-10 rounded-xl bg-slate-950 text-[#00c2cb] flex items-center justify-center font-bold">

@@ -122,6 +122,8 @@ import {
   subscribeToClinicStatus,
   updateClinicStatusInFirestore,
   subscribeToRecurringTemplates,
+  subscribeToLatestAlert,
+  publishAlert,
   saveCatalogItem,
   removeCatalogItem,
 } from './services/repositories';
@@ -1033,9 +1035,37 @@ function ClinicApp() {
   const [syncErrorDetails, setSyncErrorDetails] = useState<string | null>(null);
   const [doctorStatus, setDoctorStatus] = useState<'available' | 'break'>('available');
 
-  const registerAlert = (alertItem: ClinicAlertPayload) => {
+  const registerAlert = (alertItem: ClinicAlertPayload, options?: { skipPublish?: boolean }) => {
     setCallingBanner(alertItem);
     setAlertHistory((prev) => [alertItem, ...prev.filter((a) => a.id !== alertItem.id)].slice(0, 20));
+
+    if (!options?.skipPublish) {
+      // 1. Instant cross-tab sync via BroadcastChannel
+      try {
+        const alertChannel = new BroadcastChannel('soli_clinic_alerts_channel');
+        alertChannel.postMessage({
+          type: 'CLINIC_ALERT',
+          alert: alertItem,
+          senderId: userProfile?.username || 'user',
+        });
+        alertChannel.close();
+      } catch {}
+
+      // 2. Real-time multi-device Firestore synchronization for secretary/doctor
+      if (db) {
+        publishAlert(db, {
+          id: alertItem.id,
+          type: alertItem.type,
+          title: alertItem.title,
+          message: alertItem.message,
+          ticket: alertItem.ticket,
+          timestamp: alertItem.timestamp,
+          patientId: alertItem.patientId,
+          visitId: alertItem.visitId,
+          senderId: userProfile?.username || 'user',
+        }).catch((err) => console.warn('Alert publish notice:', err));
+      }
+    }
   };
 
   const handleDismissAlert = (alertId: string) => {
@@ -1212,7 +1242,7 @@ function ClinicApp() {
         }
       }
       // 3. Examination completed: automatically removes previous waiting/call notification for this patient!
-      else if (prevStatus === 'IN_PROGRESS' && v.status === 'COMPLETED') {
+      else if (prevStatus && prevStatus !== 'COMPLETED' && v.status === 'COMPLETED') {
         // Disappear/purge waiting and calling notification for this patient on completion!
         setAlertHistory((prev) => prev.filter((a) => a.patientId !== v.patientId));
 
@@ -1237,6 +1267,104 @@ function ClinicApp() {
       previousVisitsMapRef.current.set(v.visitId, v.status);
     });
   }, [visitsCanonical, patientsCanonical]);
+
+  // Real-time synchronization of alerts across tabs (BroadcastChannel) and devices/accounts (Firestore)
+  const lastReceivedAlertIdRef = useRef<string>('');
+
+  useEffect(() => {
+    // 1. Multi-tab BroadcastChannel listener
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel('soli_clinic_alerts_channel');
+      channel.onmessage = (event) => {
+        if (event.data?.type === 'CLINIC_ALERT' && event.data.alert) {
+          const incoming = event.data.alert as ClinicAlertPayload;
+          const sender = event.data.senderId;
+          if (sender !== (userProfile?.username || 'user') && incoming.id !== lastReceivedAlertIdRef.current) {
+            lastReceivedAlertIdRef.current = incoming.id;
+            const alertConfig = loadAlertSettings();
+            if (alertConfig.audioEnabled) {
+              if (
+                (incoming.type === 'finish' && alertConfig.finishExamAudio) ||
+                (incoming.type === 'call' && alertConfig.callPatientAudio) ||
+                (incoming.type === 'new_visit' && alertConfig.newVisitAudio)
+              ) {
+                playSingleAlertSound(incoming.type);
+              }
+            }
+            if (alertConfig.visualEnabled) {
+              registerAlert(incoming, { skipPublish: true });
+              setTimeout(() => {
+                setCallingBanner((prev) => (prev?.id === incoming.id ? null : prev));
+              }, 6000);
+            }
+          }
+        }
+      };
+    } catch {}
+
+    // 2. Multi-device Firestore latestAlert subscription
+    if (!db) {
+      return () => {
+        channel?.close();
+      };
+    }
+
+    const unsubAlerts = subscribeToLatestAlert(
+      db,
+      (remoteData: any) => {
+        if (!remoteData || !remoteData.id) return;
+        if (remoteData.id === lastReceivedAlertIdRef.current) return;
+        lastReceivedAlertIdRef.current = remoteData.id;
+
+        // Skip if sender is the current user on this device
+        if (remoteData.senderId && remoteData.senderId === (userProfile?.username || 'user')) {
+          return;
+        }
+
+        // Ignore alerts older than 2 minutes
+        if (remoteData.updatedAt) {
+          const ageMs = Date.now() - new Date(remoteData.updatedAt).getTime();
+          if (ageMs > 120000) return;
+        }
+
+        const alertItem: ClinicAlertPayload = {
+          id: remoteData.id,
+          type: remoteData.type || 'finish',
+          title: remoteData.title,
+          message: remoteData.message,
+          ticket: remoteData.ticket,
+          timestamp: remoteData.timestamp || formatAppTime(new Date()),
+          patientId: remoteData.patientId,
+          visitId: remoteData.visitId,
+        };
+
+        const alertConfig = loadAlertSettings();
+        if (alertConfig.audioEnabled) {
+          if (
+            (alertItem.type === 'finish' && alertConfig.finishExamAudio) ||
+            (alertItem.type === 'call' && alertConfig.callPatientAudio) ||
+            (alertItem.type === 'new_visit' && alertConfig.newVisitAudio)
+          ) {
+            playSingleAlertSound(alertItem.type);
+          }
+        }
+
+        if (alertConfig.visualEnabled) {
+          registerAlert(alertItem, { skipPublish: true });
+          setTimeout(() => {
+            setCallingBanner((prev) => (prev?.id === alertItem.id ? null : prev));
+          }, 6000);
+        }
+      },
+      (err) => console.warn('Latest alert subscription error:', err)
+    );
+
+    return () => {
+      channel?.close();
+      unsubAlerts();
+    };
+  }, [db, userProfile?.username]);
 
   const handleToggleDoctorStatus = async () => {
     const nextStatus = doctorStatus === 'available' ? 'break' : 'available';

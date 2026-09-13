@@ -6,6 +6,7 @@ import { exportPatientMedicalDossierPdf } from '../../utils/exportPatientDossier
 import { toEnglishDigits } from '../../utils/numberUtils';
 import { printPrescriptionDocument, printVisitReportDocument } from '../../utils/printPrescription';
 import { getPrescriptionDoctorInfo } from '../../utils/prescriptionDoctor';
+import { findBranch } from '../../utils/clinicBranches';
 import type {
   FollowUp,
   Invoice,
@@ -238,13 +239,16 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
 
   // WhatsApp general card sender
   const handleSendPatientSummaryWhatsapp = () => {
+    const branch = findBranch();
+    const branchPhone = branch.phone || branch.mobile || '01092847162';
     const message = `مرحباً بك أستاذ/ة *${fullName || patient.name}* 🌸
 ملفكم الطبي مسجل لدى *عيادة ${CLINIC_INFO.doctorName}* 🩺
 رقم الملف: *#${toEnglishDigits(patient.fileNumber || 1)}*
 تاريخ فتح الملف: *${toEnglishDigits(patient.registrationDate || '2024-02-10')}*
+📍 ${branch.name}${branch.address ? `: ${branch.address}` : ''}
+📞 للتواصل والاستفسار: ${branchPhone}
 
-مع تمنياتنا لكم بتمام الصحة والعافية ✨
-للاستفسار والتواصل: 01092847162`;
+مع تمنياتنا لكم بتمام الصحة والعافية ✨`;
     window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
@@ -1148,13 +1152,16 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
                     followUpSection = `\n\n🗓 *موعد الاستشارة القادمة:* ${vFollowUp.scheduledDate}`;
                   }
 
+                  const branch = findBranch();
+                  const branchPhone = branch.phone || branch.mobile || '01092847162';
                   const message = `مرحباً بك أستاذ/ة *${fullName || patient.name}* 🌸
 تفاصيل زيارتكم الطبية لدى *عيادة ${CLINIC_INFO.doctorName}* 🩺
 
 🗓 *تاريخ الزيارة:* ${visitDateStr}
 📋 *التشخيص الإكلينيكي:* ${diagnosisStr}${medsSection}${labsSection}${radsSection}${followUpSection}
 
-📍 عيادة الباطنة التخصصية
+📍 ${branch.name}${branch.address ? `: ${branch.address}` : ''}
+📞 للتواصل والاستفسار: ${branchPhone}
 مع تمنياتنا لكم بتمام الشفاء والعافية ✨`;
 
                   window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`, '_blank');

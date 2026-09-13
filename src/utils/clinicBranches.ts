@@ -12,11 +12,26 @@ export interface ClinicBranchItem {
 
 /**
  * Returns all active branches configured in the clinic.
- * Prioritizes user settings saved in localStorage (`soli_prescription_settings`),
+ * Prioritizes user settings saved in localStorage (`soli_clinic_branches` or `soli_prescription_settings`),
  * falling back to `CLINIC_INFO.branches`.
  */
 export function getClinicBranches(): ClinicBranchItem[] {
   try {
+    const customBranches = localStorage.getItem('soli_clinic_branches');
+    if (customBranches) {
+      const parsed = JSON.parse(customBranches);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((b: any, index: number) => ({
+          id: b.id || `branch-${index}`,
+          name: b.name || `فرع ${index + 1}`,
+          address: b.address || '',
+          phone: b.phone || b.mobile || '',
+          mobile: b.mobile || b.phone || '',
+          workingHours: b.workingHours || '',
+        }));
+      }
+    }
+
     const cached = localStorage.getItem('soli_prescription_settings');
     if (cached) {
       const parsed = JSON.parse(cached);
@@ -57,6 +72,38 @@ export function getClinicBranches(): ClinicBranchItem[] {
       workingHours: 'يومياً ما عدا الجمعة',
     },
   ];
+}
+
+/**
+ * Saves clinic branches to localStorage and syncs with prescription settings.
+ * Dispatches an update event so all screens re-render instantaneously.
+ */
+export function saveClinicBranches(branches: ClinicBranchItem[]): void {
+  try {
+    localStorage.setItem('soli_clinic_branches', JSON.stringify(branches));
+
+    // Also update branches in prescription settings if present
+    const cachedRx = localStorage.getItem('soli_prescription_settings');
+    if (cachedRx) {
+      try {
+        const parsed = JSON.parse(cachedRx);
+        parsed.branches = branches.map((b) => ({
+          id: b.id,
+          name: b.name,
+          address: b.address,
+          phone: b.phone || b.mobile || '',
+          workingHours: b.workingHours || '',
+        }));
+        localStorage.setItem('soli_prescription_settings', JSON.stringify(parsed));
+      } catch {}
+    }
+
+    window.dispatchEvent(new CustomEvent('soli_branches_updated', { detail: branches }));
+    window.dispatchEvent(new Event('soli_prescription_updated'));
+    window.dispatchEvent(new Event('storage'));
+  } catch (err) {
+    console.error('Failed to save clinic branches:', err);
+  }
 }
 
 /**

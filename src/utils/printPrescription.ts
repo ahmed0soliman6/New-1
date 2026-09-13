@@ -8,6 +8,7 @@
 
 import QRCode from 'qrcode';
 import { toEnglishDigits } from './numberUtils';
+import { formatQrDestination } from '../components/QrCodeImage';
 
 export interface PrintPrescriptionData {
   config: {
@@ -149,21 +150,22 @@ const MARGIN_MAP: Record<string, string> = {
   balanced: '7mm',
 };
 
-export async function printPrescriptionDocument(data: PrintPrescriptionData) {
+export async function generatePrescriptionHtml(data: PrintPrescriptionData): Promise<string> {
   const { config, patient, items = [], diagnoses = [], lifestyleAdvice, followupDate } = data;
 
   let qrSvgHtml = '';
   if (config.showQr) {
     try {
-      const clean = (config.qrWhatsappPhone || '01092847162').replace(/\D/g, '');
-      const formatted = clean.startsWith('0') ? `2${clean}` : clean;
-      const link = config.qrType === 'whatsapp'
-        ? `https://wa.me/${formatted}`
-        : (config.qrCustomUrl || 'https://solimedical.com');
+      const destination = formatQrDestination(
+        config.qrType || 'whatsapp',
+        config.qrWhatsappPhone,
+        config.qrCustomUrl
+      );
 
-      qrSvgHtml = await QRCode.toString(link, {
+      qrSvgHtml = await QRCode.toString(destination.link, {
         type: 'svg',
         margin: 1,
+        errorCorrectionLevel: 'M',
         color: {
           dark: '#0f172a',
           light: '#ffffff'
@@ -478,7 +480,7 @@ export async function printPrescriptionDocument(data: PrintPrescriptionData) {
 
                 ${config.showLogo ? `
                   <div class="logo-box">
-                    ${config.logoUrl ? `<img src="${config.logoUrl}" class="logo-img" alt="Logo" />` : '<div class="logo-fallback">Rx</div>'}
+                    ${config.logoUrl ? `<img src="${config.logoUrl}" class="logo-img" width="44" height="44" style="width: 44px !important; height: 44px !important; max-width: 44px !important; max-height: 44px !important; object-fit: contain;" alt="Logo" />` : '<div class="logo-fallback">Rx</div>'}
                     <div style="font-size: 7px; font-weight: bold; color: #94a3b8; margin-top: 2px; text-transform: uppercase;">SOLI CLINIC</div>
                   </div>
                 ` : ''}
@@ -555,6 +557,12 @@ export async function printPrescriptionDocument(data: PrintPrescriptionData) {
     </body>
     </html>
   `;
+
+  return htmlContent;
+}
+
+export async function printPrescriptionDocument(data: PrintPrescriptionData) {
+  const htmlContent = await generatePrescriptionHtml(data);
 
   // Create an invisible iframe to execute the print job cleanly
   const existingFrame = document.getElementById('soli-print-iframe');

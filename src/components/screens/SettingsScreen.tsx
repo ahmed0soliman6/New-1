@@ -10,6 +10,7 @@ import { MedicalCatalogsManager } from '../settings/MedicalCatalogsManager';
 import { UserManagementPanel } from '../settings/UserManagementPanel';
 import { RecurringTemplatesManager } from '../settings/RecurringTemplatesManager';
 import { ChangePasswordCard } from '../settings/ChangePasswordCard';
+import { ClinicBranchesPanel } from '../settings/ClinicBranchesPanel';
 import { APP_VERSION } from '../../constants/version';
 import { usePermissions } from '../../context/AuthContext';
 import { PermissionGate } from '../auth/PermissionGate';
@@ -135,6 +136,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   // Accordion Collapsible Open States (All folded/collapsed by default)
   const [openCards, setOpenCards] = useState<Record<string, boolean>>({
     language: false,
+    branches: false,
     pricing: false,
     password: false,
     services: false,
@@ -618,6 +620,46 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                       </span>
                     </div>
                   </div>
+                </div>
+              )}
+            </div>
+
+            {/* ACCORDION CARD: Clinic Branches & Contact Details (فروع العيادة والعناوين وأرقام التواصل) */}
+            <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
+              <button
+                type="button"
+                onClick={() => toggleCard('branches')}
+                className={`w-full p-5 flex items-center justify-between ${isRTL ? 'text-right' : 'text-left'} cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5 transition-colors`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-teal-50 dark:bg-[#00c2cb]/15 text-[#008f97] dark:text-[#00c2cb] flex items-center justify-center font-bold">
+                    <span className="material-symbols-outlined text-xl">apartment</span>
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
+                      <span>{language === 'en' ? '2. Clinic Branches & Official Contacts' : '2. فروع العيادة والعناوين وأرقام التواصل'}</span>
+                      <span className="text-[10px] bg-teal-500/10 text-[#008f97] dark:text-[#00c2cb] px-2 py-0.5 rounded-full border border-teal-500/20 font-bold">
+                        {language === 'en' ? 'Branches & WhatsApp' : 'الفروع والواتساب'}
+                      </span>
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
+                      {language === 'en'
+                        ? 'Manage clinic branches, addresses, reservation phone numbers, and working hours used in reminders & Rx'
+                        : 'إدارة وتعديل فروع العيادة، العناوين الحقيقية، أرقام هواتف تأكيد الحجز ومواعيد العمل المستخدمة في رسائل الواتساب والروشتة'}
+                    </p>
+                  </div>
+                </div>
+                <span
+                  className="material-symbols-outlined text-slate-400 text-2xl transition-transform duration-200"
+                  style={{ transform: openCards.branches ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                >
+                  expand_more
+                </span>
+              </button>
+
+              {openCards.branches && (
+                <div className="p-5 pt-2 border-t border-slate-100 dark:border-white/5">
+                  <ClinicBranchesPanel />
                 </div>
               )}
             </div>

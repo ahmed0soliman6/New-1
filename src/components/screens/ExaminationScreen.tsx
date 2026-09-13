@@ -3,6 +3,7 @@ import { QrCodeImage } from '../QrCodeImage';
 import { exportPrescriptionToPdf } from '../../utils/exportPrescriptionPdf';
 import { printPrescriptionDocument } from '../../utils/printPrescription';
 import { CLINIC_INFO } from '../../data/previewClinicData';
+import { getClinicBranches, findBranch, ClinicBranchItem } from '../../utils/clinicBranches';
 import {
   ScreenType,
   PatientListItem,
@@ -191,7 +192,14 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
   };
 
   const handleExportPDF = () => {
-    exportPrescriptionToPdf('printable-prescription-pad', patient ? patient.name : 'مريض');
+    exportPrescriptionToPdf({
+      config: prescriptionConfig,
+      patient,
+      items: activePrescription,
+      diagnoses: patientDiagnoses,
+      lifestyleAdvice,
+      followupDate,
+    }, patient ? patient.name : 'مريض');
   };
 
   // Sync display settings on mount and tab focus
@@ -240,6 +248,26 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [copiedWhatsAppText, setCopiedWhatsAppText] = useState(false);
+
+  // Clinic Branches for WhatsApp message
+  const [clinicBranches, setClinicBranches] = useState<ClinicBranchItem[]>(() => getClinicBranches());
+  const [selectedWhatsAppBranchId, setSelectedWhatsAppBranchId] = useState<string>(() => {
+    const branches = getClinicBranches();
+    if (patient?.branch) {
+      const match = branches.find((b) => b.name === patient.branch || b.id === patient.branch);
+      if (match) return match.id;
+    }
+    return branches[0]?.id || '';
+  });
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      const updated = getClinicBranches();
+      setClinicBranches(updated);
+    };
+    window.addEventListener('soli_branches_updated', handleUpdate);
+    return () => window.removeEventListener('soli_branches_updated', handleUpdate);
+  }, []);
 
   const handleOpenExamForQueuePatient = (item: QueueItem) => {
     const matched = availablePatients.find((p) => p.id === item.patientId || p.id === item.id || p.name === item.patientName);
@@ -544,14 +572,21 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
       }
     }
 
+    const activeBranch =
+      clinicBranches.find((b) => b.id === selectedWhatsAppBranchId) ||
+      clinicBranches[0] ||
+      findBranch();
+    const activeBranchPhone = activeBranch.phone || activeBranch.mobile || '01092847162';
+    const doctorDisplayName = prescriptionConfig.doctorName || CLINIC_INFO.doctorName;
+
     return `مرحباً بك أستاذ/ة *${patient?.name || 'مريض'}* 🌸
-إليك تفاصيل وتقارير زيارتكم الطبية لدى *عيادة ${CLINIC_INFO.doctorName}* 🩺
+إليك تفاصيل وتقارير زيارتكم الطبية لدى *عيادة ${doctorDisplayName}* 🩺
 
 🗓 *تاريخ الزيارة:* ${todayStr}
 📋 *التشخيص الإكلينيكي:* ${diagnosisList}${medsSection}${labsSection}${radsSection}${adviceSection}${followUpSection}
 
-📍 *العنوان:* عيادة الباطنة التخصصية - المهندسين
-📞 *للتأكيد والاستفسار:* 01092847162
+📍 *الفرع:* ${activeBranch.name}${activeBranch.address ? `\nالعنوان: ${activeBranch.address}` : ''}
+📞 *للتأكيد والاستفسار:* ${activeBranchPhone}
 مع تمنياتنا لكم بتمام الشفاء ودوام الصحة والعافية ✨`;
   };
 
@@ -1893,6 +1928,27 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
               سيتم فتح رابط واتساب مباشر لإرسال ملخص الروشتة والتعليمات والتحاليل المطلوبة للمريض <strong>{patient?.name || 'مريض'}</strong> على الرقم <strong>{patient?.phone || 'غير مسجل'}</strong>.
             </p>
 
+            {/* Branch Selector */}
+            {clinicBranches.length > 0 && (
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-sm text-teal-600">apartment</span>
+                  <span>اختيار فرع العيادة للمتابعة:</span>
+                </label>
+                <select
+                  value={selectedWhatsAppBranchId}
+                  onChange={(e) => setSelectedWhatsAppBranchId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/10 text-xs font-bold text-slate-900 dark:text-white focus:ring-2 focus:ring-[#00c2cb] focus:outline-none"
+                >
+                  {clinicBranches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name} - {b.phone || b.mobile}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div className="bg-slate-50 dark:bg-[#080e1b] p-3 rounded-xl border border-slate-200 dark:border-white/5 text-xs text-slate-700 dark:text-[#dde2f5] max-h-40 overflow-y-auto whitespace-pre-wrap font-mono">
               {generateWhatsAppMessage()}
             </div>
@@ -2170,7 +2226,10 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                       <img
                         src={prescriptionConfig.logoUrl}
                         alt="Clinic Logo"
-                        className="w-12 h-12 object-contain"
+                        className="w-11 h-11 object-contain"
+                        style={{ width: '44px', height: '44px', maxWidth: '44px', maxHeight: '44px', objectFit: 'contain' }}
+                        width={44}
+                        height={44}
                         referrerPolicy="no-referrer"
                       />
                     ) : (
@@ -2206,6 +2265,12 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
               <span className="font-bold text-slate-600">اسم المريض:</span>
               <span className="font-bold text-slate-900">{patient ? patient.name : 'مريض غير محدد'}</span>
             </div>
+            {patient?.fileNumber && (
+              <div className="flex items-center gap-1">
+                <span className="font-bold text-slate-600">رقم الملف:</span>
+                <span className="font-bold text-slate-900">#{patient.fileNumber}</span>
+              </div>
+            )}
             <div className="flex items-center gap-1">
               <span className="font-bold text-slate-600">السن:</span>
               <span className="font-bold text-slate-900">{patient ? `${patient.age} سنة` : '-'}</span>
@@ -2226,54 +2291,54 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                 : 'space-y-2.5'
             }`}
           >
-            <div className="flex items-center gap-2 border-b border-slate-200 pb-1 text-left" dir="ltr">
-              <span className="text-2xl font-serif font-black text-[#008f97] italic">℞</span>
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Rx</span>
-            </div>
-
-            {/* Items List */}
-            <div className="space-y-2 text-slate-900 text-left" dir="ltr">
-              {activePrescription && activePrescription.length > 0 ? (
-                activePrescription.map((item, idx) => (
-                  <div key={item.id || idx} className="p-2 rounded-lg bg-slate-50/80 border border-slate-100 flex items-start justify-between gap-2 text-xs text-left" dir="ltr">
-                    <div className="text-left">
-                      <div className="font-bold text-slate-900">
-                        {idx + 1}. {item.drugName} {item.strength || ''} {item.dosageForm || ''} {item.scientificName ? `(${item.scientificName})` : ''}
-                      </div>
-                      <div className="text-[11px] text-teal-700 font-medium">
-                        {item.dosageInstructions || item.dosage || ''} {item.timing ? `• ${item.timing}` : ''} {item.duration ? `• لمدة ${item.duration}` : ''}
-                      </div>
-                      {item.notes && (
-                        <div className="text-[10px] text-slate-500 italic mt-0.5">توجيهات إضافية: {item.notes}</div>
-                      )}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-center py-8 text-slate-400 text-xs">
-                  لا توجد أدوية مضافة للروشتة حالياً.
-                </div>
-              )}
-            </div>
-
-            {/* Diagnosis / Notes in print - strictly LTR and English */}
+            {/* Diagnosis / Notes in print - strictly LTR and English on TOP */}
             {patientDiagnoses && patientDiagnoses.length > 0 && (
-              <div className="p-2 rounded-lg bg-slate-50 border border-slate-100 text-[11px] text-slate-800 text-left leading-relaxed font-sans" dir="ltr">
-                <span className="font-bold text-slate-700">Diagnosis:</span>{' '}
+              <div className="p-2 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-slate-800 text-left leading-relaxed font-sans" dir="ltr">
+                <strong className="text-[#008f97]">Diagnosis:</strong>{' '}
                 <span className="font-semibold text-slate-900">
-                  {patientDiagnoses.map((d) => d.nameEn || d.nameAr).join(', ')}
+                  {patientDiagnoses.map((d) => d.nameEn || d.nameAr || d.code).join(', ')}
                 </span>
               </div>
             )}
 
-            {/* Lifestyle advice / notes */}
+            {/* Treatment section with Rx symbol positioned next to medications */}
+            <div className="flex items-start gap-3" dir="ltr">
+              <div className="flex flex-col items-center select-none pt-0.5 shrink-0">
+                <span className="text-3xl font-serif font-black text-[#008f97] italic leading-none">℞</span>
+              </div>
+              <div className="flex-1 space-y-2 text-slate-900 text-left" dir="ltr">
+                {activePrescription && activePrescription.length > 0 ? (
+                  activePrescription.map((item, idx) => (
+                    <div key={item.id || idx} className="p-2 rounded-lg bg-slate-50/80 border border-slate-100 flex items-start justify-between gap-2 text-xs text-left" dir="ltr">
+                      <div className="text-left">
+                        <div className="font-bold text-slate-900">
+                          {idx + 1}. {item.drugName} {item.strength || ''} {item.dosageForm || ''} {item.scientificName ? `(${item.scientificName})` : ''}
+                        </div>
+                        <div className="text-[11px] text-teal-700 font-medium">
+                          {item.dosageInstructions || item.dosage || ''} {item.timing ? `• ${item.timing}` : ''} {item.duration ? `• لمدة ${item.duration}` : ''}
+                        </div>
+                        {item.notes && (
+                          <div className="text-[10px] text-slate-500 italic mt-0.5">توجيهات إضافية: {item.notes}</div>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-6 text-slate-400 text-xs">
+                    لا توجد أدوية مضافة للروشتة حالياً.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Lifestyle advice / notes below medications */}
             {lifestyleAdvice && (
               <div className="p-2 rounded-lg bg-teal-50/40 border border-teal-100 text-[10px] text-teal-900 text-right leading-relaxed" dir="rtl">
-                <span className="font-bold">تعليمات طبية:</span> {lifestyleAdvice}
+                <strong className="text-[#0f766e]">تعليمات طبية:</strong> {lifestyleAdvice}
               </div>
             )}
 
-            {/* Follow-up date */}
+            {/* Follow-up date below advice */}
             {followupDate && (
               <div className="p-2 rounded-lg bg-amber-50/40 border border-amber-100 text-[10px] text-amber-900 text-right font-bold" dir="rtl">
                 موعد الاستشارة القادمة: {followupDate}
@@ -2394,7 +2459,10 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                               <img
                                 src={prescriptionConfig.logoUrl}
                                 alt="Clinic Logo"
-                                className="w-10 h-10 object-contain"
+                                className="w-11 h-11 object-contain"
+                                style={{ width: '44px', height: '44px', maxWidth: '44px', maxHeight: '44px', objectFit: 'contain' }}
+                                width={44}
+                                height={44}
                                 referrerPolicy="no-referrer"
                               />
                             ) : (
@@ -2430,6 +2498,12 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                       <span className="font-bold text-slate-600">المريض:</span>
                       <span className="font-bold text-slate-900 truncate max-w-[120px]">{patient ? patient.name : 'مريض غير محدد'}</span>
                     </div>
+                    {patient?.fileNumber && (
+                      <div className="flex items-center gap-1">
+                        <span className="font-bold text-slate-600">رقم الملف:</span>
+                        <span className="font-bold text-slate-900">#{patient.fileNumber}</span>
+                      </div>
+                    )}
                     <div className="flex items-center gap-1">
                       <span className="font-bold text-slate-600">السن:</span>
                       <span className="font-bold text-slate-900">{patient ? `${patient.age} سنة` : '-'}</span>
@@ -2450,51 +2524,59 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                         : 'space-y-2'
                     }`}
                   >
-                    <div className="flex items-center gap-1 border-b border-slate-200 pb-0.5 text-left" dir="ltr">
-                      <span className="text-xl font-serif font-black text-[#008f97] italic">℞</span>
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Rx</span>
-                    </div>
+                    {/* Diagnosis / Notes in print - strictly LTR and English ON TOP */}
+                    {patientDiagnoses && patientDiagnoses.length > 0 && (
+                      <div className="p-1.5 rounded-lg bg-slate-50 border border-slate-200 text-[10px] text-slate-800 text-left leading-relaxed font-sans" dir="ltr">
+                        <strong className="text-[#008f97]">Diagnosis:</strong>{' '}
+                        <span className="font-semibold text-slate-900">
+                          {patientDiagnoses.map((d) => d.nameEn || d.nameAr || d.code).join(', ')}
+                        </span>
+                      </div>
+                    )}
 
-                    {/* Items List */}
-                    <div className="space-y-1.5 text-slate-900 text-left" dir="ltr">
-                      {activePrescription && activePrescription.length > 0 ? (
-                        activePrescription.map((item, idx) => (
-                          <div key={item.id || idx} className="p-1.5 rounded-lg bg-slate-50/80 border border-slate-100 flex items-start justify-between gap-2 text-[11px] text-left" dir="ltr">
-                            <div className="text-left">
-                              <div className="font-bold text-slate-900">
-                                {idx + 1}. {item.drugName} {item.strength || ''} {item.dosageForm || ''} {item.scientificName ? `(${item.scientificName})` : ''}
-                              </div>
-                              <div className="text-[10px] text-teal-700 font-medium">
-                                {item.dosageInstructions || item.dosage || ''} {item.timing ? `• ${item.timing}` : ''} {item.duration ? `• لمدة ${item.duration}` : ''}
+                    {/* Treatment section with Rx symbol positioned NEXT to medications */}
+                    <div className="flex items-start gap-2.5" dir="ltr">
+                      <div className="flex flex-col items-center select-none pt-0.5 shrink-0">
+                        <span className="text-2xl font-serif font-black text-[#008f97] italic leading-none">℞</span>
+                      </div>
+
+                      {/* Items List */}
+                      <div className="flex-1 space-y-1.5 text-slate-900 text-left" dir="ltr">
+                        {activePrescription && activePrescription.length > 0 ? (
+                          activePrescription.map((item, idx) => (
+                            <div key={item.id || idx} className="p-1.5 rounded-lg bg-slate-50/80 border border-slate-100 flex items-start justify-between gap-2 text-[11px] text-left" dir="ltr">
+                              <div className="text-left">
+                                <div className="font-bold text-slate-900">
+                                  {idx + 1}. {item.drugName} {item.strength || ''} {item.dosageForm || ''} {item.scientificName ? `(${item.scientificName})` : ''}
+                                </div>
+                                <div className="text-[10px] text-teal-700 font-medium">
+                                  {item.dosageInstructions || item.dosage || ''} {item.timing ? `• ${item.timing}` : ''} {item.duration ? `• لمدة ${item.duration}` : ''}
+                                </div>
+                                {item.notes && (
+                                  <div className="text-[9px] text-slate-500 italic mt-0.5">توجيهات إضافية: {item.notes}</div>
+                                )}
                               </div>
                             </div>
+                          ))
+                        ) : (
+                          <div className="text-center py-6 text-slate-400 text-[11px]">
+                            لا توجد أدوية مضافة للروشتة حالياً.
                           </div>
-                        ))
-                      ) : (
-                        <div className="text-center py-6 text-slate-400 text-[11px]">
-                          لا توجد أدوية مضافة للروشتة حالياً.
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
 
-                    {/* Diagnosis */}
-                    {patientDiagnoses && patientDiagnoses.length > 0 && (
-                      <div className="p-1.5 rounded-lg bg-slate-50 border border-slate-100 text-[9px] text-slate-800 text-right leading-relaxed">
-                        <span className="font-bold text-slate-600">التشخيص:</span> {patientDiagnoses.map((d) => d.nameAr).join('، ')}
-                      </div>
-                    )}
-
-                    {/* Advice */}
+                    {/* Advice below medications */}
                     {lifestyleAdvice && (
-                      <div className="p-1.5 rounded-lg bg-teal-50/40 border border-teal-100 text-[9px] text-teal-900 text-right leading-relaxed">
-                        <span className="font-bold">تعليمات:</span> {lifestyleAdvice}
+                      <div className="p-1.5 rounded-lg bg-teal-50/40 border border-teal-100 text-[9px] text-teal-900 text-right leading-relaxed" dir="rtl">
+                        <strong className="text-[#0f766e]">تعليمات:</strong> {lifestyleAdvice}
                       </div>
                     )}
 
-                    {/* Follow up */}
+                    {/* Follow up below advice */}
                     {followupDate && (
-                      <div className="p-1.5 rounded-lg bg-amber-50/40 border border-amber-100 text-[9px] text-amber-950 text-right font-bold">
-                        الاستشارة القادمة: {followupDate}
+                      <div className="p-1.5 rounded-lg bg-amber-50/40 border border-amber-100 text-[9px] text-amber-950 text-right font-bold" dir="rtl">
+                        موعد الاستشارة القادمة: {followupDate}
                       </div>
                     )}
                   </div>

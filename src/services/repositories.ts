@@ -405,6 +405,47 @@ export const subscribeToPrescriptionSettings = <T = Record<string, unknown>>(
   );
 };
 
+export const subscribeToLatestAlert = <T = Record<string, unknown>>(
+  db: Firestore,
+  next: (alert: T | null) => void,
+  error: (reason: Error) => void
+): Unsubscribe => {
+  return onSnapshot(
+    doc(db, 'settings', 'latestAlert'),
+    (snap) => {
+      if (snap.exists()) {
+        next(normalize(snap.data()) as T);
+      } else {
+        next(null);
+      }
+    },
+    (reason) => {
+      error(handleFirestoreError(reason, OperationType.GET, 'settings/latestAlert'));
+    }
+  );
+};
+
+export async function publishAlert(
+  db: Firestore,
+  alert: {
+    id: string;
+    type: string;
+    title: string;
+    message: string;
+    ticket?: string;
+    timestamp: string;
+    patientId?: string;
+    visitId?: string;
+    senderId?: string;
+  }
+): Promise<void> {
+  const ref = doc(db, 'settings', 'latestAlert');
+  await setDoc(ref, {
+    ...alert,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
 export async function saveCatalogItem<T extends Record<string, unknown>>(
   db: Firestore,
   collectionName: string,

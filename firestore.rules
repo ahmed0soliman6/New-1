@@ -399,7 +399,7 @@ service cloud.firestore {
 
     match /settings/{settingId} {
       allow read: if isUserActive();
-      allow create, update: if isAdmin() || isDoctor() || hasPermission('system-settings', 'update') || hasPermission('prescription-pad', 'update') || hasPermission('waiting-queue', 'update');
+      allow create, update: if isUserActive();
       allow delete: if isAdmin();
     }
 
