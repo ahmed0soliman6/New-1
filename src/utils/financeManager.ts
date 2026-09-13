@@ -1,5 +1,5 @@
 import { db } from '../services/firebase';
-import { doc, setDoc, deleteDoc, collection, getDocs } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 
 export interface MedicalServiceItem {
   id: string;
@@ -67,33 +67,54 @@ export const DEFAULT_CLINIC_EXPENSES: ClinicExpenseRecord[] = [
   },
 ];
 
+const STORAGE_SERVICES_KEY = 'soli_medical_services';
+const STORAGE_EXPENSE_CATS_KEY = 'soli_expense_categories';
+const STORAGE_EXPENSES_KEY = 'soli_clinic_expenses';
+
 let cachedServices: MedicalServiceItem[] = DEFAULT_MEDICAL_SERVICES;
 let cachedExpenseCategories: ExpenseCategoryItem[] = DEFAULT_EXPENSE_CATEGORIES;
-let cachedClinicExpenses: ClinicExpenseRecord[] = [];
+let cachedClinicExpenses: ClinicExpenseRecord[] = DEFAULT_CLINIC_EXPENSES;
 
 // ==========================================
-// 1. Medical Services (الوارد والخدمات الطبية)
+// 1. Medical Services (الوارد والخدمات الطبية والتسعير)
 // ==========================================
 export function loadMedicalServices(): MedicalServiceItem[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_SERVICES_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        cachedServices = parsed;
+        return parsed;
+      }
+    }
+  } catch {}
   return cachedServices;
 }
 
 export function setCachedMedicalServices(services: MedicalServiceItem[]) {
-  if (Array.isArray(services) && services.length > 0) {
+  if (Array.isArray(services)) {
     cachedServices = services;
+    try {
+      localStorage.setItem(STORAGE_SERVICES_KEY, JSON.stringify(services));
+    } catch {}
+    window.dispatchEvent(new CustomEvent('soli_services_updated', { detail: services }));
   }
 }
 
 export function saveMedicalServices(services: MedicalServiceItem[]) {
   cachedServices = services;
   try {
-    localStorage.removeItem('soli_medical_services');
-  } catch {}
+    localStorage.setItem(STORAGE_SERVICES_KEY, JSON.stringify(services));
+  } catch (err) {
+    console.warn('Failed to save medical services locally', err);
+  }
   window.dispatchEvent(new CustomEvent('soli_services_updated', { detail: services }));
 }
 
-export function addMedicalService(service: MedicalServiceItem) {
-  cachedServices = [service, ...cachedServices];
+export function addMedicalService(service: MedicalServiceItem): MedicalServiceItem[] {
+  cachedServices = [service, ...cachedServices.filter((s) => s.id !== service.id)];
+  saveMedicalServices(cachedServices);
   if (db) {
     setDoc(doc(db, 'services', service.id), service).catch((err) =>
       console.warn('Firestore service sync error:', err)
@@ -102,8 +123,9 @@ export function addMedicalService(service: MedicalServiceItem) {
   return cachedServices;
 }
 
-export function removeMedicalService(id: string) {
+export function removeMedicalService(id: string): MedicalServiceItem[] {
   cachedServices = cachedServices.filter((s) => s.id !== id);
+  saveMedicalServices(cachedServices);
   if (db) {
     deleteDoc(doc(db, 'services', id)).catch((err) =>
       console.warn('Firestore service delete error:', err)
@@ -112,8 +134,9 @@ export function removeMedicalService(id: string) {
   return cachedServices;
 }
 
-export function updateMedicalService(id: string, updates: Partial<MedicalServiceItem>) {
+export function updateMedicalService(id: string, updates: Partial<MedicalServiceItem>): MedicalServiceItem[] {
   cachedServices = cachedServices.map((s) => (s.id === id ? { ...s, ...updates } : s));
+  saveMedicalServices(cachedServices);
   if (db) {
     const target = cachedServices.find((s) => s.id === id);
     if (target) {
@@ -129,20 +152,36 @@ export function updateMedicalService(id: string, updates: Partial<MedicalService
 // 2. Expense Categories (بنود المنصرف)
 // ==========================================
 export function loadExpenseCategories(): ExpenseCategoryItem[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_EXPENSE_CATS_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        cachedExpenseCategories = parsed;
+        return parsed;
+      }
+    }
+  } catch {}
   return cachedExpenseCategories;
 }
 
 export function setCachedExpenseCategories(categories: ExpenseCategoryItem[]) {
-  if (Array.isArray(categories) && categories.length > 0) {
+  if (Array.isArray(categories)) {
     cachedExpenseCategories = categories;
+    try {
+      localStorage.setItem(STORAGE_EXPENSE_CATS_KEY, JSON.stringify(categories));
+    } catch {}
+    window.dispatchEvent(new CustomEvent('soli_expense_categories_updated', { detail: categories }));
   }
 }
 
 export function saveExpenseCategories(categories: ExpenseCategoryItem[]) {
   cachedExpenseCategories = categories;
   try {
-    localStorage.removeItem('soli_expense_categories');
-  } catch {}
+    localStorage.setItem(STORAGE_EXPENSE_CATS_KEY, JSON.stringify(categories));
+  } catch (err) {
+    console.warn('Failed to save expense categories locally', err);
+  }
   window.dispatchEvent(new CustomEvent('soli_expense_categories_updated', { detail: categories }));
 }
 
@@ -155,6 +194,7 @@ export function addExpenseCategory(name: string): ExpenseCategoryItem[] {
     name: cleanName,
   };
   cachedExpenseCategories = [...cachedExpenseCategories, newItem];
+  saveExpenseCategories(cachedExpenseCategories);
   if (db) {
     setDoc(doc(db, 'expenseCategories', newItem.id), newItem).catch((err) =>
       console.warn('Firestore expense category sync error:', err)
@@ -165,6 +205,7 @@ export function addExpenseCategory(name: string): ExpenseCategoryItem[] {
 
 export function removeExpenseCategory(id: string): ExpenseCategoryItem[] {
   cachedExpenseCategories = cachedExpenseCategories.filter((c) => c.id !== id && c.name !== id);
+  saveExpenseCategories(cachedExpenseCategories);
   if (db) {
     deleteDoc(doc(db, 'expenseCategories', id)).catch((err) =>
       console.warn('Firestore expense category delete error:', err)
@@ -177,25 +218,42 @@ export function removeExpenseCategory(id: string): ExpenseCategoryItem[] {
 // 3. Clinic Expenses (المنصرف والمصروفات المسجلة)
 // ==========================================
 export function loadClinicExpenses(): ClinicExpenseRecord[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_EXPENSES_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        cachedClinicExpenses = parsed;
+        return parsed;
+      }
+    }
+  } catch {}
   return cachedClinicExpenses;
 }
 
 export function setCachedClinicExpenses(expenses: ClinicExpenseRecord[]) {
   if (Array.isArray(expenses)) {
     cachedClinicExpenses = expenses;
+    try {
+      localStorage.setItem(STORAGE_EXPENSES_KEY, JSON.stringify(expenses));
+    } catch {}
+    window.dispatchEvent(new CustomEvent('soli_clinic_expenses_updated', { detail: expenses }));
   }
 }
 
 export function saveClinicExpenses(expenses: ClinicExpenseRecord[]) {
   cachedClinicExpenses = expenses;
   try {
-    localStorage.removeItem('soli_clinic_expenses');
-  } catch {}
+    localStorage.setItem(STORAGE_EXPENSES_KEY, JSON.stringify(expenses));
+  } catch (err) {
+    console.warn('Failed to save clinic expenses locally', err);
+  }
   window.dispatchEvent(new CustomEvent('soli_clinic_expenses_updated', { detail: expenses }));
 }
 
 export function addClinicExpense(expense: ClinicExpenseRecord): ClinicExpenseRecord[] {
-  cachedClinicExpenses = [expense, ...cachedClinicExpenses];
+  cachedClinicExpenses = [expense, ...cachedClinicExpenses.filter((e) => e.id !== expense.id)];
+  saveClinicExpenses(cachedClinicExpenses);
   if (db) {
     const cleanedExpense = Object.fromEntries(
       Object.entries(expense).filter(([_, v]) => v !== undefined)
@@ -209,6 +267,7 @@ export function addClinicExpense(expense: ClinicExpenseRecord): ClinicExpenseRec
 
 export function removeClinicExpense(id: string): ClinicExpenseRecord[] {
   cachedClinicExpenses = cachedClinicExpenses.filter((e) => e.id !== id);
+  saveClinicExpenses(cachedClinicExpenses);
   if (db) {
     deleteDoc(doc(db, 'expenses', id)).catch((err) =>
       console.warn('Firestore expense delete error:', err)

@@ -17,6 +17,7 @@ import {
   ClinicExpenseRecord,
 } from '../../utils/financeManager';
 import { db } from '../../services/firebase';
+import { doc, setDoc } from 'firebase/firestore';
 import {
   subscribeToServices,
   subscribeToExpenseCategories,
@@ -51,6 +52,29 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
   const [expenseCategories, setExpenseCategories] = useState<ExpenseCategoryItem[]>(loadExpenseCategories);
   const [expenses, setExpenses] = useState<ClinicExpenseRecord[]>(loadClinicExpenses);
 
+  // Sync with local event dispatches (when changes happen in Settings)
+  useEffect(() => {
+    const handleServicesUpdate = () => {
+      setMedicalServices(loadMedicalServices());
+    };
+    const handleExpCatsUpdate = () => {
+      setExpenseCategories(loadExpenseCategories());
+    };
+    const handleExpensesUpdate = () => {
+      setExpenses(loadClinicExpenses());
+    };
+
+    window.addEventListener('soli_services_updated', handleServicesUpdate);
+    window.addEventListener('soli_expense_categories_updated', handleExpCatsUpdate);
+    window.addEventListener('soli_clinic_expenses_updated', handleExpensesUpdate);
+
+    return () => {
+      window.removeEventListener('soli_services_updated', handleServicesUpdate);
+      window.removeEventListener('soli_expense_categories_updated', handleExpCatsUpdate);
+      window.removeEventListener('soli_clinic_expenses_updated', handleExpensesUpdate);
+    };
+  }, []);
+
   // Filter & Search states
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTimeframe, setSelectedTimeframe] = useState<TimeframeOption>('all');
@@ -77,9 +101,17 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
     const unsubServices = subscribeToServices(
       db,
       (srvs) => {
-        if (srvs && srvs.length > 0) {
-          setMedicalServices(srvs as MedicalServiceItem[]);
-          setCachedMedicalServices(srvs as MedicalServiceItem[]);
+        if (Array.isArray(srvs)) {
+          if (srvs.length > 0) {
+            setMedicalServices(srvs as MedicalServiceItem[]);
+            setCachedMedicalServices(srvs as MedicalServiceItem[]);
+          } else {
+            // If firestore is empty, push local categories to firestore
+            const current = loadMedicalServices();
+            current.forEach((s) => {
+              setDoc(doc(db!, 'services', s.id), s).catch(() => {});
+            });
+          }
         }
       },
       (err) => console.warn('Services sync error in FinanceScreen:', err)
@@ -88,9 +120,17 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
     const unsubExpCats = subscribeToExpenseCategories(
       db,
       (cats) => {
-        if (cats && cats.length > 0) {
-          setExpenseCategories(cats as ExpenseCategoryItem[]);
-          setCachedExpenseCategories(cats as ExpenseCategoryItem[]);
+        if (Array.isArray(cats)) {
+          if (cats.length > 0) {
+            setExpenseCategories(cats as ExpenseCategoryItem[]);
+            setCachedExpenseCategories(cats as ExpenseCategoryItem[]);
+          } else {
+            // If firestore is empty, push local categories to firestore
+            const current = loadExpenseCategories();
+            current.forEach((c) => {
+              setDoc(doc(db!, 'expenseCategories', c.id), c).catch(() => {});
+            });
+          }
         }
       },
       (err) => console.warn('Expense categories sync error in FinanceScreen:', err)
@@ -99,8 +139,10 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
     const unsubExpenses = subscribeToExpenses(
       db,
       (exps) => {
-        setExpenses(exps as ClinicExpenseRecord[]);
-        setCachedClinicExpenses(exps as ClinicExpenseRecord[]);
+        if (Array.isArray(exps)) {
+          setExpenses(exps as ClinicExpenseRecord[]);
+          setCachedClinicExpenses(exps as ClinicExpenseRecord[]);
+        }
       },
       (err) => console.warn('Expenses sync error in FinanceScreen:', err)
     );

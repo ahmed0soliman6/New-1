@@ -1,4 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import {
+  loadLifestylePresets,
+  subscribeToLifestylePresets,
+  addLifestylePreset,
+} from '../../utils/lifestyleManager';
 
 interface FollowupCardProps {
   followupDate: string;
@@ -15,32 +20,17 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
   onChangeLifestyleAdvice,
   frequentSuggestions = [],
 }) => {
-  const [advicePresets, setAdvicePresets] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('soli_lifestyle_presets');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  // Keep in sync with storage updates
-  useEffect(() => {
-    const handleStorageChange = () => {
-      try {
-        const saved = localStorage.getItem('soli_lifestyle_presets');
-        if (saved) setAdvicePresets(JSON.parse(saved));
-      } catch {
-        // Fallback
-      }
-    };
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
-
-  const [selectedPresets, setSelectedPresets] = useState<string[]>([]);
+  const [advicePresets, setAdvicePresets] = useState<string[]>(loadLifestylePresets);
   const [customAdviceInput, setCustomAdviceInput] = useState('');
   const [selectedDropdownPreset, setSelectedDropdownPreset] = useState('');
+
+  // Keep in sync with lifestyleManager across Settings, Storage & Firestore
+  useEffect(() => {
+    const unsubscribe = subscribeToLifestylePresets((presets) => {
+      setAdvicePresets(presets);
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Helper to format date string YYYY-MM-DD for N days from today
   const getDateForDays = (days: number) => {
@@ -78,14 +68,21 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
   const handleSelectFromDropdown = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
     if (!val) return;
-    let updated: string[];
-    if (selectedPresets.includes(val)) {
-      updated = selectedPresets.filter((p) => p !== val);
+
+    // Check if the advice already contains this item
+    const lines = lifestyleAdvice ? lifestyleAdvice.split('\n').map((l) => l.trim()).filter(Boolean) : [];
+    const itemWithBullet = `• ${val}`;
+    const exists = lines.some((l) => l === itemWithBullet || l === val || l.includes(val));
+
+    if (exists) {
+      // Remove it
+      const updatedLines = lines.filter((l) => l !== itemWithBullet && l !== val && !l.includes(val));
+      onChangeLifestyleAdvice(updatedLines.join('\n'));
     } else {
-      updated = [...selectedPresets, val];
+      // Add it
+      const updatedLines = [...lines, itemWithBullet];
+      onChangeLifestyleAdvice(updatedLines.join('\n'));
     }
-    setSelectedPresets(updated);
-    onChangeLifestyleAdvice(updated.map((item) => `• ${item}`).join('\n'));
     setSelectedDropdownPreset('');
   };
 
@@ -93,19 +90,16 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
     e.preventDefault();
     const trimmed = customAdviceInput.trim();
     if (!trimmed) return;
-    if (!advicePresets.includes(trimmed)) {
-      const updatedPresets = [trimmed, ...advicePresets];
-      setAdvicePresets(updatedPresets);
-      try {
-        localStorage.setItem('soli_lifestyle_presets', JSON.stringify(updatedPresets));
-      } catch (err) {
-        console.warn('Failed to save lifestyle preset', err);
-      }
-    }
-    if (!selectedPresets.includes(trimmed)) {
-      const updated = [...selectedPresets, trimmed];
-      setSelectedPresets(updated);
-      onChangeLifestyleAdvice(updated.map((item) => `• ${item}`).join('\n'));
+
+    // Save to global presets so it's remembered in Settings and subsequent examinations
+    addLifestylePreset(trimmed);
+
+    // Add to current visit's lifestyle advice
+    const lines = lifestyleAdvice ? lifestyleAdvice.split('\n').map((l) => l.trim()).filter(Boolean) : [];
+    const itemWithBullet = `• ${trimmed}`;
+    if (!lines.some((l) => l === itemWithBullet || l === trimmed)) {
+      const updatedLines = [...lines, itemWithBullet];
+      onChangeLifestyleAdvice(updatedLines.join('\n'));
     }
     setCustomAdviceInput('');
   };
@@ -122,7 +116,7 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
               المتابعة والاستشارة والنظام الغذائي (Follow-up & Lifestyle)
             </h3>
             <p className="text-[11px] text-slate-500 dark:text-[#859394]">
-              تحديد موعد الاستشارة القادمة وقواعد النظام الغذائي ونمط المعيشة
+              تحديد موعد الاستشارة القادمة وقواعد النظام الغذائي ونمط المعيشة (تطابق تلقائي مع بنود الإعدادات)
             </p>
           </div>
         </div>
@@ -270,9 +264,14 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
         {/* Dietary and lifestyle advice presets */}
         <div className="space-y-3">
           <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5] block">
-              اختر الإرشادات المجهزة مسبقاً من القائمة المنسدلة:
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5] block">
+                اختر الإرشادات ونمط الحياة المعتمد (من الإعدادات):
+              </label>
+              <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold">
+                {advicePresets.length} إرشاد متاح
+              </span>
+            </div>
 
             {/* Dropdown menu for presets */}
             <select
@@ -280,39 +279,31 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
               onChange={handleSelectFromDropdown}
               className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-indigo-200 dark:border-indigo-900/40 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer font-bold"
             >
-              <option value="">-- اضغط لاختيار نمط حياة أو إرشاد طبي مجهز --</option>
-              {advicePresets.map((preset, idx) => (
-                <option key={idx} value={preset}>
-                  {selectedPresets.includes(preset) ? '✓ ' : '+ '} {preset}
-                </option>
-              ))}
+              <option value="">-- اضغط لاختيار إرشاد من بنود الإعدادات --</option>
+              {advicePresets.map((preset, idx) => {
+                const isSelected = lifestyleAdvice.includes(preset);
+                return (
+                  <option key={idx} value={preset}>
+                    {isSelected ? '✓ ' : '+ '} {preset}
+                  </option>
+                );
+              })}
             </select>
           </div>
 
-          {/* Selected presets tags */}
-          {selectedPresets.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 pt-1 max-h-32 overflow-y-auto pr-1">
-              {selectedPresets.map((preset, idx) => (
-                <span
-                  key={idx}
-                  className="px-2.5 py-1 rounded-lg bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-950 dark:text-[#dde2f5] font-bold text-[11px] border border-indigo-200 dark:border-indigo-800 flex items-center gap-1.5 transition-all"
-                >
-                  <span>{preset}</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const updated = selectedPresets.filter((p) => p !== preset);
-                      setSelectedPresets(updated);
-                      onChangeLifestyleAdvice(updated.map((item) => `• ${item}`).join('\n'));
-                    }}
-                    className="text-rose-500 hover:text-rose-700 font-bold cursor-pointer"
-                  >
-                    ✕
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
+          {/* Lifestyle Advice Multiline Text Area */}
+          <div className="space-y-1">
+            <label className="text-[11px] font-bold text-slate-600 dark:text-[#859394] block">
+              نص الإرشادات والتعليمات الطبية للمريض (تطبع في الروشتة):
+            </label>
+            <textarea
+              rows={3}
+              value={lifestyleAdvice}
+              onChange={(e) => onChangeLifestyleAdvice(e.target.value)}
+              placeholder="اكتب التعليمات الطبية أو اختر من القائمة أعلاه (مثال: • الامتناع عن الأطعمة الدسمة...)"
+              className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-indigo-500 leading-relaxed font-sans"
+            />
+          </div>
 
           {/* Form to add custom lifestyle advice */}
           <form onSubmit={handleAddCustomAdvice} className="flex items-center gap-1.5 pt-1">
@@ -320,14 +311,14 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
               type="text"
               value={customAdviceInput}
               onChange={(e) => setCustomAdviceInput(e.target.value)}
-              placeholder="إضافة نمط / تعليمات غير مدرجة..."
+              placeholder="إضافة إرشاد جديد وحفظه في الإعدادات..."
               className="flex-1 bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             />
             <button
               type="submit"
-              className="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold cursor-pointer transition-all shrink-0"
+              className="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold cursor-pointer transition-all shrink-0 shadow-xs"
             >
-              + إضافة نمط
+              + إضافة وحفظ
             </button>
           </form>
         </div>

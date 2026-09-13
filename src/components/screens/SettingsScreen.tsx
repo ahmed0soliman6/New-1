@@ -35,6 +35,8 @@ import {
   MedicalServiceItem,
   ExpenseCategoryItem,
 } from '../../utils/financeManager';
+import { db } from '../../services/firebase';
+import { subscribeToServices, subscribeToExpenseCategories } from '../../services/repositories';
 
 interface ChronicItem {
   id: string;
@@ -179,9 +181,36 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     window.addEventListener('soli_services_updated', handleServicesUpdate);
     window.addEventListener('soli_expense_categories_updated', handleExpCatsUpdate);
 
+    let unsubServices = () => {};
+    let unsubExpCats = () => {};
+
+    if (db) {
+      unsubServices = subscribeToServices(
+        db,
+        (srvs) => {
+          if (Array.isArray(srvs) && srvs.length > 0) {
+            setMedicalServicesList(srvs as MedicalServiceItem[]);
+          }
+        },
+        (err) => console.warn('Services sync in SettingsScreen:', err)
+      );
+
+      unsubExpCats = subscribeToExpenseCategories(
+        db,
+        (cats) => {
+          if (Array.isArray(cats) && cats.length > 0) {
+            setExpenseCategoriesList(cats as ExpenseCategoryItem[]);
+          }
+        },
+        (err) => console.warn('Exp cats sync in SettingsScreen:', err)
+      );
+    }
+
     return () => {
       window.removeEventListener('soli_services_updated', handleServicesUpdate);
       window.removeEventListener('soli_expense_categories_updated', handleExpCatsUpdate);
+      unsubServices();
+      unsubExpCats();
     };
   }, []);
 

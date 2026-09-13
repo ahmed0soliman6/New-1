@@ -119,6 +119,7 @@ import {
   subscribeToDoctorSettings,
   subscribeToPrescriptionSettings,
   subscribeToAlertSettings,
+  subscribeToVisitTypes,
   subscribeToClinicStatus,
   updateClinicStatusInFirestore,
   subscribeToRecurringTemplates,
@@ -397,6 +398,11 @@ function ClinicApp() {
     setVisitTypesList((prev) => {
       const updated = [...prev, newType];
       localStorage.setItem('soli_visit_types', JSON.stringify(updated));
+      if (db) {
+        import('firebase/firestore').then(({ doc, setDoc }) => {
+          setDoc(doc(db!, 'settings', 'visitTypes'), { items: updated }, { merge: true }).catch(() => {});
+        });
+      }
       return updated;
     });
   };
@@ -405,6 +411,11 @@ function ClinicApp() {
     setVisitTypesList((prev) => {
       const updated = prev.filter((v) => v.id !== id);
       localStorage.setItem('soli_visit_types', JSON.stringify(updated));
+      if (db) {
+        import('firebase/firestore').then(({ doc, setDoc }) => {
+          setDoc(doc(db!, 'settings', 'visitTypes'), { items: updated }, { merge: true }).catch(() => {});
+        });
+      }
       return updated;
     });
   };
@@ -413,6 +424,11 @@ function ClinicApp() {
     setVisitTypesList((prev) => {
       const updated = prev.map((v) => (v.id === id ? { ...v, fee } : v));
       localStorage.setItem('soli_visit_types', JSON.stringify(updated));
+      if (db) {
+        import('firebase/firestore').then(({ doc, setDoc }) => {
+          setDoc(doc(db!, 'settings', 'visitTypes'), { items: updated }, { merge: true }).catch(() => {});
+        });
+      }
       return updated;
     });
   };
@@ -666,6 +682,12 @@ function ClinicApp() {
       subscribeToDoctorSettings(db, (settings) => { if (settings) setDoctorSettingsCanonical(settings); }, onError),
       subscribeToAlertSettings(db, (settings) => { if (settings) setCachedAlertSettings(settings); }, onError),
       subscribeToRecurringTemplates(db, (templates) => { if (templates) setCachedRecurringTemplates(templates); }, onError),
+      subscribeToVisitTypes(db, (types) => {
+        if (types && Array.isArray(types) && types.length > 0) {
+          setVisitTypesList(types);
+          localStorage.setItem('soli_visit_types', JSON.stringify(types));
+        }
+      }, onError),
       subscribeToPrescriptionSettings(db, (settings) => {
         if (settings && Object.keys(settings).length > 0) {
           localStorage.setItem('soli_prescription_settings', JSON.stringify(settings));

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { usePermissions } from '../../context/AuthContext';
 import {
   RadiologyCatalogItem,
@@ -8,6 +8,13 @@ import {
   SymptomCatalogItem,
   ChronicItem,
 } from '../../types';
+import {
+  loadLifestylePresets,
+  saveLifestylePresets,
+  addLifestylePreset,
+  removeLifestylePreset,
+  subscribeToLifestylePresets,
+} from '../../utils/lifestyleManager';
 
 interface MedicalCatalogsManagerProps {
   radiologyCatalog: RadiologyCatalogItem[];
@@ -82,52 +89,28 @@ export const MedicalCatalogsManager: React.FC<MedicalCatalogsManagerProps> = ({
     lifestyle: false,
   });
 
-  const DEFAULT_LIFESTYLE_PRESETS = [
-    'الامتناع التام عن الأطعمة الدسمة، الحارة، المقليات، والمشروبات الغازية.',
-    'تقليل استهلاك ملح الطعام والمخللات إلى أقل من 2 جرام صوديوم يومياً.',
-    'الامتناع عن السكريات والحلويات الصريحة والعصائر المحلاة والمخبوزات البيضاء.',
-    'عدم الاستلقاء أو النوم مباشرة بعد تناول الطعام لمدة ساعتين على الأقل.',
-    'شرب ما لا يقل عن 2.5 إلى 3 لترات ماء يومياً لحماية الكلى وتحسين التروية.',
-    'ممارسة رياضة المشي المنتظم 30 دقيقة يومياً لمدة 5 أيام أسبوعياً.',
-    'تجنب التوتر والضغط العصبي وأخذ قسط كافٍ من النوم (7-8 ساعات متواصلة).',
-    'تناول وجبات صغيرة متكررة خفيفة بدلاً من الوجبات الكبيرة الثقيلة.',
-  ];
+  const [lifestylePresets, setLifestylePresets] = useState<string[]>(loadLifestylePresets);
 
-  const [lifestylePresets, setLifestylePresets] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('soli_lifestyle_presets');
-      return saved ? JSON.parse(saved) : DEFAULT_LIFESTYLE_PRESETS;
-    } catch {
-      return DEFAULT_LIFESTYLE_PRESETS;
-    }
-  });
+  useEffect(() => {
+    const unsub = subscribeToLifestylePresets((presets) => {
+      setLifestylePresets(presets);
+    });
+    return () => unsub();
+  }, []);
 
   const [newLifestyleInput, setNewLifestyleInput] = useState('');
   const [lifestyleSearch, setLifestyleSearch] = useState('');
-
-  const saveLifestyleToStorage = (updated: string[]) => {
-    setLifestylePresets(updated);
-    try {
-      localStorage.setItem('soli_lifestyle_presets', JSON.stringify(updated));
-    } catch (e) {
-      console.warn('Failed to save lifestyle presets', e);
-    }
-  };
 
   const handleAddLifestylePreset = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = newLifestyleInput.trim();
     if (!trimmed) return;
-    if (!lifestylePresets.includes(trimmed)) {
-      const updated = [trimmed, ...lifestylePresets];
-      saveLifestyleToStorage(updated);
-    }
+    addLifestylePreset(trimmed);
     setNewLifestyleInput('');
   };
 
   const handleRemoveLifestylePreset = (presetToRemove: string) => {
-    const updated = lifestylePresets.filter((p) => p !== presetToRemove);
-    saveLifestyleToStorage(updated);
+    removeLifestylePreset(presetToRemove);
   };
 
   const toggleSection = (section: string) => {

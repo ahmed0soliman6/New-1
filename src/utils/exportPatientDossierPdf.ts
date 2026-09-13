@@ -1,6 +1,8 @@
 import html2canvas from 'html2canvas-pro';
 import jsPDF from 'jspdf';
 import { CLINIC_INFO } from '../data/previewClinicData';
+import { findBranch } from './clinicBranches';
+import { getPrescriptionDoctorInfo } from './prescriptionDoctor';
 import type { PatientListItem } from '../types';
 import { formatAppDate, toEnglishDigits } from './numberUtils';
 import type {
@@ -70,21 +72,26 @@ export async function exportPatientMedicalDossierPdf(data: MedicalRecordPdfData)
 
   const printDate = formatAppDate(new Date());
 
+  const doctorInfo = getPrescriptionDoctorInfo();
+  const branch = findBranch();
+  const branchPhone = branch.phone || branch.mobile || doctorInfo.phone || '01092847162';
+  const doctorDisplayName = doctorInfo.doctorName || CLINIC_INFO.doctorName;
+
   let htmlContent = `
     <div style="border: 2px solid #008f97; border-radius: 12px; padding: 20px; background: #ffffff; margin-bottom: 20px;">
       <!-- Clinic Header -->
       <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 14px; margin-bottom: 16px;">
         <div>
-          <h1 style="margin: 0; font-size: 20px; color: #008f97; font-weight: bold;">${CLINIC_INFO.name}</h1>
-          <div style="font-size: 13px; color: #334155; font-weight: bold; margin-top: 3px;">عيادة ${CLINIC_INFO.doctorName} - ${CLINIC_INFO.doctorTitle}</div>
-          <div style="font-size: 11px; color: #64748b;">${CLINIC_INFO.doctorCredentials}</div>
+          <h1 style="margin: 0; font-size: 20px; color: #008f97; font-weight: bold;">عيادة ${doctorDisplayName}</h1>
+          <div style="font-size: 13px; color: #334155; font-weight: bold; margin-top: 3px;">${doctorInfo.specialtyAr || CLINIC_INFO.doctorTitle}</div>
+          <div style="font-size: 11px; color: #64748b;">${doctorInfo.degreesAr || CLINIC_INFO.doctorCredentials}</div>
         </div>
         <div style="text-align: left; font-size: 11px; color: #475569;">
           <div style="background: #e6fffa; color: #008f97; padding: 4px 10px; border-radius: 6px; font-weight: bold; font-size: 13px; margin-bottom: 4px; border: 1px solid #b2f5ea;">
             الملف الطبي الشامل للمريض
           </div>
           <div>تاريخ الطباعة: <strong>${printDate}</strong></div>
-          <div>هاتف العيادة: <strong>01092847162</strong></div>
+          <div>هاتف العيادة: <strong>${branchPhone}</strong></div>
         </div>
       </div>
 
@@ -237,12 +244,12 @@ export async function exportPatientMedicalDossierPdf(data: MedicalRecordPdfData)
       <!-- Clinic Footer Signature -->
       <div style="margin-top: 30px; display: flex; justify-content: space-between; align-items: flex-end; border-top: 1px solid #cbd5e1; padding-top: 12px; font-size: 11px; color: #475569;">
         <div>
-          <div>عيادة الباطنة التخصصية • المهندسين، الجيزة</div>
-          <div>للحجز والاستفسار: 01092847162</div>
+          <div>${branch.name}${branch.address ? ` • ${branch.address}` : ''}</div>
+          <div>للحجز والاستفسار: ${branchPhone}</div>
         </div>
         <div style="text-align: left;">
           <div>توقيع واعتماد الطبيب المعالج:</div>
-          <div style="margin-top: 20px; font-weight: bold; color: #008f97;">د. ${CLINIC_INFO.doctorName}</div>
+          <div style="margin-top: 20px; font-weight: bold; color: #008f97;">د. ${doctorDisplayName}</div>
         </div>
       </div>
     </div>
