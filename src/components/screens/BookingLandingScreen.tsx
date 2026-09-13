@@ -260,30 +260,58 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
       onAddAppointment(newApp);
     }
 
-    // Direct Firestore backup sync if available
+    // Direct Firestore sync of Patient & Appointment with correct keys for doctor's dashboard
     try {
       import('../../services/firebase').then(({ db }) => {
         if (db) {
           import('firebase/firestore').then(({ doc, setDoc }) => {
-            setDoc(doc(db, 'appointments', newApp.id), {
-              appointmentId: newApp.id,
-              patientId: `pat-online-${Date.now()}`,
-              patientName: newApp.patientName,
+            const patientId = `pat-online-${Date.now()}`;
+            const timestamp = new Date().toISOString();
+            
+            // 1. Create Patient document in 'patients' collection
+            setDoc(doc(db, 'patients', patientId), {
+              patientId: patientId,
+              fullName: newApp.patientName,
               phone: newApp.phone,
-              appointmentDate: newApp.date,
-              startTime: newApp.timeSlot,
-              endTime: newApp.timeSlot,
-              type: newApp.visitType,
-              status: 'SCHEDULED',
-              expectedFee: newApp.expectedFee,
-              notes: newApp.notes,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            }, { merge: true }).catch((err) => console.warn('Booking sync warning:', err));
+              fileNumber: 9000 + Math.floor(Math.random() * 1000),
+              medicalCode: newApp.medicalCode || `EG-ONL-${Math.floor(1000 + Math.random() * 9000)}`,
+              chronicDiseases: [],
+              allergies: [],
+              address: '',
+              bloodType: 'غير محدد',
+              createdAt: timestamp,
+              updatedAt: timestamp,
+              createdBy: 'online_booking',
+            }, { merge: true }).then(() => {
+              // 2. Create Appointment document in 'appointments' collection
+              setDoc(doc(db, 'appointments', newApp.id), {
+                appointmentId: newApp.id,
+                patientId: patientId,
+                patientName: newApp.patientName,
+                phone: newApp.phone,
+                clinicLocationId: activeBranch?.id || 'loc-mohandessin',
+                scheduledDate: newApp.date,
+                scheduledTime: newApp.timeSlot,
+                visitType: newApp.visitType,
+                status: 'SCHEDULED',
+                expectedFee: newApp.expectedFee,
+                notes: newApp.notes,
+                createdAt: timestamp,
+                updatedAt: timestamp,
+                createdBy: 'online_booking',
+                // Keep backup legacy fields just in case
+                appointmentDate: newApp.date,
+                startTime: newApp.timeSlot,
+                endTime: newApp.timeSlot,
+                type: newApp.visitType,
+              }, { merge: true }).catch((err) => console.warn('Booking sync warning:', err));
+            }).catch((err) => console.warn('Patient sync warning:', err));
           });
         }
       });
-    } catch {}
+    } catch (e) {
+      console.warn('Firestore booking write failure:', e);
+    }
 
     window.open(url, '_blank');
     setToastMessage('تم إعداد طلب الحجز وفتح الواتساب لإرساله للعيادة وتسجيله بالنظام بنجاح ✓');
