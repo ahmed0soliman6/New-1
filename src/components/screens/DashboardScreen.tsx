@@ -115,59 +115,75 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
 
   // Calculate Revenue Data for Weekly Indicator
   const weeklyRevenueData = useMemo(() => {
-    // Current week starting from Saturday (standard in Egypt) or Sunday
-    const now = new Date();
-    // Offset by selectedWeekOffset
-    now.setDate(now.getDate() - selectedWeekOffset * 7);
+    // Current week starting from Saturday (standard in Egypt)
+    const today = new Date();
+    const formatYMD = (date: Date) =>
+      `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    const todayYMD = formatYMD(today);
 
-    // Get Saturday of this week
-    const currentDay = now.getDay(); // 0 is Sunday, 6 is Saturday
-    // Distance from Saturday (6): Saturday is 0, Sunday is 1, Monday is 2, etc.
-    const distanceToSaturday = (currentDay + 1) % 7;
-    const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - distanceToSaturday);
-    startOfWeek.setHours(0, 0, 0, 0);
+    // Reference date offset by selectedWeekOffset (7 days each)
+    const refDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - selectedWeekOffset * 7, 12, 0, 0);
+
+    // In JS getDay(): 0 = Sun, 1 = Mon, 2 = Tue, 3 = Wed, 4 = Thu, 5 = Fri, 6 = Sat
+    // We want the week to ALWAYS start on Saturday (السبت):
+    // If Saturday (6): 0 days back
+    // If Sunday (0): 1 day back
+    // If Monday (1): 2 days back
+    // If Tuesday (2): 3 days back
+    // If Wednesday (3): 4 days back
+    // If Thursday (4): 5 days back
+    // If Friday (5): 6 days back
+    const dayOfWeek = refDate.getDay();
+    const daysBackToSaturday = (dayOfWeek + 1) % 7;
+
+    const saturdayDate = new Date(refDate.getFullYear(), refDate.getMonth(), refDate.getDate() - daysBackToSaturday, 12, 0, 0);
 
     const daysMap = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
     const daysData = [];
 
     for (let i = 0; i < 7; i++) {
-      const d = new Date(startOfWeek);
-      d.setDate(startOfWeek.getDate() + i);
-      const ymd = d.toISOString().split('T')[0];
+      const dayDate = new Date(saturdayDate.getFullYear(), saturdayDate.getMonth(), saturdayDate.getDate() + i, 12, 0, 0);
+      const ymd = formatYMD(dayDate);
 
       // Sum transactions for this day
       const dayTotal = transactions
         .filter((t) => {
           if (t.type === 'out') return false;
-          const tDate = t.date ? (t.date.includes('T') ? t.date.split('T')[0] : t.date) : (t.timestamp ? t.timestamp.split('T')[0] : '');
+          const tDate = t.date
+            ? t.date.includes('T')
+              ? t.date.split('T')[0]
+              : t.date
+            : t.timestamp
+            ? t.timestamp.split('T')[0]
+            : '';
           return tDate === ymd;
         })
         .reduce((sum, t) => sum + (t.paidAmount ?? t.amount ?? 0), 0);
 
-      const isToday = ymd === new Date().toISOString().split('T')[0];
+      const isToday = ymd === todayYMD;
 
       daysData.push({
         label: daysMap[i],
         date: ymd,
         amount: dayTotal,
         isToday,
+        dayNum: dayDate.getDate(),
+        monthNum: dayDate.getMonth() + 1,
       });
     }
 
     const totalWeek = daysData.reduce((sum, d) => sum + d.amount, 0);
     const maxDay = Math.max(...daysData.map((d) => d.amount), 500);
 
-    const startDateLabel = `${startOfWeek.getDate()}/${startOfWeek.getMonth() + 1}`;
-    const endOfWeek = new Date(startOfWeek);
-    endOfWeek.setDate(startOfWeek.getDate() + 6);
-    const endDateLabel = `${endOfWeek.getDate()}/${endOfWeek.getMonth() + 1}`;
+    const firstDay = daysData[0];
+    const lastDay = daysData[6];
+    const periodTitle = `${firstDay.dayNum}/${firstDay.monthNum} - ${lastDay.dayNum}/${lastDay.monthNum}`;
 
     return {
       daysData,
       totalWeek,
       maxDay,
-      periodTitle: `${startDateLabel} - ${endDateLabel}`,
+      periodTitle,
     };
   }, [transactions, selectedWeekOffset]);
 

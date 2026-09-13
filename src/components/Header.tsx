@@ -144,42 +144,39 @@ Wishing you great health and wellness ✨`
 
           {/* Sync Status Badge (متصل / غير متصل / جاري الاتصال) */}
           {syncStatus === 'connected' && (
-            <button
-              onClick={() => setShowSyncDetailsModal(true)}
-              className="flex items-center gap-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 dark:bg-emerald-950/30 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-emerald-500/20 dark:border-emerald-500/30 transition-all cursor-pointer group shrink-0"
+            <div
+              className="flex items-center gap-1.5 bg-emerald-500/10 dark:bg-emerald-950/30 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-emerald-500/20 dark:border-emerald-500/30 transition-all cursor-default select-none shrink-0"
               title={language === 'en' ? 'System is online' : 'النظام متصل بالسحابة'}
             >
               <span className="w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse"></span>
               <span className="text-[11px] sm:text-xs text-emerald-700 dark:text-emerald-400 font-bold">
                 {t('header.connected')}
               </span>
-            </button>
+            </div>
           )}
 
           {syncStatus === 'syncing' && (
-            <button
-              onClick={() => setShowSyncDetailsModal(true)}
-              className="flex items-center gap-1.5 bg-amber-500/10 hover:bg-amber-500/20 dark:bg-amber-950/30 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-amber-500/30 dark:border-amber-400/30 transition-all cursor-pointer shrink-0"
+            <div
+              className="flex items-center gap-1.5 bg-amber-500/10 dark:bg-amber-950/30 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-amber-500/30 dark:border-amber-400/30 transition-all cursor-default select-none shrink-0"
               title={language === 'en' ? 'Connecting and syncing...' : 'جاري الاتصال والمزامنة مع السحابة'}
             >
               <span className="w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-amber-500 animate-spin"></span>
               <span className="text-[11px] sm:text-xs text-amber-700 dark:text-amber-400 font-bold">
                 {t('header.syncing')}
               </span>
-            </button>
+            </div>
           )}
 
           {(syncStatus === 'offline' || syncStatus === 'error') && (
-            <button
-              onClick={() => setShowSyncDetailsModal(true)}
-              className="flex items-center gap-1.5 bg-rose-500/10 hover:bg-rose-500/20 dark:bg-rose-950/30 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-rose-500/30 dark:border-rose-500/40 transition-all cursor-pointer group shrink-0"
+            <div
+              className="flex items-center gap-1.5 bg-rose-500/10 dark:bg-rose-950/30 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-rose-500/30 dark:border-rose-500/40 transition-all cursor-default select-none shrink-0"
               title={language === 'en' ? 'Disconnected' : 'غير متصل بالشبكة أو حدث خطأ في الاتصال'}
             >
               <span className="w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-rose-500 dark:bg-rose-400"></span>
               <span className="text-[11px] sm:text-xs text-rose-700 dark:text-rose-400 font-bold">
                 {t('header.offline')}
               </span>
-            </button>
+            </div>
           )}
 
           <div className="hidden xl:flex items-center gap-1.5 text-slate-400 dark:text-[#bbc9ca] text-xs font-medium mx-1">
