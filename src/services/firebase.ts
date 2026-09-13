@@ -12,4 +12,11 @@ export {
   requireFirebase,
 } from './firebase/config';
 
+export {
+  FirestoreCollections,
+  SettingsDocs,
+  type FirestoreCollectionName,
+  type SettingsDocId,
+} from './firebase/collections';
+
 

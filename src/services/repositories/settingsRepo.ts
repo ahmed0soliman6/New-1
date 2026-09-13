@@ -10,6 +10,7 @@ import type {
   SystemSettings,
   DoctorProfile,
 } from '../../types/database';
+import { FirestoreCollections, SettingsDocs } from '../firebase/collections';
 import { handleFirestoreError, normalize, OperationType } from './common';
 
 export interface ClinicStatusState {
@@ -25,7 +26,7 @@ export const subscribeToDoctorSettings = (
   error: (reason: Error) => void
 ): Unsubscribe => {
   return onSnapshot(
-    doc(db, 'settings', 'doctorSettings'),
+    doc(db, FirestoreCollections.SETTINGS, SettingsDocs.DOCTOR_SETTINGS),
     (snap) => {
       if (snap.exists()) {
         next(normalize(snap.data()) as DoctorSettings);
@@ -34,7 +35,7 @@ export const subscribeToDoctorSettings = (
       }
     },
     (reason) => {
-      error(handleFirestoreError(reason, OperationType.GET, 'settings/doctorSettings'));
+      error(handleFirestoreError(reason, OperationType.GET, `${FirestoreCollections.SETTINGS}/${SettingsDocs.DOCTOR_SETTINGS}`));
     }
   );
 };
@@ -45,7 +46,7 @@ export const subscribeToVisitTypes = (
   error: (reason: Error) => void
 ): Unsubscribe => {
   return onSnapshot(
-    doc(db, 'settings', 'visitTypes'),
+    doc(db, FirestoreCollections.SETTINGS, SettingsDocs.VISIT_TYPES),
     (snap) => {
       if (snap.exists()) {
         const data = snap.data();
@@ -55,7 +56,7 @@ export const subscribeToVisitTypes = (
       }
     },
     (reason) => {
-      error(handleFirestoreError(reason, OperationType.GET, 'settings/visitTypes'));
+      error(handleFirestoreError(reason, OperationType.GET, `${FirestoreCollections.SETTINGS}/${SettingsDocs.VISIT_TYPES}`));
     }
   );
 };
@@ -66,7 +67,7 @@ export const subscribeToPrinterSettings = <T = Record<string, unknown>>(
   error: (reason: Error) => void
 ): Unsubscribe => {
   return onSnapshot(
-    doc(db, 'settings', 'printerSettings'),
+    doc(db, FirestoreCollections.SETTINGS, SettingsDocs.PRINTER_SETTINGS),
     (snap) => {
       if (snap.exists()) {
         next(normalize(snap.data()) as T);
@@ -75,7 +76,7 @@ export const subscribeToPrinterSettings = <T = Record<string, unknown>>(
       }
     },
     (reason) => {
-      error(handleFirestoreError(reason, OperationType.GET, 'settings/printerSettings'));
+      error(handleFirestoreError(reason, OperationType.GET, `${FirestoreCollections.SETTINGS}/${SettingsDocs.PRINTER_SETTINGS}`));
     }
   );
 };
@@ -86,7 +87,7 @@ export const subscribeToLifestylePresets = (
   error: (reason: Error) => void
 ): Unsubscribe => {
   return onSnapshot(
-    doc(db, 'settings', 'lifestylePresets'),
+    doc(db, FirestoreCollections.SETTINGS, SettingsDocs.LIFESTYLE_PRESETS),
     (snap) => {
       if (snap.exists()) {
         const data = snap.data();
@@ -96,7 +97,7 @@ export const subscribeToLifestylePresets = (
       }
     },
     (reason) => {
-      error(handleFirestoreError(reason, OperationType.GET, 'settings/lifestylePresets'));
+      error(handleFirestoreError(reason, OperationType.GET, `${FirestoreCollections.SETTINGS}/${SettingsDocs.LIFESTYLE_PRESETS}`));
     }
   );
 };
@@ -107,7 +108,7 @@ export const subscribeToAlertSettings = (
   error: (reason: Error) => void
 ): Unsubscribe => {
   return onSnapshot(
-    doc(db, 'settings', 'alertSettings'),
+    doc(db, FirestoreCollections.SETTINGS, SettingsDocs.ALERT_SETTINGS),
     (snap) => {
       if (snap.exists()) {
         next(normalize(snap.data()));
@@ -116,7 +117,7 @@ export const subscribeToAlertSettings = (
       }
     },
     (reason) => {
-      error(handleFirestoreError(reason, OperationType.GET, 'settings/alertSettings'));
+      error(handleFirestoreError(reason, OperationType.GET, `${FirestoreCollections.SETTINGS}/${SettingsDocs.ALERT_SETTINGS}`));
     }
   );
 };
@@ -127,7 +128,7 @@ export const subscribeToClinicStatus = (
   error: (reason: Error) => void
 ): Unsubscribe => {
   return onSnapshot(
-    doc(db, 'settings', 'clinicStatus'),
+    doc(db, FirestoreCollections.SETTINGS, SettingsDocs.CLINIC_STATUS),
     (snap) => {
       if (snap.exists()) {
         next(snap.data() as ClinicStatusState);
@@ -136,7 +137,7 @@ export const subscribeToClinicStatus = (
       }
     },
     (reason) => {
-      error(handleFirestoreError(reason, OperationType.GET, 'settings/clinicStatus'));
+      error(handleFirestoreError(reason, OperationType.GET, `${FirestoreCollections.SETTINGS}/${SettingsDocs.CLINIC_STATUS}`));
     }
   );
 };
@@ -146,7 +147,7 @@ export const updateClinicStatusInFirestore = async (
   status: 'available' | 'break',
   updatedBy: string
 ) => {
-  const ref = doc(db, 'settings', 'clinicStatus');
+  const ref = doc(db, FirestoreCollections.SETTINGS, SettingsDocs.CLINIC_STATUS);
   await setDoc(
     ref,
     {
@@ -165,7 +166,7 @@ export const subscribeToRecurringTemplates = (
   error: (reason: Error) => void
 ): Unsubscribe => {
   return onSnapshot(
-    doc(db, 'settings', 'recurringTemplates'),
+    doc(db, FirestoreCollections.SETTINGS, SettingsDocs.RECURRING_TEMPLATES),
     (snap) => {
       if (snap.exists()) {
         const data = snap.data();
@@ -175,7 +176,7 @@ export const subscribeToRecurringTemplates = (
       }
     },
     (reason) => {
-      error(handleFirestoreError(reason, OperationType.GET, 'settings/recurringTemplates'));
+      error(handleFirestoreError(reason, OperationType.GET, `${FirestoreCollections.SETTINGS}/${SettingsDocs.RECURRING_TEMPLATES}`));
     }
   );
 };
@@ -186,7 +187,7 @@ export const subscribeToDoctorProfile = (
   error: (reason: Error) => void
 ): Unsubscribe => {
   return onSnapshot(
-    doc(db, 'settings', 'doctorProfile'),
+    doc(db, FirestoreCollections.SETTINGS, SettingsDocs.DOCTOR_PROFILE),
     (snap) => {
       if (snap.exists()) {
         next(normalize(snap.data()) as DoctorProfile);
@@ -195,7 +196,7 @@ export const subscribeToDoctorProfile = (
       }
     },
     (reason) => {
-      error(handleFirestoreError(reason, OperationType.GET, 'settings/doctorProfile'));
+      error(handleFirestoreError(reason, OperationType.GET, `${FirestoreCollections.SETTINGS}/${SettingsDocs.DOCTOR_PROFILE}`));
     }
   );
 };
@@ -206,7 +207,7 @@ export const subscribeToSystemSettings = (
   error: (reason: Error) => void
 ): Unsubscribe => {
   return onSnapshot(
-    doc(db, 'settings', 'systemSettings'),
+    doc(db, FirestoreCollections.SETTINGS, SettingsDocs.SYSTEM_SETTINGS),
     (snap) => {
       if (snap.exists()) {
         next(normalize(snap.data()) as SystemSettings);
@@ -215,7 +216,7 @@ export const subscribeToSystemSettings = (
       }
     },
     (reason) => {
-      error(handleFirestoreError(reason, OperationType.GET, 'settings/systemSettings'));
+      error(handleFirestoreError(reason, OperationType.GET, `${FirestoreCollections.SETTINGS}/${SettingsDocs.SYSTEM_SETTINGS}`));
     }
   );
 };
@@ -226,7 +227,7 @@ export const subscribeToPrescriptionSettings = <T = Record<string, unknown>>(
   error: (reason: Error) => void
 ): Unsubscribe => {
   return onSnapshot(
-    doc(db, 'settings', 'prescriptionSettings'),
+    doc(db, FirestoreCollections.SETTINGS, SettingsDocs.PRESCRIPTION_SETTINGS),
     (snap) => {
       if (snap.exists()) {
         next(normalize(snap.data()) as T);
@@ -235,7 +236,7 @@ export const subscribeToPrescriptionSettings = <T = Record<string, unknown>>(
       }
     },
     (reason) => {
-      error(handleFirestoreError(reason, OperationType.GET, 'settings/prescriptionSettings'));
+      error(handleFirestoreError(reason, OperationType.GET, `${FirestoreCollections.SETTINGS}/${SettingsDocs.PRESCRIPTION_SETTINGS}`));
     }
   );
 };
@@ -246,7 +247,7 @@ export const subscribeToLatestAlert = <T = Record<string, unknown>>(
   error: (reason: Error) => void
 ): Unsubscribe => {
   return onSnapshot(
-    doc(db, 'settings', 'latestAlert'),
+    doc(db, FirestoreCollections.SETTINGS, SettingsDocs.LATEST_ALERT),
     (snap) => {
       if (snap.exists()) {
         next(normalize(snap.data()) as T);
@@ -255,7 +256,7 @@ export const subscribeToLatestAlert = <T = Record<string, unknown>>(
       }
     },
     (reason) => {
-      error(handleFirestoreError(reason, OperationType.GET, 'settings/latestAlert'));
+      error(handleFirestoreError(reason, OperationType.GET, `${FirestoreCollections.SETTINGS}/${SettingsDocs.LATEST_ALERT}`));
     }
   );
 };
@@ -274,9 +275,10 @@ export async function publishAlert(
     senderId?: string;
   }
 ): Promise<void> {
-  const ref = doc(db, 'settings', 'latestAlert');
+  const ref = doc(db, FirestoreCollections.SETTINGS, SettingsDocs.LATEST_ALERT);
   await setDoc(ref, {
     ...alert,
     updatedAt: new Date().toISOString(),
   });
 }
+

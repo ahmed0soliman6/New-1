@@ -8,6 +8,7 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import { auth } from '../firebase';
+import { FirestoreCollections, SettingsDocs, type FirestoreCollectionName, type SettingsDocId } from '../firebase/collections';
 
 export enum OperationType {
   CREATE = 'create',
@@ -57,26 +58,26 @@ export function normalize(value: unknown): unknown {
 }
 
 export const ID_FIELD_MAP: Record<string, string> = {
-  patients: 'patientId',
-  appointments: 'appointmentId',
-  visits: 'visitId',
-  invoices: 'invoiceId',
-  payments: 'paymentId',
-  prescriptions: 'prescriptionId',
-  followUps: 'followUpId',
-  labOrders: 'labOrderId',
-  radiologyOrders: 'radiologyOrderId',
-  medications: 'medicationId',
-  labTests: 'labTestId',
-  radiologyTypes: 'radiologyId',
-  diagnoses: 'diagnosisId',
-  symptoms: 'symptomId',
-  chronicDiseases: 'diseaseId',
+  [FirestoreCollections.PATIENTS]: 'patientId',
+  [FirestoreCollections.APPOINTMENTS]: 'appointmentId',
+  [FirestoreCollections.VISITS]: 'visitId',
+  [FirestoreCollections.INVOICES]: 'invoiceId',
+  [FirestoreCollections.PAYMENTS]: 'paymentId',
+  [FirestoreCollections.PRESCRIPTIONS]: 'prescriptionId',
+  [FirestoreCollections.FOLLOW_UPS]: 'followUpId',
+  [FirestoreCollections.LAB_ORDERS]: 'labOrderId',
+  [FirestoreCollections.RADIOLOGY_ORDERS]: 'radiologyOrderId',
+  [FirestoreCollections.MEDICATIONS]: 'medicationId',
+  [FirestoreCollections.LAB_TESTS]: 'labTestId',
+  [FirestoreCollections.RADIOLOGY_TYPES]: 'radiologyId',
+  [FirestoreCollections.DIAGNOSES]: 'diagnosisId',
+  [FirestoreCollections.SYMPTOMS]: 'symptomId',
+  [FirestoreCollections.CHRONIC_DISEASES]: 'diseaseId',
 };
 
 export function subscribeCollection<T>(
   db: Firestore,
-  name: string,
+  name: FirestoreCollectionName | string,
   next: (items: T[]) => void,
   error: (reason: Error) => void
 ): Unsubscribe {
@@ -102,7 +103,7 @@ export function subscribeCollection<T>(
 
 export async function saveCatalogItem<T extends Record<string, unknown>>(
   db: Firestore,
-  collectionName: string,
+  collectionName: FirestoreCollectionName | string,
   itemId: string,
   data: T
 ): Promise<void> {
@@ -116,7 +117,7 @@ export async function saveCatalogItem<T extends Record<string, unknown>>(
 
 export async function removeCatalogItem(
   db: Firestore,
-  collectionName: string,
+  collectionName: FirestoreCollectionName | string,
   itemId: string
 ): Promise<void> {
   try {
@@ -129,13 +130,13 @@ export async function removeCatalogItem(
 
 export async function saveSettingsDocument<T extends Record<string, unknown>>(
   db: Firestore,
-  docName: string,
+  docName: SettingsDocId | string,
   data: T
 ): Promise<void> {
   try {
-    const docRef = doc(db, 'settings', docName);
+    const docRef = doc(db, FirestoreCollections.SETTINGS, docName);
     await setDoc(docRef, data, { merge: true });
   } catch (err) {
-    throw handleFirestoreError(err, OperationType.WRITE, `settings/${docName}`);
+    throw handleFirestoreError(err, OperationType.WRITE, `${FirestoreCollections.SETTINGS}/${docName}`);
   }
 }
