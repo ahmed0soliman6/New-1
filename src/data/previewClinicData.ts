@@ -1,16 +1,10 @@
 import { PatientListItem, QueueItem, AppointmentListItem, TransactionRecord, PrescriptionItem } from '../types';
+import { safeStorage, StorageKeys } from '../services/storage';
 
 export function getDynamicDoctorName(): string {
-  try {
-    const cachedRx = localStorage.getItem('soli_prescription_settings');
-    if (cachedRx) {
-      const parsed = JSON.parse(cachedRx);
-      if (parsed.doctorName && parsed.doctorName.trim()) {
-        return parsed.doctorName.trim();
-      }
-    }
-  } catch {
-    // ignore
+  const cachedRx = safeStorage.getJSON<any | null>(StorageKeys.PRESCRIPTION_SETTINGS, null);
+  if (cachedRx && cachedRx.doctorName && cachedRx.doctorName.trim()) {
+    return cachedRx.doctorName.trim();
   }
   return 'طبيب العيادة';
 }

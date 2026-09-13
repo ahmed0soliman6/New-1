@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
+import { safeStorage, StorageKeys } from '../services/storage';
 import { Language, translations, ARABIC_PHRASE_DICTIONARY, translateArabicToEnglish } from './translations';
 
 interface LanguageContextType {
@@ -13,8 +14,6 @@ interface LanguageContextType {
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
-const LANGUAGE_STORAGE_KEY = 'soli_clinic_language';
-
 // Cache for node original text values
 const originalTextMap = new WeakMap<Node, string>();
 const originalPlaceholderMap = new WeakMap<Element, string>();
@@ -23,28 +22,17 @@ const originalAriaLabelMap = new WeakMap<Element, string>();
 
 export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [language, setLanguageState] = useState<Language>(() => {
-    try {
-      const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
-      if (saved === 'en' || saved === 'ar') {
-        return saved;
-      }
-    } catch {
-      // ignore
-    }
-    return 'ar';
+    const saved = safeStorage.getItem(StorageKeys.LANGUAGE, 'ar');
+    return saved === 'en' || saved === 'ar' ? saved : 'ar';
   });
 
   const dir: 'rtl' | 'ltr' = language === 'ar' ? 'rtl' : 'ltr';
   const isRTL = language === 'ar';
 
   useEffect(() => {
-    try {
-      localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
-      document.documentElement.setAttribute('dir', dir);
-      document.documentElement.setAttribute('lang', language);
-    } catch {
-      // ignore
-    }
+    safeStorage.setItem(StorageKeys.LANGUAGE, language);
+    document.documentElement.setAttribute('dir', dir);
+    document.documentElement.setAttribute('lang', language);
   }, [language, dir]);
 
   const setLanguage = useCallback((lang: Language) => {

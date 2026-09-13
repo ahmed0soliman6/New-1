@@ -6,6 +6,7 @@ import { printPrescriptionDocument } from '../../utils/printPrescription';
 import { CLINIC_INFO } from '../../data/previewClinicData';
 import { db } from '../../services/firebase';
 import { saveSettingsDocument, subscribeToPrescriptionSettings } from '../../services/repositories';
+import { safeStorage, StorageKeys } from '../../services/storage';
 import { usePermissions } from '../../context/AuthContext';
 import { PermissionGate } from '../auth/PermissionGate';
 import { PatientListItem, PrescriptionItem } from '../../types';
@@ -171,13 +172,9 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
   };
 
   const [config, setConfig] = useState<PrescriptionLayoutSettings>(() => {
-    const cached = localStorage.getItem('soli_prescription_settings');
+    const cached = safeStorage.getJSON<PrescriptionLayoutSettings | null>(StorageKeys.PRESCRIPTION_SETTINGS, null);
     if (cached) {
-      try {
-        return { ...DEFAULT_LAYOUT, ...JSON.parse(cached) };
-      } catch {
-        // ignore JSON error
-      }
+      return { ...DEFAULT_LAYOUT, ...cached };
     }
     return DEFAULT_LAYOUT;
   });
@@ -193,7 +190,7 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
             ...prev,
             ...remoteConfig,
           }));
-          localStorage.setItem('soli_prescription_settings', JSON.stringify(remoteConfig));
+          safeStorage.setJSON(StorageKeys.PRESCRIPTION_SETTINGS, remoteConfig);
           window.dispatchEvent(new Event('soli_prescription_updated'));
         }
       },
@@ -208,7 +205,7 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
   const [autoSaveStatus, setAutoSaveStatus] = useState<'saved' | 'saving'>('saved');
 
   useEffect(() => {
-    localStorage.setItem('soli_prescription_settings', JSON.stringify(config));
+    safeStorage.setJSON(StorageKeys.PRESCRIPTION_SETTINGS, config);
     window.dispatchEvent(new Event('soli_prescription_updated'));
     window.dispatchEvent(new Event('storage'));
 
@@ -240,8 +237,8 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
   }, [config]);
 
   const [activeTab, setActiveTab] = useState<'layout' | 'header' | 'qr' | 'branches' | 'printers'>('layout');
-  const [printerPaper, setPrinterPaper] = useState<string>(() => localStorage.getItem('soli_printer_paper') || '80mm');
-  const [autoPrintReceipt, setAutoPrintReceipt] = useState<boolean>(() => localStorage.getItem('soli_auto_print') !== 'false');
+  const [printerPaper, setPrinterPaper] = useState<string>(() => safeStorage.getItem(StorageKeys.PRINTER_PAPER, '80mm') || '80mm');
+  const [autoPrintReceipt, setAutoPrintReceipt] = useState<boolean>(() => safeStorage.getItem(StorageKeys.AUTO_PRINT) !== 'false');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -308,7 +305,7 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
           updatedAt: new Date().toISOString(),
         });
       }
-      localStorage.setItem('soli_prescription_settings', JSON.stringify(config));
+      safeStorage.setJSON(StorageKeys.PRESCRIPTION_SETTINGS, config);
       setToastMessage('تم حفظ وتزامن إعدادات الروشتة وبيانات الطبيب بنجاح عبر جميع الحسابات!');
       setTimeout(() => setToastMessage(null), 3500);
     } catch (err) {
@@ -1083,7 +1080,7 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
                     value={printerPaper}
                     onChange={(e) => {
                       setPrinterPaper(e.target.value);
-                      localStorage.setItem('soli_printer_paper', e.target.value);
+                      safeStorage.setItem(StorageKeys.PRINTER_PAPER, e.target.value);
                     }}
                     className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-[#18233C] border border-slate-200 dark:border-white/10 text-slate-800 dark:text-white font-medium focus:outline-none cursor-pointer"
                   >
@@ -1100,7 +1097,7 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
                     checked={autoPrintReceipt}
                     onChange={(e) => {
                       setAutoPrintReceipt(e.target.checked);
-                      localStorage.setItem('soli_auto_print', String(e.target.checked));
+                      safeStorage.setItem(StorageKeys.AUTO_PRINT, String(e.target.checked));
                     }}
                     className="w-4 h-4 rounded text-[#00c2cb] accent-[#00c2cb] cursor-pointer"
                   />

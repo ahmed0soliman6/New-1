@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { CLINIC_INFO } from '../data/previewClinicData';
+import { safeStorage, StorageKeys } from '../services/storage';
 
 export interface PrescriptionDoctorInfo {
   doctorName: string;
@@ -24,23 +25,18 @@ export function getPrescriptionDoctorInfo(): PrescriptionDoctorInfo {
     logoUrl: CLINIC_INFO.logoUrl || null,
   };
 
-  try {
-    const cached = localStorage.getItem('soli_prescription_settings');
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      return {
-        doctorName: parsed.doctorName?.trim() || fallback.doctorName,
-        doctorNameEn: parsed.doctorNameEn?.trim() || fallback.doctorNameEn,
-        specialtyAr: parsed.specialtyAr?.trim() || fallback.specialtyAr,
-        specialtyEn: parsed.specialtyEn?.trim() || fallback.specialtyEn,
-        degreesAr: parsed.degreesAr?.trim() || fallback.degreesAr,
-        degreesEn: parsed.degreesEn?.trim() || fallback.degreesEn,
-        phone: parsed.phone?.trim() || fallback.phone,
-        logoUrl: parsed.logoUrl || fallback.logoUrl,
-      };
-    }
-  } catch {
-    // Ignore JSON parse errors
+  const parsed = safeStorage.getJSON<any | null>(StorageKeys.PRESCRIPTION_SETTINGS, null);
+  if (parsed) {
+    return {
+      doctorName: parsed.doctorName?.trim() || fallback.doctorName,
+      doctorNameEn: parsed.doctorNameEn?.trim() || fallback.doctorNameEn,
+      specialtyAr: parsed.specialtyAr?.trim() || fallback.specialtyAr,
+      specialtyEn: parsed.specialtyEn?.trim() || fallback.specialtyEn,
+      degreesAr: parsed.degreesAr?.trim() || fallback.degreesAr,
+      degreesEn: parsed.degreesEn?.trim() || fallback.degreesEn,
+      phone: parsed.phone?.trim() || fallback.phone,
+      logoUrl: parsed.logoUrl || fallback.logoUrl,
+    };
   }
 
   return fallback;

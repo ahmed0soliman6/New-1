@@ -1,4 +1,5 @@
 import { db } from '../services/firebase';
+import { safeStorage, StorageKeys } from '../services/storage';
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 
 export interface MedicalServiceItem {
@@ -67,10 +68,6 @@ export const DEFAULT_CLINIC_EXPENSES: ClinicExpenseRecord[] = [
   },
 ];
 
-const STORAGE_SERVICES_KEY = 'soli_medical_services';
-const STORAGE_EXPENSE_CATS_KEY = 'soli_expense_categories';
-const STORAGE_EXPENSES_KEY = 'soli_clinic_expenses';
-
 let cachedServices: MedicalServiceItem[] = DEFAULT_MEDICAL_SERVICES;
 let cachedExpenseCategories: ExpenseCategoryItem[] = DEFAULT_EXPENSE_CATEGORIES;
 let cachedClinicExpenses: ClinicExpenseRecord[] = DEFAULT_CLINIC_EXPENSES;
@@ -79,36 +76,25 @@ let cachedClinicExpenses: ClinicExpenseRecord[] = DEFAULT_CLINIC_EXPENSES;
 // 1. Medical Services (الوارد والخدمات الطبية والتسعير)
 // ==========================================
 export function loadMedicalServices(): MedicalServiceItem[] {
-  try {
-    const saved = localStorage.getItem(STORAGE_SERVICES_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        cachedServices = parsed;
-        return parsed;
-      }
-    }
-  } catch {}
+  const saved = safeStorage.getJSON<MedicalServiceItem[] | null>(StorageKeys.SERVICES, null);
+  if (Array.isArray(saved) && saved.length > 0) {
+    cachedServices = saved;
+    return saved;
+  }
   return cachedServices;
 }
 
 export function setCachedMedicalServices(services: MedicalServiceItem[]) {
   if (Array.isArray(services)) {
     cachedServices = services;
-    try {
-      localStorage.setItem(STORAGE_SERVICES_KEY, JSON.stringify(services));
-    } catch {}
+    safeStorage.setJSON(StorageKeys.SERVICES, services);
     window.dispatchEvent(new CustomEvent('soli_services_updated', { detail: services }));
   }
 }
 
 export function saveMedicalServices(services: MedicalServiceItem[]) {
   cachedServices = services;
-  try {
-    localStorage.setItem(STORAGE_SERVICES_KEY, JSON.stringify(services));
-  } catch (err) {
-    console.warn('Failed to save medical services locally', err);
-  }
+  safeStorage.setJSON(StorageKeys.SERVICES, services);
   window.dispatchEvent(new CustomEvent('soli_services_updated', { detail: services }));
 }
 
@@ -152,36 +138,25 @@ export function updateMedicalService(id: string, updates: Partial<MedicalService
 // 2. Expense Categories (بنود المنصرف)
 // ==========================================
 export function loadExpenseCategories(): ExpenseCategoryItem[] {
-  try {
-    const saved = localStorage.getItem(STORAGE_EXPENSE_CATS_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        cachedExpenseCategories = parsed;
-        return parsed;
-      }
-    }
-  } catch {}
+  const saved = safeStorage.getJSON<ExpenseCategoryItem[] | null>(StorageKeys.EXPENSE_CATEGORIES, null);
+  if (Array.isArray(saved) && saved.length > 0) {
+    cachedExpenseCategories = saved;
+    return saved;
+  }
   return cachedExpenseCategories;
 }
 
 export function setCachedExpenseCategories(categories: ExpenseCategoryItem[]) {
   if (Array.isArray(categories)) {
     cachedExpenseCategories = categories;
-    try {
-      localStorage.setItem(STORAGE_EXPENSE_CATS_KEY, JSON.stringify(categories));
-    } catch {}
+    safeStorage.setJSON(StorageKeys.EXPENSE_CATEGORIES, categories);
     window.dispatchEvent(new CustomEvent('soli_expense_categories_updated', { detail: categories }));
   }
 }
 
 export function saveExpenseCategories(categories: ExpenseCategoryItem[]) {
   cachedExpenseCategories = categories;
-  try {
-    localStorage.setItem(STORAGE_EXPENSE_CATS_KEY, JSON.stringify(categories));
-  } catch (err) {
-    console.warn('Failed to save expense categories locally', err);
-  }
+  safeStorage.setJSON(StorageKeys.EXPENSE_CATEGORIES, categories);
   window.dispatchEvent(new CustomEvent('soli_expense_categories_updated', { detail: categories }));
 }
 
@@ -218,36 +193,25 @@ export function removeExpenseCategory(id: string): ExpenseCategoryItem[] {
 // 3. Clinic Expenses (المنصرف والمصروفات المسجلة)
 // ==========================================
 export function loadClinicExpenses(): ClinicExpenseRecord[] {
-  try {
-    const saved = localStorage.getItem(STORAGE_EXPENSES_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        cachedClinicExpenses = parsed;
-        return parsed;
-      }
-    }
-  } catch {}
+  const saved = safeStorage.getJSON<ClinicExpenseRecord[] | null>(StorageKeys.EXPENSES, null);
+  if (Array.isArray(saved) && saved.length > 0) {
+    cachedClinicExpenses = saved;
+    return saved;
+  }
   return cachedClinicExpenses;
 }
 
 export function setCachedClinicExpenses(expenses: ClinicExpenseRecord[]) {
   if (Array.isArray(expenses)) {
     cachedClinicExpenses = expenses;
-    try {
-      localStorage.setItem(STORAGE_EXPENSES_KEY, JSON.stringify(expenses));
-    } catch {}
+    safeStorage.setJSON(StorageKeys.EXPENSES, expenses);
     window.dispatchEvent(new CustomEvent('soli_clinic_expenses_updated', { detail: expenses }));
   }
 }
 
 export function saveClinicExpenses(expenses: ClinicExpenseRecord[]) {
   cachedClinicExpenses = expenses;
-  try {
-    localStorage.setItem(STORAGE_EXPENSES_KEY, JSON.stringify(expenses));
-  } catch (err) {
-    console.warn('Failed to save clinic expenses locally', err);
-  }
+  safeStorage.setJSON(StorageKeys.EXPENSES, expenses);
   window.dispatchEvent(new CustomEvent('soli_clinic_expenses_updated', { detail: expenses }));
 }
 

@@ -1,4 +1,5 @@
 import { db } from '../services/firebase';
+import { safeStorage, StorageKeys } from '../services/storage';
 import { doc, setDoc, onSnapshot } from 'firebase/firestore';
 
 export const DEFAULT_LIFESTYLE_PRESETS = [
@@ -12,31 +13,20 @@ export const DEFAULT_LIFESTYLE_PRESETS = [
   'تناول وجبات صغيرة متكررة خفيفة بدلاً من الوجبات الكبيرة الثقيلة.',
 ];
 
-const LIFESTYLE_STORAGE_KEY = 'soli_lifestyle_presets';
-
 let cachedLifestylePresets: string[] = DEFAULT_LIFESTYLE_PRESETS;
 
 export function loadLifestylePresets(): string[] {
-  try {
-    const saved = localStorage.getItem(LIFESTYLE_STORAGE_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        cachedLifestylePresets = parsed;
-        return parsed;
-      }
-    }
-  } catch {}
+  const saved = safeStorage.getJSON<string[] | null>(StorageKeys.LIFESTYLE_PRESETS, null);
+  if (Array.isArray(saved) && saved.length > 0) {
+    cachedLifestylePresets = saved;
+    return saved;
+  }
   return cachedLifestylePresets;
 }
 
 export function saveLifestylePresets(presets: string[]): void {
   cachedLifestylePresets = presets;
-  try {
-    localStorage.setItem(LIFESTYLE_STORAGE_KEY, JSON.stringify(presets));
-  } catch (err) {
-    console.warn('Failed to save lifestyle presets locally', err);
-  }
+  safeStorage.setJSON(StorageKeys.LIFESTYLE_PRESETS, presets);
   window.dispatchEvent(new CustomEvent('soli_lifestyle_updated', { detail: presets }));
 
   if (db) {
@@ -83,7 +73,7 @@ export function subscribeToLifestylePresets(
 
   // 3. Storage event listener (cross-tab)
   const handleStorage = (e: StorageEvent) => {
-    if (e.key === LIFESTYLE_STORAGE_KEY && e.newValue) {
+    if (e.key === StorageKeys.LIFESTYLE_PRESETS && e.newValue) {
       try {
         const parsed = JSON.parse(e.newValue);
         if (Array.isArray(parsed)) {
@@ -106,9 +96,7 @@ export function subscribeToLifestylePresets(
             const data = snap.data();
             if (Array.isArray(data?.presets) && data.presets.length > 0) {
               cachedLifestylePresets = data.presets;
-              try {
-                localStorage.setItem(LIFESTYLE_STORAGE_KEY, JSON.stringify(data.presets));
-              } catch {}
+              safeStorage.setJSON(StorageKeys.LIFESTYLE_PRESETS, data.presets);
               callback(data.presets);
             }
           }

@@ -134,6 +134,7 @@ import {
   playSingleAlertSound,
   ClinicAlertPayload,
 } from './utils/alertManager';
+import { safeStorage, StorageKeys } from './services/storage';
 import { setCachedRecurringTemplates } from './utils/recurringTemplatesManager';
 import { toEnglishDigits, formatAppDate, formatAppTime } from './utils/numberUtils';
 
@@ -265,9 +266,6 @@ const INITIAL_CHRONIC_FULL: ChronicDisease[] = (() => {
   return Array.from(map.values());
 })();
 
-const ACTIVE_SCREEN_STORAGE_KEY = 'soli_clinic_active_screen';
-const THEME_STORAGE_KEY = 'soli_clinic_theme';
-
 const VALID_SCREENS: ScreenType[] = [
   'dashboard',
   'new-visit',
@@ -289,13 +287,9 @@ function ClinicApp() {
   const { language, dir, isRTL, t } = useLanguage();
 
   const [activeScreen, setActiveScreen] = useState<ScreenType>(() => {
-    try {
-      const saved = localStorage.getItem(ACTIVE_SCREEN_STORAGE_KEY) as ScreenType | null;
-      if (saved && VALID_SCREENS.includes(saved)) {
-        return saved;
-      }
-    } catch {
-      // ignore
+    const saved = safeStorage.getItem(StorageKeys.ACTIVE_SCREEN) as ScreenType | null;
+    if (saved && VALID_SCREENS.includes(saved)) {
+      return saved;
     }
     if (allowedScreens && allowedScreens.length > 0 && !allowedScreens.includes('dashboard')) {
       return (allowedScreens[0] as ScreenType) || 'new-visit';
@@ -305,12 +299,8 @@ function ClinicApp() {
 
   // Save active screen to localStorage whenever it changes
   useEffect(() => {
-    try {
-      if (activeScreen) {
-        localStorage.setItem(ACTIVE_SCREEN_STORAGE_KEY, activeScreen);
-      }
-    } catch {
-      // ignore
+    if (activeScreen) {
+      safeStorage.setItem(StorageKeys.ACTIVE_SCREEN, activeScreen);
     }
   }, [activeScreen]);
 
@@ -323,9 +313,7 @@ function ClinicApp() {
           (allowedScreens[0] as ScreenType) ||
           'new-visit';
         setActiveScreen(firstPermitted);
-        try {
-          localStorage.setItem(ACTIVE_SCREEN_STORAGE_KEY, firstPermitted);
-        } catch {}
+        safeStorage.setItem(StorageKeys.ACTIVE_SCREEN, firstPermitted);
       }
     }
   }, [allowedScreens, activeScreen, canAccess]);
@@ -338,34 +326,24 @@ function ClinicApp() {
         (allowedScreens[0] as ScreenType) ||
         'new-visit';
       setActiveScreen(firstPermitted);
-      try {
-        localStorage.setItem(ACTIVE_SCREEN_STORAGE_KEY, firstPermitted);
-      } catch {}
+      safeStorage.setItem(StorageKeys.ACTIVE_SCREEN, firstPermitted);
       return;
     }
     setActiveScreen(screen);
-    try {
-      localStorage.setItem(ACTIVE_SCREEN_STORAGE_KEY, screen);
-    } catch {}
+    safeStorage.setItem(StorageKeys.ACTIVE_SCREEN, screen);
   };
 
   // Theme state persisted in localStorage and synced with document root class
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    try {
-      const saved = localStorage.getItem(THEME_STORAGE_KEY);
-      if (saved === 'dark' || saved === 'light') {
-        return saved;
-      }
-    } catch {
-      // ignore
+    const saved = safeStorage.getItem(StorageKeys.THEME);
+    if (saved === 'dark' || saved === 'light') {
+      return saved;
     }
     return 'light';
   });
 
   useEffect(() => {
-    try {
-      localStorage.setItem(THEME_STORAGE_KEY, theme);
-    } catch {}
+    safeStorage.setItem(StorageKeys.THEME, theme);
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
@@ -378,14 +356,9 @@ function ClinicApp() {
   };
   // Dynamic Visit Types Pricing State (Persistence in localStorage)
   const [visitTypesList, setVisitTypesList] = useState<{ id: string; name: string; fee: number }[]>(() => {
-    const saved = localStorage.getItem('soli_visit_types');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch {
-        // ignore
-      }
+    const saved = safeStorage.getJSON<{ id: string; name: string; fee: number }[] | null>(StorageKeys.VISIT_TYPES, null);
+    if (Array.isArray(saved) && saved.length > 0) {
+      return saved;
     }
     return [
       { id: 'vt-1', name: 'كشف جديد', fee: 300 },
@@ -397,7 +370,7 @@ function ClinicApp() {
   const handleAddVisitType = (newType: { id: string; name: string; fee: number }) => {
     setVisitTypesList((prev) => {
       const updated = [...prev, newType];
-      localStorage.setItem('soli_visit_types', JSON.stringify(updated));
+      safeStorage.setJSON(StorageKeys.VISIT_TYPES, updated);
       if (db) {
         import('firebase/firestore').then(({ doc, setDoc }) => {
           setDoc(doc(db!, 'settings', 'visitTypes'), { items: updated }, { merge: true }).catch(() => {});
@@ -410,7 +383,7 @@ function ClinicApp() {
   const handleRemoveVisitType = (id: string) => {
     setVisitTypesList((prev) => {
       const updated = prev.filter((v) => v.id !== id);
-      localStorage.setItem('soli_visit_types', JSON.stringify(updated));
+      safeStorage.setJSON(StorageKeys.VISIT_TYPES, updated);
       if (db) {
         import('firebase/firestore').then(({ doc, setDoc }) => {
           setDoc(doc(db!, 'settings', 'visitTypes'), { items: updated }, { merge: true }).catch(() => {});
@@ -423,7 +396,7 @@ function ClinicApp() {
   const handleUpdateVisitTypeFee = (id: string, fee: number) => {
     setVisitTypesList((prev) => {
       const updated = prev.map((v) => (v.id === id ? { ...v, fee } : v));
-      localStorage.setItem('soli_visit_types', JSON.stringify(updated));
+      safeStorage.setJSON(StorageKeys.VISIT_TYPES, updated);
       if (db) {
         import('firebase/firestore').then(({ doc, setDoc }) => {
           setDoc(doc(db!, 'settings', 'visitTypes'), { items: updated }, { merge: true }).catch(() => {});
@@ -447,13 +420,9 @@ function ClinicApp() {
 
   const handleClearAllData = async () => {
     try {
-      try {
-        localStorage.setItem('soli_clinic_db_initialized', 'true');
-        localStorage.setItem('soli_clinic_expenses', '[]');
-        window.dispatchEvent(new CustomEvent('soli_clinic_expenses_updated'));
-      } catch {
-        // Storage fallback
-      }
+      safeStorage.setItem(StorageKeys.CLINIC_DB_INITIALIZED, 'true');
+      safeStorage.setJSON(StorageKeys.CLINIC_EXPENSES, []);
+      window.dispatchEvent(new CustomEvent('soli_clinic_expenses_updated'));
 
       const { clearAllDatabaseCollections } = await import('./utils/demoDataGenerator');
       await clearAllDatabaseCollections(db);
@@ -479,13 +448,9 @@ function ClinicApp() {
 
   const handleClearBrowserVisitsOnly = async () => {
     try {
-      try {
-        localStorage.setItem('soli_clinic_db_initialized', 'true');
-        localStorage.setItem('soli_clinic_expenses', '[]');
-        window.dispatchEvent(new CustomEvent('soli_clinic_expenses_updated'));
-      } catch {
-        // Storage fallback
-      }
+      safeStorage.setItem(StorageKeys.CLINIC_DB_INITIALIZED, 'true');
+      safeStorage.setJSON(StorageKeys.CLINIC_EXPENSES, []);
+      window.dispatchEvent(new CustomEvent('soli_clinic_expenses_updated'));
 
       setPatientsCanonical([]);
       setVisitsCanonical([]);
@@ -511,13 +476,9 @@ function ClinicApp() {
 
   const handleClearAllBrowserAndCloud = async () => {
     try {
-      try {
-        localStorage.setItem('soli_clinic_db_initialized', 'true');
-        localStorage.setItem('soli_clinic_expenses', '[]');
-        window.dispatchEvent(new CustomEvent('soli_clinic_expenses_updated'));
-      } catch {
-        // Storage fallback
-      }
+      safeStorage.setItem(StorageKeys.CLINIC_DB_INITIALIZED, 'true');
+      safeStorage.setJSON(StorageKeys.CLINIC_EXPENSES, []);
+      window.dispatchEvent(new CustomEvent('soli_clinic_expenses_updated'));
 
       const { clearAllDatabaseCollections } = await import('./utils/demoDataGenerator');
       await clearAllDatabaseCollections(db);
@@ -597,7 +558,7 @@ function ClinicApp() {
     if (!db) return;
     const checkAndSeed = async () => {
       try {
-        const alreadyInitialized = localStorage.getItem('soli_clinic_db_initialized');
+        const alreadyInitialized = safeStorage.getItem(StorageKeys.CLINIC_DB_INITIALIZED);
         if (alreadyInitialized) {
           return;
         }
@@ -625,10 +586,10 @@ function ClinicApp() {
             batch.set(doc(db, 'chronicDiseases', cd.diseaseId), cd);
           });
           await batch.commit();
-          localStorage.setItem('soli_clinic_db_initialized', 'true');
+          safeStorage.setItem(StorageKeys.CLINIC_DB_INITIALIZED, 'true');
           console.log('Reference catalogs successfully seeded to Firestore!');
         } else {
-          localStorage.setItem('soli_clinic_db_initialized', 'true');
+          safeStorage.setItem(StorageKeys.CLINIC_DB_INITIALIZED, 'true');
         }
       } catch (err) {
         console.warn('Error during Firestore catalog seeding:', err);
@@ -1405,9 +1366,7 @@ function ClinicApp() {
     } catch {}
 
     // 2. LocalStorage cross-tab sync
-    try {
-      localStorage.setItem('soli_clinic_status_event', JSON.stringify({ status: nextStatus, updatedBy, timestamp: Date.now() }));
-    } catch {}
+    safeStorage.setJSON(StorageKeys.CLINIC_STATUS_EVENT, { status: nextStatus, updatedBy, timestamp: Date.now() });
 
     // 3. Sync to Firestore immediately so all other connected accounts & devices receive the status update in real-time
     if (db) {

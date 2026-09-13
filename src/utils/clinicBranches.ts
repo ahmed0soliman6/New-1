@@ -1,4 +1,5 @@
 import { CLINIC_INFO } from '../data/previewClinicData';
+import { safeStorage, StorageKeys } from '../services/storage';
 import { getPrescriptionDoctorInfo } from './prescriptionDoctor';
 
 export interface ClinicBranchItem {
@@ -16,38 +17,28 @@ export interface ClinicBranchItem {
  * falling back to `CLINIC_INFO.branches`.
  */
 export function getClinicBranches(): ClinicBranchItem[] {
-  try {
-    const customBranches = localStorage.getItem('soli_clinic_branches');
-    if (customBranches) {
-      const parsed = JSON.parse(customBranches);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.map((b: any, index: number) => ({
-          id: b.id || `branch-${index}`,
-          name: b.name || `فرع ${index + 1}`,
-          address: b.address || '',
-          phone: b.phone || b.mobile || '',
-          mobile: b.mobile || b.phone || '',
-          workingHours: b.workingHours || '',
-        }));
-      }
-    }
+  const customBranches = safeStorage.getJSON<any[] | null>(StorageKeys.CLINIC_BRANCHES, null);
+  if (Array.isArray(customBranches) && customBranches.length > 0) {
+    return customBranches.map((b: any, index: number) => ({
+      id: b.id || `branch-${index}`,
+      name: b.name || `فرع ${index + 1}`,
+      address: b.address || '',
+      phone: b.phone || b.mobile || '',
+      mobile: b.mobile || b.phone || '',
+      workingHours: b.workingHours || '',
+    }));
+  }
 
-    const cached = localStorage.getItem('soli_prescription_settings');
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      if (Array.isArray(parsed.branches) && parsed.branches.length > 0) {
-        return parsed.branches.map((b: any, index: number) => ({
-          id: b.id || `branch-${index}`,
-          name: b.name || `فرع ${index + 1}`,
-          address: b.address || '',
-          phone: b.phone || b.mobile || '',
-          mobile: b.mobile || b.phone || '',
-          workingHours: b.workingHours || '',
-        }));
-      }
-    }
-  } catch (err) {
-    console.warn('Failed to parse clinic branches from localStorage:', err);
+  const cached = safeStorage.getJSON<any | null>(StorageKeys.PRESCRIPTION_SETTINGS, null);
+  if (cached && Array.isArray(cached.branches) && cached.branches.length > 0) {
+    return cached.branches.map((b: any, index: number) => ({
+      id: b.id || `branch-${index}`,
+      name: b.name || `فرع ${index + 1}`,
+      address: b.address || '',
+      phone: b.phone || b.mobile || '',
+      mobile: b.mobile || b.phone || '',
+      workingHours: b.workingHours || '',
+    }));
   }
 
   // Fallback to CLINIC_INFO.branches
@@ -79,31 +70,24 @@ export function getClinicBranches(): ClinicBranchItem[] {
  * Dispatches an update event so all screens re-render instantaneously.
  */
 export function saveClinicBranches(branches: ClinicBranchItem[]): void {
-  try {
-    localStorage.setItem('soli_clinic_branches', JSON.stringify(branches));
+  safeStorage.setJSON(StorageKeys.CLINIC_BRANCHES, branches);
 
-    // Also update branches in prescription settings if present
-    const cachedRx = localStorage.getItem('soli_prescription_settings');
-    if (cachedRx) {
-      try {
-        const parsed = JSON.parse(cachedRx);
-        parsed.branches = branches.map((b) => ({
-          id: b.id,
-          name: b.name,
-          address: b.address,
-          phone: b.phone || b.mobile || '',
-          workingHours: b.workingHours || '',
-        }));
-        localStorage.setItem('soli_prescription_settings', JSON.stringify(parsed));
-      } catch {}
-    }
-
-    window.dispatchEvent(new CustomEvent('soli_branches_updated', { detail: branches }));
-    window.dispatchEvent(new Event('soli_prescription_updated'));
-    window.dispatchEvent(new Event('storage'));
-  } catch (err) {
-    console.error('Failed to save clinic branches:', err);
+  // Also update branches in prescription settings if present
+  const cachedRx = safeStorage.getJSON<any | null>(StorageKeys.PRESCRIPTION_SETTINGS, null);
+  if (cachedRx) {
+    cachedRx.branches = branches.map((b) => ({
+      id: b.id,
+      name: b.name,
+      address: b.address,
+      phone: b.phone || b.mobile || '',
+      workingHours: b.workingHours || '',
+    }));
+    safeStorage.setJSON(StorageKeys.PRESCRIPTION_SETTINGS, cachedRx);
   }
+
+  window.dispatchEvent(new CustomEvent('soli_branches_updated', { detail: branches }));
+  window.dispatchEvent(new Event('soli_prescription_updated'));
+  window.dispatchEvent(new Event('storage'));
 }
 
 /**

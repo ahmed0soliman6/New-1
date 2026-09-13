@@ -36,6 +36,7 @@ import {
   ExpenseCategoryItem,
 } from '../../utils/financeManager';
 import { db } from '../../services/firebase';
+import { safeStorage, StorageKeys } from '../../services/storage';
 import { subscribeToServices, subscribeToExpenseCategories } from '../../services/repositories';
 
 interface ChronicItem {
@@ -233,7 +234,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   }, [activeSettingsSection, isAdmin, hasPermission]);
 
   const [freeFollowupDays, setFreeFollowupDays] = useState<number>(() => {
-    const saved = localStorage.getItem('soli_free_followup_days');
+    const saved = safeStorage.getItem(StorageKeys.FREE_FOLLOWUP_DAYS);
     return saved ? Number(saved) : 14;
   });
   const [alertConfig, setAlertConfig] = useState<AlertSettings>(loadAlertSettings);
@@ -285,7 +286,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
   const handleUpdateFollowupDays = (days: number) => {
     setFreeFollowupDays(days);
-    localStorage.setItem('soli_free_followup_days', String(days));
+    safeStorage.setItem(StorageKeys.FREE_FOLLOWUP_DAYS, String(days));
     setSavedToast(`تم حفظ مدة الاستشارة (${days} يوم) تلقائياً ✓`);
     setTimeout(() => setSavedToast(null), 2500);
   };
@@ -351,7 +352,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
         if (typeof data.freeFollowupDays === 'number') {
           setFreeFollowupDays(data.freeFollowupDays);
-          localStorage.setItem('soli_free_followup_days', String(data.freeFollowupDays));
+          safeStorage.setItem(StorageKeys.FREE_FOLLOWUP_DAYS, String(data.freeFollowupDays));
         }
 
         if (Array.isArray(data.medicalServices) && data.medicalServices.length > 0) {
@@ -375,7 +376,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         }
 
         if (Array.isArray(data.recurringTemplates) && data.recurringTemplates.length > 0) {
-          localStorage.setItem('soli_recurring_templates', JSON.stringify(data.recurringTemplates));
+          safeStorage.setJSON(StorageKeys.RECURRING_TEMPLATES, data.recurringTemplates);
           setSavedTemplates(data.recurringTemplates);
           window.dispatchEvent(new Event('soli_templates_updated'));
         }
