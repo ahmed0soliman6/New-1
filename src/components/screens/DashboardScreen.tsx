@@ -4,6 +4,7 @@ import { Visit } from '../../types/database';
 import { FollowUpItem } from './AppointmentsScreen';
 import { usePermissions } from '../../context/AuthContext';
 import { usePrescriptionDoctor } from '../../utils/prescriptionDoctor';
+import { findBranch } from '../../utils/clinicBranches';
 import { loadMedicalServices, MedicalServiceItem } from '../../utils/financeManager';
 import { ClinicAlertPayload } from '../../utils/alertManager';
 import { toEnglishDigits } from '../../utils/numberUtils';
@@ -68,11 +69,14 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
     const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
     const formattedPhone = cleanPhone.startsWith('0') ? `2${cleanPhone}` : cleanPhone;
     const dateText = dueDate || 'الأيام القادمة';
+    const branch = findBranch();
+    const branchPhone = branch.phone || branch.mobile || doctorInfo.phone || '01092847162';
 
     const message = `مرحباً بحضرتك أستاذ/ة *${patientName}* 🌸
 نود تذكيركم بموعد المتابعة والاستشارة الطبية المحدد لكم في *عيادة ${doctorInfo.doctorName}* 🩺
 🗓 موعد المتابعة: *${dateText}*
-📍 التخصص: *${doctorInfo.specialtyAr}*
+📍 فرع العيادة: *${branch.name}*
+${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكيد أو الاستفسار: ${branchPhone}
 مع تمنياتنا لكم بدوام الصحة والعافية ✨`;
 
     const whatsappUrl = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`;

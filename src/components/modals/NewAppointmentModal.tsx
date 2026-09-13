@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { AppointmentListItem } from '../../types';
+import { getClinicBranches } from '../../utils/clinicBranches';
 
 interface NewAppointmentModalProps {
   isOpen: boolean;
@@ -25,11 +26,12 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
     ];
   }, [visitTypesList]);
 
+  const clinicBranches = useMemo(() => getClinicBranches(), []);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [appointmentDate, setAppointmentDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [timeSlot, setTimeSlot] = useState('14:30');
-  const [branch, setBranch] = useState('المهندسين');
+  const [branch, setBranch] = useState(() => clinicBranches[0]?.name || 'الفرع الرئيسي - المهندسين');
   const [visitType, setVisitType] = useState(() => activeVisitTypes[0]?.name || 'كشف جديد');
   const [fee, setFee] = useState(() => activeVisitTypes[0]?.fee ?? 300);
 
@@ -201,8 +203,11 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
                 onChange={(e) => setBranch(e.target.value)}
                 className="w-full bg-[#080e1b] text-[#dde2f5] text-xs p-2.5 rounded-xl border border-white/10 focus:outline-none cursor-pointer font-medium"
               >
-                <option value="المهندسين">الفرع الرئيسي - المهندسين</option>
-                <option value="الدقي">فرع الدقي التخصصي</option>
+                {clinicBranches.map((b) => (
+                  <option key={b.id || b.name} value={b.name}>
+                    {b.name}
+                  </option>
+                ))}
               </select>
             </div>
 

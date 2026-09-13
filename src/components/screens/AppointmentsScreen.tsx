@@ -5,6 +5,8 @@ import { CLINIC_INFO } from '../../data/previewClinicData';
 import { AppointmentListItem, ScreenType, PatientListItem } from '../../types';
 import { usePermissions } from '../../context/AuthContext';
 import { toEnglishDigits } from '../../utils/numberUtils';
+import { getClinicBranches, findBranch } from '../../utils/clinicBranches';
+import { WhatsappReminderModal } from '../modals/WhatsappReminderModal';
 
 export interface FollowUpItem {
   id: string;
@@ -93,6 +95,31 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
   // WhatsApp helper modal
   const [isWhatsappModalOpen, setIsWhatsappModalOpen] = useState(false);
   const [whatsappRawText, setWhatsappRawText] = useState('');
+
+  // Clinic Branches from system settings / configuration
+  const clinicBranches = useMemo(() => getClinicBranches(), []);
+  const [selectedBranch, setSelectedBranch] = useState<string>(() => {
+    return clinicBranches[0]?.name || 'الفرع الرئيسي - المهندسين';
+  });
+
+  // Dedicated WhatsApp Reminder Modal state
+  const [reminderModalData, setReminderModalData] = useState<{
+    isOpen: boolean;
+    type: 'appointment' | 'followup';
+    patientName: string;
+    phone: string;
+    timeSlot?: string;
+    visitType?: string;
+    date?: string;
+    dueDate?: string;
+    diagnosis?: string;
+    initialBranch?: string;
+  }>({
+    isOpen: false,
+    type: 'appointment',
+    patientName: '',
+    phone: '',
+  });
 
   // Form state for "إضافة موعد" (Top Card 1)
   const [patientName, setPatientName] = useState('');
@@ -306,49 +333,31 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
     }
   };
 
-  // WhatsApp reminder for Appointment
+  // WhatsApp reminder for Appointment (Opens dedicated modal with accurate branch & phone)
   const handleSendWhatsappAppointmentReminder = (app: AppointmentListItem) => {
-    const cleanPhone = (app.phone || '').replace(/[^0-9]/g, '');
-    const formattedPhone = cleanPhone.startsWith('0') ? `2${cleanPhone}` : cleanPhone || '201000000000';
-    const message = `مرحباً بحضرتك أستاذ/ة *${app.patientName}* 🌸
-نود تذكيركم بموعدكم في *عيادة ${CLINIC_INFO.doctorName}* 🩺
-🗓 موعد الحجز: *${app.timeSlot || '09:00 ص'}* (${app.visitType || 'كشف'})
-📍 العنوان: عيادة الباطنة التخصصية - المهندسين
-📞 للتأكيد أو تعديل الموعد: 01000000000
-مع تمنياتنا لكم بدوام الصحة والعافية ✨`;
-
-    try {
-      window.open(
-        `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`,
-        '_blank',
-        'noopener,noreferrer'
-      );
-    } catch {}
-    setToastMessage(`تم فتح واتساب وتجهيز رسالة تذكير الموعد للمريض (${app.patientName})`);
-    setTimeout(() => setToastMessage(null), 4000);
+    setReminderModalData({
+      isOpen: true,
+      type: 'appointment',
+      patientName: app.patientName,
+      phone: app.phone,
+      timeSlot: app.timeSlot || app.time,
+      visitType: app.visitType,
+      date: app.date,
+      initialBranch: app.branch,
+    });
   };
 
-  // WhatsApp reminder for Follow-up
+  // WhatsApp reminder for Follow-up (Opens dedicated modal with accurate branch & phone)
   const handleSendWhatsappFollowupReminder = (fu: FollowUpItem) => {
-    const cleanPhone = (fu.phone || '').replace(/[^0-9]/g, '');
-    const formattedPhone = cleanPhone.startsWith('0') ? `2${cleanPhone}` : cleanPhone || '201092847162';
-
-    const message = `مرحباً بحضرتك أستاذ/ة *${fu.patientName}* 🌸
-نود تذكيركم بموعد المتابعة والاستشارة الطبية المحدد لكم في *عيادة ${CLINIC_INFO.doctorName}* 🩺
-🗓 موعد المتابعة: *${fu.dueDate}*
-📍 العنوان: عيادة الباطنة التخصصية - المهندسين
-📞 للتأكيد أو الاستفسار: 01092847162
-مع تمنياتنا لكم بدوام الصحة والعافية ✨`;
-
-    try {
-      window.open(
-        `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`,
-        '_blank',
-        'noopener,noreferrer'
-      );
-    } catch {}
-    setToastMessage(`تم فتح واتساب وتجهيز رسالة تذكير المتابعة للمريض (${fu.patientName})`);
-    setTimeout(() => setToastMessage(null), 4000);
+    setReminderModalData({
+      isOpen: true,
+      type: 'followup',
+      patientName: fu.patientName,
+      phone: fu.phone,
+      dueDate: fu.dueDate,
+      diagnosis: fu.diagnosis,
+      initialBranch: undefined,
+    });
   };
 
   // Save new appointment handler
@@ -375,7 +384,7 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
       timeSlot: formattedTime,
       time: formattedTime,
       date: scheduledDate,
-      branch: 'الفرع الرئيسي',
+      branch: selectedBranch || clinicBranches[0]?.name || 'الفرع الرئيسي - المهندسين',
       visitType: visitType || activeVisitTypes[0]?.name || 'كشف جديد',
       expectedFee,
       status: 'مجدول' as any,
@@ -641,6 +650,28 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
               </div>
             </div>
 
+            {/* Branch Selector - Loaded dynamically from clinic settings */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700 dark:text-[#dde2f5] flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-sm text-[#008f97] dark:text-[#00c2cb]">domain</span>
+                  <span>فرع العيادة</span>
+                </span>
+                <span className="text-[10px] text-teal-600 dark:text-[#00c2cb] font-bold">مكان الكشف</span>
+              </label>
+              <select
+                value={selectedBranch}
+                onChange={(e) => setSelectedBranch(e.target.value)}
+                className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-[#00c2cb] cursor-pointer font-bold shadow-2xs"
+              >
+                {clinicBranches.map((b) => (
+                  <option key={b.id || b.name} value={b.name}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Visit Type - Dynamically synced with Settings types */}
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700 dark:text-[#dde2f5] flex items-center justify-between">
@@ -664,7 +695,7 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
             </div>
 
             {/* Appointment Notes */}
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 md:col-span-2 lg:col-span-4">
               <label className="text-xs font-bold text-slate-700 dark:text-[#dde2f5] flex items-center gap-1.5">
                 <span className="material-symbols-outlined text-sm text-[#008f97] dark:text-[#00c2cb]">edit_note</span>
                 <span>ملاحظات الموعد</span>
@@ -673,7 +704,7 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
                 type="text"
                 value={appointmentNotes}
                 onChange={(e) => setAppointmentNotes(e.target.value)}
-                placeholder="مثال: متابعة قرحة المعدة..."
+                placeholder="مثال: متابعة قرحة المعدة، كشف مستعجل..."
                 className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] placeholder:text-slate-400 text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-[#00c2cb]"
               />
             </div>
@@ -842,10 +873,15 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
                         )}
                       </div>
 
-                      {/* Meta information: Type • Phone • Notes */}
+                      {/* Meta information: Type • Branch • Phone • Notes */}
                       <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500 dark:text-[#859394] mt-1">
                         <span className="font-semibold text-slate-700 dark:text-slate-300">
                           {app.visitType || 'كشف'}
+                        </span>
+                        <span>•</span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-teal-50 dark:bg-[#00c2cb]/10 text-teal-700 dark:text-[#00c2cb] font-bold text-[11px] border border-teal-200/60 dark:border-[#00c2cb]/20">
+                          <span className="material-symbols-outlined text-[13px]">location_on</span>
+                          <span>{app.branch || 'الفرع الرئيسي'}</span>
                         </span>
                         <span>•</span>
                         <span className="font-mono" dir="ltr">
@@ -1168,6 +1204,22 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
           </div>
         </div>
       )}
+      {/* ========================================================================= */}
+      {/* Modal: تذكير واتساب بالموعد أو المتابعة مع اختيار الفرع ومعاينة الرسالة */}
+      {/* ========================================================================= */}
+      <WhatsappReminderModal
+        isOpen={reminderModalData.isOpen}
+        onClose={() => setReminderModalData((prev) => ({ ...prev, isOpen: false }))}
+        type={reminderModalData.type}
+        patientName={reminderModalData.patientName}
+        phone={reminderModalData.phone}
+        timeSlot={reminderModalData.timeSlot}
+        visitType={reminderModalData.visitType}
+        date={reminderModalData.date}
+        dueDate={reminderModalData.dueDate}
+        diagnosis={reminderModalData.diagnosis}
+        initialBranch={reminderModalData.initialBranch}
+      />
     </div>
   );
 };

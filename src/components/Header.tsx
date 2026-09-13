@@ -6,6 +6,7 @@ import { ClinicAlertPayload } from '../utils/alertManager';
 import { GlobalSearchBar } from './GlobalSearchBar';
 import { toEnglishDigits } from '../utils/numberUtils';
 import { useLanguage } from '../i18n/LanguageContext';
+import { findBranch } from '../utils/clinicBranches';
 
 export interface FollowUpItem {
   id: string;
@@ -86,19 +87,24 @@ export const Header: React.FC<HeaderProps> = ({
     const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
     const formattedPhone = cleanPhone.startsWith('0') ? `2${cleanPhone}` : cleanPhone;
     const dateText = dueDate || (language === 'en' ? 'upcoming days' : 'الأيام القادمة');
+    const branch = findBranch();
+    const branchAddress = branch.address || (language === 'en' ? 'Clinic Main Address' : 'العنوان الرئيسي للعيادة');
+    const branchPhone = branch.phone || branch.mobile || '01092847162';
 
     const message = language === 'en'
       ? `Hello *${patientName}* 🌸
 This is a reminder for your follow-up medical consultation at *Dr. ${activeDoctorName}'s Clinic* 🩺
 🗓 Follow-up date: *${dateText}*
-📍 Address: Specialized Internal Medicine Clinic - Mohandessin
-📞 Phone: 01092847162
+📍 Branch: *${branch.name}*
+Address: ${branchAddress}
+📞 Confirmation Phone: ${branchPhone}
 Wishing you great health and wellness ✨`
       : `مرحباً بحضرتك أستاذ/ة *${patientName}* 🌸
 نود تذكيركم بموعد المتابعة والاستشارة الطبية المحدد لكم في *عيادة ${activeDoctorName}* 🩺
 🗓 موعد المتابعة: *${dateText}*
-📍 العنوان: عيادة الباطنة التخصصية - المهندسين
-📞 للتأكيد أو الاستفسار: 01092847162
+📍 فرع العيادة: *${branch.name}*
+العنوان: ${branchAddress}
+📞 للتأكيد أو الاستفسار: ${branchPhone}
 مع تمنياتنا لكم بدوام الصحة والعافية ✨`;
 
     const whatsappUrl = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`;
