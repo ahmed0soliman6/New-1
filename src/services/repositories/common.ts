@@ -1,0 +1,141 @@
+import {
+  collection,
+  doc,
+  onSnapshot,
+  setDoc,
+  deleteDoc,
+  type Firestore,
+  type Unsubscribe,
+} from 'firebase/firestore';
+import { auth } from '../firebase';
+
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+  };
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): Error {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth?.currentUser?.uid || null,
+      email: auth?.currentUser?.email || null,
+      emailVerified: auth?.currentUser?.emailVerified || null,
+      isAnonymous: auth?.currentUser?.isAnonymous || null,
+    },
+    operationType,
+    path,
+  };
+  const jsonString = JSON.stringify(errInfo);
+  console.warn('[Firestore Sync Info]', jsonString);
+  return new Error(jsonString);
+}
+
+export function normalize(value: unknown): unknown {
+  if (value && typeof value === 'object' && 'toDate' in value && typeof (value as { toDate?: unknown }).toDate === 'function') {
+    return (value as { toDate: () => Date }).toDate().toISOString();
+  }
+  if (Array.isArray(value)) return value.map(normalize);
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, normalize(item)]));
+  return value;
+}
+
+export const ID_FIELD_MAP: Record<string, string> = {
+  patients: 'patientId',
+  appointments: 'appointmentId',
+  visits: 'visitId',
+  invoices: 'invoiceId',
+  payments: 'paymentId',
+  prescriptions: 'prescriptionId',
+  followUps: 'followUpId',
+  labOrders: 'labOrderId',
+  radiologyOrders: 'radiologyOrderId',
+  medications: 'medicationId',
+  labTests: 'labTestId',
+  radiologyTypes: 'radiologyId',
+  diagnoses: 'diagnosisId',
+  symptoms: 'symptomId',
+  chronicDiseases: 'diseaseId',
+};
+
+export function subscribeCollection<T>(
+  db: Firestore,
+  name: string,
+  next: (items: T[]) => void,
+  error: (reason: Error) => void
+): Unsubscribe {
+  const idField = ID_FIELD_MAP[name] || 'id';
+  return onSnapshot(
+    collection(db, name),
+    (snapshot) => {
+      const items = snapshot.docs.map((item) => {
+        const data = item.data();
+        return normalize({
+          ...data,
+          [idField]: data[idField] || item.id,
+        }) as T;
+      });
+      next(items);
+    },
+    (reason) => {
+      const formattedError = handleFirestoreError(reason, OperationType.LIST, name);
+      error(formattedError);
+    }
+  );
+}
+
+export async function saveCatalogItem<T extends Record<string, unknown>>(
+  db: Firestore,
+  collectionName: string,
+  itemId: string,
+  data: T
+): Promise<void> {
+  try {
+    const docRef = doc(db, collectionName, itemId);
+    await setDoc(docRef, data, { merge: true });
+  } catch (err) {
+    throw handleFirestoreError(err, OperationType.WRITE, `${collectionName}/${itemId}`);
+  }
+}
+
+export async function removeCatalogItem(
+  db: Firestore,
+  collectionName: string,
+  itemId: string
+): Promise<void> {
+  try {
+    const docRef = doc(db, collectionName, itemId);
+    await deleteDoc(docRef);
+  } catch (err) {
+    throw handleFirestoreError(err, OperationType.DELETE, `${collectionName}/${itemId}`);
+  }
+}
+
+export async function saveSettingsDocument<T extends Record<string, unknown>>(
+  db: Firestore,
+  docName: string,
+  data: T
+): Promise<void> {
+  try {
+    const docRef = doc(db, 'settings', docName);
+    await setDoc(docRef, data, { merge: true });
+  } catch (err) {
+    throw handleFirestoreError(err, OperationType.WRITE, `settings/${docName}`);
+  }
+}
