@@ -4,6 +4,7 @@ import {
   getClinicBranches,
   saveClinicBranches,
   buildAppointmentReminderMessage,
+  generateAllDayTimeOptions,
 } from '../../utils/clinicBranches';
 import { db } from '../../services/firebase';
 import { saveSettingsDocument } from '../../services/repositories';
@@ -49,35 +50,8 @@ export const ClinicBranchesPanel: React.FC = () => {
     'أيام مخصصة',
   ];
 
-  const START_TIME_OPTIONS = [
-    { value: '08:00', label: '08:00 صباحاً (08:00 ص)' },
-    { value: '09:00', label: '09:00 صباحاً (09:00 ص)' },
-    { value: '10:00', label: '10:00 صباحاً (10:00 ص)' },
-    { value: '11:00', label: '11:00 صباحاً (11:00 ص)' },
-    { value: '12:00', label: '12:00 ظهراً (12:00 م)' },
-    { value: '13:00', label: '01:00 عصراً (01:00 م)' },
-    { value: '14:00', label: '02:00 عصراً (02:00 م)' },
-    { value: '15:00', label: '03:00 عصراً (03:00 م)' },
-    { value: '16:00', label: '04:00 مساءً (04:00 م)' },
-    { value: '17:00', label: '05:00 مساءً (05:00 م)' },
-    { value: '18:00', label: '06:00 مساءً (06:00 م)' },
-    { value: '19:00', label: '07:00 مساءً (07:00 م)' },
-    { value: '20:00', label: '08:00 مساءً (08:00 م)' },
-  ];
-
-  const END_TIME_OPTIONS = [
-    { value: '16:00', label: '04:00 مساءً (04:00 م)' },
-    { value: '17:00', label: '05:00 مساءً (05:00 م)' },
-    { value: '18:00', label: '06:00 مساءً (06:00 م)' },
-    { value: '19:00', label: '07:00 مساءً (07:00 م)' },
-    { value: '20:00', label: '08:00 مساءً (08:00 م)' },
-    { value: '21:00', label: '09:00 مساءً (09:00 م)' },
-    { value: '22:00', label: '10:00 مساءً (10:00 م)' },
-    { value: '22:30', label: '10:30 مساءً (10:30 م)' },
-    { value: '23:00', label: '11:00 مساءً (11:00 م)' },
-    { value: '23:30', label: '11:30 مساءً (11:30 م)' },
-    { value: '00:00', label: '12:00 منتصف الليل (12:00 ص)' },
-  ];
+  const START_TIME_OPTIONS = generateAllDayTimeOptions();
+  const END_TIME_OPTIONS = generateAllDayTimeOptions();
 
   // Keep state updated if storage or other screens update branches
   useEffect(() => {
@@ -463,12 +437,11 @@ export const ClinicBranchesPanel: React.FC = () => {
 
               <div>
                 <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  رقم الهاتف للتأكيد والواتساب *
+                  رقم الهاتف للتأكيد والواتساب (اختياري)
                 </label>
                 <input
                   type="tel"
                   dir="ltr"
-                  required
                   value={branchPhone}
                   onChange={(e) => setBranchPhone(e.target.value)}
                   placeholder="مثال: 01092847162 أو 02-37618920"

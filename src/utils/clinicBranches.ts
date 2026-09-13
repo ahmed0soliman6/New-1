@@ -27,6 +27,39 @@ export function formatBranchTime(timeStr?: string): string {
 }
 
 /**
+ * Generates 48 time options (every 30 mins) for a 24-hour day to allow full day selection.
+ */
+export function generateAllDayTimeOptions(): { value: string; label: string }[] {
+  const options = [];
+  for (let h = 0; h < 24; h++) {
+    for (let m of [0, 30]) {
+      const hh = h < 10 ? `0${h}` : `${h}`;
+      const mm = m === 0 ? '00' : '30';
+      const value = `${hh}:${mm}`;
+      
+      let label = '';
+      const h12 = h % 12 || 12;
+      const h12Str = h12 < 10 ? `0${h12}` : `${h12}`;
+      
+      if (h === 0 && m === 0) {
+        label = '12:00 منتصف الليل (12:00 ص)';
+      } else if (h === 0 && m === 30) {
+        label = '12:30 بعد منتصف الليل (12:30 ص)';
+      } else if (h === 12 && m === 0) {
+        label = '12:00 ظهراً (12:00 م)';
+      } else if (h === 12 && m === 30) {
+        label = '12:30 بعد الظهر (12:30 م)';
+      } else {
+        const period = h >= 12 ? 'مساءً (م)' : 'صباحاً (ص)';
+        label = `${h12Str}:${mm} ${period}`;
+      }
+      options.push({ value, label });
+    }
+  }
+  return options;
+}
+
+/**
  * Intelligent helper to extract start & end times from a working hours string if explicit times are not provided.
  * e.g., "الأحد، الثلاثاء، الخميس 06:00 م - 11:30 م" -> { startTime: "18:00", endTime: "23:30" }
  */
@@ -349,4 +382,126 @@ export function buildFollowupReminderMessage(params: {
 ${addressLine}
 📞 للتأكيد أو الاستفسار: ${contactPhone}${noteLine}
 مع تمنياتنا لكم بدوام الصحة والعافية ✨`;
+}
+
+/**
+ * Checks if a selected date is a valid working day according to the branch's workingHours string.
+ * Returns true if valid, false if the clinic is closed on that day of the week.
+ */
+export function isDateMatchingBranchDays(dateStr: string, workingHours?: string): boolean {
+  if (!dateStr || !workingHours) return true;
+
+  const dateObj = new Date(dateStr);
+  if (isNaN(dateObj.getTime())) return true; // fallback to true if invalid date string
+
+  const dayIndex = dateObj.getDay(); // 0 is Sunday, 1 is Monday, ..., 6 is Saturday
+
+  const text = workingHours.toLowerCase();
+
+  // 1. "يومياً ما عدا الجمعة" or "ما عدا الجمعة" -> All days except Friday (5)
+  if (text.includes('ما عدا الجمعة') || text.includes('عدا الجمعة')) {
+    return dayIndex !== 5;
+  }
+
+  // 2. "من السبت إلى الخميس" -> All days except Friday (5)
+  if (text.includes('من السبت إلى الخميس') || text.includes('من السبت الى الخميس')) {
+    return dayIndex !== 5;
+  }
+
+  // 3. "يومياً" or "طوال أيام الأسبوع" -> All days valid
+  if (text.includes('يوميا') || text.includes('طوال') || text.includes('طوال أيام الأسبوع')) {
+    return true;
+  }
+
+  // 4. Specific days list (e.g. "الأحد، الثلاثاء، الخميس")
+  // Let's see if the text contains any of the standard Arabic day names.
+  const daysInText = {
+    sunday: text.includes('أحد') || text.includes('احد'),
+    monday: text.includes('إثنين') || text.includes('اثنين'),
+    tuesday: text.includes('ثلاثاء'),
+    wednesday: text.includes('أربعاء') || text.includes('اربعاء'),
+    thursday: text.includes('خميس'),
+    friday: text.includes('جمعة'),
+    saturday: text.includes('سبت'),
+  };
+
+  // If the text contains at least one explicit day name, restrict to those explicitly mentioned days.
+  const hasExplicitDays = Object.values(daysInText).some(val => val === true);
+  if (hasExplicitDays) {
+    if (dayIndex === 0) return daysInText.sunday;
+    if (dayIndex === 1) return daysInText.monday;
+    if (dayIndex === 2) return daysInText.tuesday;
+    if (dayIndex === 3) return daysInText.wednesday;
+    if (dayIndex === 4) return daysInText.thursday;
+    if (dayIndex === 5) return daysInText.friday;
+    if (dayIndex === 6) return daysInText.saturday;
+  }
+
+  return true; // Fallback default
+}
+
+/**
+ * Calculates the nearest future date (starting from today or a given date) that matches the branch's working days.
+ */
+export function getNextValidWorkingDate(startDateStr: string, workingHours?: string): string {
+  if (!startDateStr || !workingHours) return startDateStr;
+
+  let current = new Date(startDateStr);
+  if (isNaN(current.getTime())) return startDateStr;
+
+  // Max lookahead of 30 days to prevent infinite loops
+  for (let i = 0; i < 30; i++) {
+    const yyyy = current.getFullYear();
+    const mm = String(current.getMonth() + 1).padStart(2, '0');
+    const dd = String(current.getDate()).padStart(2, '0');
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+
+    if (isDateMatchingBranchDays(dateStr, workingHours)) {
+      return dateStr;
+    }
+    current.setDate(current.getDate() + 1);
+  }
+
+  return startDateStr;
+}
+
+export interface UpcomingDateSuggestion {
+  dateStr: string; // YYYY-MM-DD
+  dayLabel: string; // "الخميس ١٧ سبتمبر" or "الخميس 17/09"
+}
+
+/**
+ * Returns the next 3 available kashf dates for quick selection.
+ */
+export function getUpcomingDateSuggestions(workingHours?: string): UpcomingDateSuggestion[] {
+  const suggestions: UpcomingDateSuggestion[] = [];
+  let current = new Date(); // Start from today
+  
+  // Format helpers
+  const arabicMonths = [
+    'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+    'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'
+  ];
+  const arabicWeekDays = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+
+  // Look ahead up to 60 days to collect 3 matching dates
+  for (let i = 0; i < 60 && suggestions.length < 3; i++) {
+    const yyyy = current.getFullYear();
+    const mm = String(current.getMonth() + 1).padStart(2, '0');
+    const dd = String(current.getDate()).padStart(2, '0');
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+
+    if (isDateMatchingBranchDays(dateStr, workingHours)) {
+      const dayName = arabicWeekDays[current.getDay()];
+      const dayNum = current.getDate();
+      const monthName = arabicMonths[current.getMonth()];
+      suggestions.push({
+        dateStr,
+        dayLabel: `${dayName} ${dayNum} ${monthName}`,
+      });
+    }
+    current.setDate(current.getDate() + 1);
+  }
+
+  return suggestions;
 }

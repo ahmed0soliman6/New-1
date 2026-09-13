@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { formatBranchTime, generateAllDayTimeOptions } from '../../utils/clinicBranches';
 import { QrCodeImage } from '../QrCodeImage';
 import { doc, setDoc } from 'firebase/firestore';
 import { exportPrescriptionToPdf } from '../../utils/exportPrescriptionPdf';
@@ -49,6 +50,8 @@ export interface PrescriptionLayoutSettings {
     address?: string;
     phone: string;
     workingHours?: string;
+    startTime?: string;
+    endTime?: string;
   }>;
 }
 
@@ -247,8 +250,32 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
   const [newBranchName, setNewBranchName] = useState('');
   const [newBranchAddress, setNewBranchAddress] = useState('');
   const [newBranchPhone, setNewBranchPhone] = useState('');
+  const [newBranchDays, setNewBranchDays] = useState('الأحد، الثلاثاء، الخميس');
+  const [newCustomBranchDays, setNewCustomBranchDays] = useState('');
+  const [newBranchStartTime, setNewBranchStartTime] = useState('16:00');
+  const [newBranchEndTime, setNewBranchEndTime] = useState('22:00');
   const [newBranchHours, setNewBranchHours] = useState('');
   const [showAddBranchModal, setShowAddBranchModal] = useState(false);
+
+  const DAY_PRESETS = [
+    'الأحد، الثلاثاء، الخميس',
+    'السبت، الإثنين، الأربعاء',
+    'يومياً ما عدا الجمعة',
+    'من السبت إلى الخميس',
+    'طوال أيام الأسبوع (يومياً)',
+    'أيام مخصصة',
+  ];
+
+  const START_TIME_OPTIONS = generateAllDayTimeOptions();
+  const END_TIME_OPTIONS = generateAllDayTimeOptions();
+
+  const computeFinalWorkingHours = (days: string, customDays: string, start: string, end: string) => {
+    const daysLabel = days === 'أيام مخصصة' ? customDays.trim() : days;
+    const startTimeFormatted = formatBranchTime(start);
+    const endTimeFormatted = formatBranchTime(end);
+    if (!daysLabel) return `${startTimeFormatted} - ${endTimeFormatted}`;
+    return `${daysLabel} ${startTimeFormatted} - ${endTimeFormatted}`;
+  };
 
   const isValidUrl = (url: string) => {
     try {
@@ -323,7 +350,11 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
     setNewBranchName('');
     setNewBranchAddress('');
     setNewBranchPhone(config.phone || '01092847162');
-    setNewBranchHours('');
+    setNewBranchDays('الأحد، الثلاثاء، الخميس');
+    setNewCustomBranchDays('');
+    setNewBranchStartTime('16:00');
+    setNewBranchEndTime('22:00');
+    setNewBranchHours('الأحد، الثلاثاء، الخميس 04:00 م - 10:00 م');
     setShowAddBranchModal(true);
   };
 
@@ -332,6 +363,23 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
     setNewBranchName(branch.name);
     setNewBranchAddress(branch.address || '');
     setNewBranchPhone(branch.phone || config.phone || '');
+    
+    // Determine preset vs custom days
+    const hoursText = branch.workingHours || '';
+    const matchingPreset = DAY_PRESETS.find((p) => p !== 'أيام مخصصة' && hoursText.includes(p));
+    if (matchingPreset) {
+      setNewBranchDays(matchingPreset);
+      setNewCustomBranchDays('');
+    } else if (hoursText) {
+      setNewBranchDays('أيام مخصصة');
+      setNewCustomBranchDays(hoursText);
+    } else {
+      setNewBranchDays('الأحد، الثلاثاء، الخميس');
+      setNewCustomBranchDays('');
+    }
+
+    setNewBranchStartTime(branch.startTime || '16:00');
+    setNewBranchEndTime(branch.endTime || '22:00');
     setNewBranchHours(branch.workingHours || '');
     setShowAddBranchModal(true);
   };
@@ -339,6 +387,8 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
   const handleSaveBranch = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBranchName.trim()) return;
+
+    const finalHours = computeFinalWorkingHours(newBranchDays, newCustomBranchDays, newBranchStartTime, newBranchEndTime);
 
     if (editingBranchId) {
       setConfig((prev) => ({
@@ -350,7 +400,9 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
                 name: newBranchName.trim(),
                 address: newBranchAddress.trim() || undefined,
                 phone: newBranchPhone.trim() || config.phone,
-                workingHours: newBranchHours.trim() || undefined,
+                workingHours: finalHours,
+                startTime: newBranchStartTime,
+                endTime: newBranchEndTime,
               }
             : b
         ),
@@ -361,7 +413,9 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
         name: newBranchName.trim(),
         address: newBranchAddress.trim() || undefined,
         phone: newBranchPhone.trim() || config.phone,
-        workingHours: newBranchHours.trim() || undefined,
+        workingHours: finalHours,
+        startTime: newBranchStartTime,
+        endTime: newBranchEndTime,
       };
 
       setConfig((prev) => ({
@@ -1548,10 +1602,9 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
               </div>
 
               <div className="space-y-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300">رقم الهاتف للتواصل والحجز *</label>
+                <label className="font-bold text-slate-700 dark:text-slate-300">رقم الهاتف للتواصل والحجز (اختياري)</label>
                 <input
                   type="text"
-                  required
                   value={newBranchPhone}
                   onChange={(e) => setNewBranchPhone(e.target.value)}
                   placeholder="02-37618920 / 01092847162"
@@ -1560,16 +1613,97 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
                 />
               </div>
 
+              {/* Days Selection */}
               <div className="space-y-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300">مواعيد العمل (تظهر في أسفل الروشتة)</label>
-                <input
-                  type="text"
-                  value={newBranchHours}
-                  onChange={(e) => setNewBranchHours(e.target.value)}
-                  placeholder="مثال: السبت والإثنين والأربعاء 04:00 م - 10:00 م"
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-[#18233C] border border-slate-200 dark:border-white/10 text-slate-800 dark:text-white"
-                />
-                <p className="text-[10px] text-slate-400">ستظهر هذه المواعيد مباشرة في تذييل الروشتة المطبوعة وتحت اسم الفرع.</p>
+                <label className="font-bold text-slate-700 dark:text-slate-300">أيام العمل بالفرع *</label>
+                <select
+                  value={newBranchDays}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setNewBranchDays(val);
+                    const finalHours = computeFinalWorkingHours(val, newCustomBranchDays, newBranchStartTime, newBranchEndTime);
+                    setNewBranchHours(finalHours);
+                  }}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-[#18233C] border border-slate-200 dark:border-white/10 text-slate-800 dark:text-white font-bold focus:outline-none focus:ring-2 focus:ring-[#00c2cb]"
+                >
+                  {DAY_PRESETS.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+
+                {newBranchDays === 'أيام مخصصة' && (
+                  <input
+                    type="text"
+                    value={newCustomBranchDays}
+                    onChange={(e) => {
+                      setNewCustomBranchDays(e.target.value);
+                      const finalHours = computeFinalWorkingHours('أيام مخصصة', e.target.value, newBranchStartTime, newBranchEndTime);
+                      setNewBranchHours(finalHours);
+                    }}
+                    placeholder="اكتب أيام العمل بالتفصيل (مثال: السبت والأحد فقط)"
+                    className="w-full mt-2 px-3 py-2 rounded-xl bg-slate-50 dark:bg-[#18233C] border border-slate-200 dark:border-white/10 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#00c2cb]"
+                  />
+                )}
+              </div>
+
+              {/* Time Slots (Start Time & End Time Dropdowns) */}
+              <div className="grid grid-cols-2 gap-3 p-3 rounded-2xl bg-teal-50/50 dark:bg-[#00c2cb]/5 border border-teal-200/60 dark:border-[#00c2cb]/20">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-800 dark:text-slate-200 text-[11px]">
+                    من الساعة (بداية العمل) *
+                  </label>
+                  <select
+                    value={newBranchStartTime}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setNewBranchStartTime(val);
+                      const finalHours = computeFinalWorkingHours(newBranchDays, newCustomBranchDays, val, newBranchEndTime);
+                      setNewBranchHours(finalHours);
+                    }}
+                    className="w-full px-2 py-2 rounded-xl bg-white dark:bg-[#18233C] border border-slate-200 dark:border-white/10 text-slate-800 dark:text-white font-mono font-bold text-xs focus:outline-none focus:ring-2 focus:ring-[#00c2cb]"
+                  >
+                    {START_TIME_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-800 dark:text-slate-200 text-[11px]">
+                    إلى الساعة (انتهاء العمل) *
+                  </label>
+                  <select
+                    value={newBranchEndTime}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setNewBranchEndTime(val);
+                      const finalHours = computeFinalWorkingHours(newBranchDays, newCustomBranchDays, newBranchStartTime, val);
+                      setNewBranchHours(finalHours);
+                    }}
+                    className="w-full px-2 py-2 rounded-xl bg-white dark:bg-[#18233C] border border-slate-200 dark:border-white/10 text-slate-800 dark:text-white font-mono font-bold text-xs focus:outline-none focus:ring-2 focus:ring-[#00c2cb]"
+                  >
+                    {END_TIME_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Dynamic Preview of Working Hours Label */}
+              <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#18233C] border border-slate-200 dark:border-white/5 flex items-center gap-2">
+                <span className="material-symbols-outlined text-base text-[#00c2cb]">info</span>
+                <span className="text-[11px] text-slate-700 dark:text-slate-300">
+                  مواعيد العمل الناتجة:{' '}
+                  <strong className="text-teal-700 dark:text-[#45dee7]">
+                    {computeFinalWorkingHours(newBranchDays, newCustomBranchDays, newBranchStartTime, newBranchEndTime)}
+                  </strong>
+                </span>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-white/5">

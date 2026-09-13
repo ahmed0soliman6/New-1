@@ -1,5 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { getClinicBranches, generateBranchTimeSlots, ClinicBranchItem, formatBranchTime } from '../../utils/clinicBranches';
+import { 
+  getClinicBranches, 
+  generateBranchTimeSlots, 
+  ClinicBranchItem, 
+  formatBranchTime,
+  isDateMatchingBranchDays,
+  getNextValidWorkingDate,
+  getUpcomingDateSuggestions
+} from '../../utils/clinicBranches';
 import { getPrescriptionDoctorInfo } from '../../utils/prescriptionDoctor';
 import { getActiveVisitTypes } from '../../utils/financeManager';
 import { AppointmentListItem } from '../../types';
@@ -100,6 +108,28 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
     return branches.find((b) => b.id === selectedBranchId) || branches[0];
   }, [branches, selectedBranchId]);
 
+  // Check if selected date matches the branch working days
+  const isDateValid = useMemo(() => {
+    if (!activeBranch) return true;
+    return isDateMatchingBranchDays(scheduledDate, activeBranch.workingHours);
+  }, [scheduledDate, activeBranch]);
+
+  // Get next 3 available working dates suggestions for the active branch
+  const upcomingSuggestions = useMemo(() => {
+    if (!activeBranch) return [];
+    return getUpcomingDateSuggestions(activeBranch.workingHours);
+  }, [activeBranch]);
+
+  // Adjust scheduled date to the next valid working date when branch changes
+  useEffect(() => {
+    if (activeBranch) {
+      const validDate = getNextValidWorkingDate(scheduledDate, activeBranch.workingHours);
+      if (validDate !== scheduledDate) {
+        setScheduledDate(validDate);
+      }
+    }
+  }, [selectedBranchId, activeBranch]);
+
   // Set of booked minutes for the selected branch & date
   const bookedMinsSet = useMemo(() => {
     if (!activeBranch) return new Set<number>();
@@ -183,6 +213,11 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
       return;
     }
 
+    if (!isDateValid) {
+      alert('عفواً، هذا الفرع مغلق في التاريخ المحدد. يرجى اختيار أحد الأيام المتاحة الموضحة في صندوق التنبيه.');
+      return;
+    }
+
     if (!selectedTimeSlot) {
       alert('يرجى اختيار موعد متاح للكشف');
       return;
@@ -257,6 +292,10 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
 
   // Copy structured text
   const handleCopyText = () => {
+    if (!isDateValid) {
+      alert('عفواً، هذا الفرع مغلق في التاريخ المحدد. يرجى اختيار أحد الأيام المتاحة الموضحة في صندوق التنبيه.');
+      return;
+    }
     const text = formatWhatsappMessage();
     navigator.clipboard.writeText(text);
     setCopiedText(true);
@@ -399,9 +438,43 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
                 type="date"
                 required
                 value={scheduledDate}
-                onChange={(e) => setScheduledDate(e.target.value)}
-                className="w-full px-4 py-3 rounded-2xl bg-slate-950/80 dark:bg-[#080e1b] border border-slate-700 dark:border-white/10 text-white font-bold font-mono focus:outline-none focus:ring-2 focus:ring-[#00c2cb] transition-all"
+                onChange={(e) => {
+                  setScheduledDate(e.target.value);
+                  setSelectedTimeSlot('');
+                }}
+                className={`w-full px-4 py-3 rounded-2xl bg-slate-950/80 dark:bg-[#080e1b] border ${
+                  isDateValid 
+                    ? 'border-slate-700 dark:border-white/10 focus:ring-[#00c2cb]' 
+                    : 'border-rose-500 ring-2 ring-rose-500/20 focus:ring-rose-500'
+                } text-white font-bold font-mono focus:outline-none transition-all`}
               />
+              
+              {!isDateValid && (
+                <div className="mt-2.5 p-3 rounded-xl bg-rose-500/10 border border-rose-500/25 text-rose-300 text-xs">
+                  <div className="flex items-center gap-1.5 font-bold mb-1.5">
+                    <span className="material-symbols-outlined text-rose-400 text-sm">warning</span>
+                    <span>عفواً، العيادة مغلقة في هذا اليوم.</span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 leading-relaxed">
+                    الرجاء اختيار أحد الأيام المتاحة التالية للحجز مباشرة:
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {upcomingSuggestions.map((s) => (
+                      <button
+                        key={s.dateStr}
+                        type="button"
+                        onClick={() => {
+                          setScheduledDate(s.dateStr);
+                          setSelectedTimeSlot('');
+                        }}
+                        className="px-2.5 py-1.5 text-[10px] rounded-lg bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 border border-emerald-500/30 transition-all cursor-pointer font-bold shrink-0"
+                      >
+                        {s.dayLabel}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Branch (مكان الكشف) */}
