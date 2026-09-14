@@ -42,6 +42,42 @@ function normalizeTimeToMins(str?: string): number | null {
   return h * 60 + m;
 }
 
+function getMergedVisitTypesAndServices(): { id: string; name: string; fee: number }[] {
+  const localVisitTypes = safeStorage.getJSON<any[]>('soli_visit_types', []) || [];
+  const localServices = safeStorage.getJSON<any[]>('soli_services', []) || [];
+  
+  const map = new Map<string, { id: string; name: string; fee: number }>();
+  
+  // 1. Add visit types
+  localVisitTypes.forEach((item, idx) => {
+    if (item && item.name) {
+      const name = item.name.trim();
+      map.set(name, { id: item.id || `vt-${idx}`, name, fee: item.fee || item.price || 300 });
+    }
+  });
+
+  // 2. Add services
+  localServices.forEach((item, idx) => {
+    if (item && item.name) {
+      const name = item.name.trim();
+      if (!map.has(name)) {
+        map.set(name, { id: item.id || `srv-${idx}`, name, fee: item.price || item.fee || 300 });
+      }
+    }
+  });
+
+  // Fallback defaults if empty
+  if (map.size === 0) {
+    return [
+      { id: 'vt-1', name: 'كشف جديد', fee: 300 },
+      { id: 'vt-2', name: 'استشارة / متابعة', fee: 150 },
+      { id: 'vt-3', name: 'كشف طوارئ', fee: 400 },
+    ];
+  }
+
+  return Array.from(map.values());
+}
+
 export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
   onAddAppointment,
   onNavigateToAppointments,
@@ -49,7 +85,22 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
 }) => {
   const [doctorProfile, setDoctorProfile] = useState<PrescriptionDoctorInfo>(() => getPrescriptionDoctorInfo());
   const [branches, setBranches] = useState<ClinicBranchItem[]>(() => getClinicBranches());
-  const visitTypes = useMemo(() => getActiveVisitTypes(), []);
+  const [visitTypes, setVisitTypes] = useState<{ id: string; name: string; fee: number }[]>(() => getMergedVisitTypesAndServices());
+
+  // Sync state with local changes and custom events
+  useEffect(() => {
+    const handleUpdate = () => {
+      setVisitTypes(getMergedVisitTypesAndServices());
+    };
+    window.addEventListener('soli_visit_types_updated', handleUpdate);
+    window.addEventListener('soli_services_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('soli_visit_types_updated', handleUpdate);
+      window.removeEventListener('soli_services_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
+  }, []);
 
   const doctorInfo = useMemo(() => {
     return {
@@ -61,7 +112,7 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
     };
   }, [doctorProfile]);
 
-  // Real-time Firestore subscription to fetch real doctor settings and clinic branches
+  // Real-time Firestore subscription to fetch real doctor settings, clinic branches, visit types and services
   useEffect(() => {
     if (!db) return;
 
@@ -106,7 +157,51 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
       (err) => console.warn('Public Booking Live Settings Sync Error:', err)
     );
 
-    return () => unsub();
+    // Real-time Firestore subscription to fetch visit types
+    let unsubVisitTypes = () => {};
+    import('firebase/firestore').then(({ doc, onSnapshot }) => {
+      unsubVisitTypes = onSnapshot(
+        doc(db, 'settings', 'visitTypes'),
+        (snap) => {
+          if (snap.exists()) {
+            const data = snap.data();
+            const items = (data.items || data.types || []) as any[];
+            if (Array.isArray(items) && items.length > 0) {
+              localStorage.setItem('soli_visit_types', JSON.stringify(items));
+              window.dispatchEvent(new Event('soli_visit_types_updated'));
+            }
+          }
+        },
+        (err) => console.warn('Public Visit Types Sync Error:', err)
+      );
+    });
+
+    // Real-time Firestore subscription to fetch services
+    let unsubServices = () => {};
+    import('firebase/firestore').then(({ collection, onSnapshot }) => {
+      unsubServices = onSnapshot(
+        collection(db, 'services'),
+        (snap) => {
+          const items: any[] = [];
+          snap.forEach((docSnap) => {
+            if (docSnap.exists()) {
+              items.push({ id: docSnap.id, ...docSnap.data() });
+            }
+          });
+          if (items.length > 0) {
+            localStorage.setItem('soli_services', JSON.stringify(items));
+            window.dispatchEvent(new Event('soli_services_updated'));
+          }
+        },
+        (err) => console.warn('Public Services Sync Error:', err)
+      );
+    });
+
+    return () => {
+      unsub();
+      unsubVisitTypes();
+      unsubServices();
+    };
   }, []);
 
   // Update branches dynamically if saved in Settings
@@ -134,8 +229,15 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
   const [scheduledDate, setScheduledDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [selectedBranchId, setSelectedBranchId] = useState<string>('');
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>('');
-  const [visitType, setVisitType] = useState<string>(() => visitTypes[0]?.name || 'كشف جديد');
+  const [visitType, setVisitType] = useState<string>('');
   const [notes, setNotes] = useState('');
+
+  // Auto-select first visit type
+  useEffect(() => {
+    if (visitTypes.length > 0 && !visitType) {
+      setVisitType(visitTypes[0].name);
+    }
+  }, [visitTypes, visitType]);
 
   // Auto-select first real branch once branches list is populated
   useEffect(() => {
@@ -710,7 +812,7 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
               >
                 {visitTypes.map((vt, index) => (
                   <option key={`${vt.id}-${index}`} value={vt.name}>
-                    {vt.name} ({vt.fee} ج.م)
+                    {vt.name}
                   </option>
                 ))}
               </select>

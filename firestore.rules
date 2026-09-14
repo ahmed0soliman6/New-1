@@ -364,7 +364,7 @@ service cloud.firestore {
     // 14. SERVICES & PROCEDURES PRICING
     // =============================================================
     match /services/{serviceId} {
-      allow read: if isUserActive();
+      allow read: if true;
       allow create: if hasPermission('system-settings', 'create') || hasPermission('billing-payments', 'create');
       allow update: if hasPermission('system-settings', 'update') || hasPermission('billing-payments', 'update');
       allow delete: if hasPermission('system-settings', 'delete') || hasPermission('billing-payments', 'delete');
@@ -398,7 +398,7 @@ service cloud.firestore {
     }
 
     match /settings/{settingId} {
-      allow read: if isUserActive() || settingId == 'prescriptionSettings';
+      allow read: if isUserActive() || settingId == 'prescriptionSettings' || settingId == 'visitTypes';
       allow create, update: if isUserActive();
       allow delete: if isAdmin();
     }

@@ -377,9 +377,12 @@ function ClinicApp() {
     if (Array.isArray(saved) && saved.length > 0) {
       const map = new Map<string, { id: string; name: string; fee: number }>();
       saved.forEach((item, index) => {
-        if (item) {
-          const key = item.id || `vt-${index}-${item.name}`;
-          map.set(key, { ...item, id: key });
+        if (item && item.name) {
+          const nameTrimmed = item.name.trim();
+          if (!map.has(nameTrimmed)) {
+            const key = item.id || `vt-${index}-${nameTrimmed}`;
+            map.set(nameTrimmed, { ...item, id: key, name: nameTrimmed });
+          }
         }
       });
       return Array.from(map.values());
@@ -669,8 +672,22 @@ function ClinicApp() {
       subscribeToRecurringTemplates(db, (templates) => { if (templates) setCachedRecurringTemplates(templates); }, onError),
       subscribeToVisitTypes(db, (types) => {
         if (types && Array.isArray(types) && types.length > 0) {
-          setVisitTypesList(types);
-          localStorage.setItem('soli_visit_types', JSON.stringify(types));
+          const uniqueMap = new Map<string, { id: string; name: string; fee: number }>();
+          types.forEach((item, index) => {
+            if (item && item.name) {
+              const nameTrimmed = item.name.trim();
+              if (!uniqueMap.has(nameTrimmed)) {
+                uniqueMap.set(nameTrimmed, {
+                  id: item.id || `vt-${index}`,
+                  name: nameTrimmed,
+                  fee: Number(item.fee || 300)
+                });
+              }
+            }
+          });
+          const deduplicated = Array.from(uniqueMap.values());
+          setVisitTypesList(deduplicated);
+          localStorage.setItem('soli_visit_types', JSON.stringify(deduplicated));
         }
       }, onError),
       subscribeToPrescriptionSettings(db, (settings) => {
