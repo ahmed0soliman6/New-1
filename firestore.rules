@@ -418,6 +418,15 @@ service cloud.firestore {
     }
 
     // =============================================================
+    // 17. INTERNAL STAFF CHAT MESSAGES
+    // =============================================================
+    match /messages/{messageId} {
+      allow read: if signedIn();
+      allow create: if signedIn();
+      allow update, delete: if signedIn() && (isAdmin() || request.auth.uid == resource.data.senderId);
+    }
+
+    // =============================================================
     // FALLBACK: ZERO-TRUST DEFAULT DENY
     // =============================================================
     match /{document=**} {

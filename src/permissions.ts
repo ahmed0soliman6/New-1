@@ -293,6 +293,15 @@ export const ALL_SYSTEM_SCREENS: SystemScreenDef[] = [
     description: 'صفحة الحجز المباشر بالعيادة والمخصصة للمرضى والواتساب.',
     availableActions: ['view', 'create'],
   },
+  {
+    id: 'internal-chat',
+    title: 'الدردشة الداخلية وطاقم العمل',
+    category: 'reception',
+    categoryLabel: 'استقبال وعام',
+    icon: 'forum',
+    description: 'دردشة جماعية فورية آمنة بين جميع أفراد الطاقم الطبي والإداري لتنسيق العمل ومتابعة الحالات.',
+    availableActions: ['view', 'create', 'update', 'delete'],
+  },
 ];
 
 /**
@@ -314,6 +323,7 @@ const SCREEN_ALIASES: Record<string, string[]> = {
   'prescription-pad': ['prescription-pad'],
   'system-settings': ['system-settings', 'settings'],
   settings: ['system-settings', 'settings'],
+  'internal-chat': ['internal-chat'],
 };
 
 /**
@@ -338,6 +348,10 @@ export function getDefaultRolePermissions(role: Role | string | undefined | null
   for (const screen of ALL_SYSTEM_SCREENS) {
     if (screen.id === 'booking-landing') {
       result[screen.id] = { view: true, create: true, update: true, delete: false };
+      continue;
+    }
+    if (screen.id === 'internal-chat') {
+      result[screen.id] = { view: true, create: true, update: true, delete: true };
       continue;
     }
     if (norm === 'admin') {

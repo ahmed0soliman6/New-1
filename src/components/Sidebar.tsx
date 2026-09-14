@@ -54,6 +54,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'clinical-reports', label: t('nav.clinicalReports'), icon: 'analytics' },
     { id: 'prescription-pad', label: t('nav.prescriptionPad'), icon: 'print' },
     { id: 'booking-landing', label: isRTL ? 'صفحة هبوط الحجز' : 'Booking Page', icon: 'event_available' },
+    { id: 'internal-chat', label: isRTL ? 'الدردشة الداخلية' : 'Internal Chat', icon: 'forum' },
     { id: 'system-settings', label: t('nav.systemSettings'), icon: 'settings' },
   ];
 

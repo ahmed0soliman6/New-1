@@ -86,6 +86,8 @@ import { FinanceScreen } from './components/screens/FinanceScreen';
 import { SettingsScreen } from './components/screens/SettingsScreen';
 import { ClinicalReportsScreen } from './components/screens/ClinicalReportsScreen';
 import { BookingLandingScreen } from './components/screens/BookingLandingScreen';
+import { ChatScreen } from './components/screens/ChatScreen';
+import { FloatingChatWidget } from './components/FloatingChatWidget';
 import { NewAppointmentModal } from './components/modals/NewAppointmentModal';
 import { db } from './services/firebase';
 import { doc, deleteDoc, setDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
@@ -283,6 +285,7 @@ const VALID_SCREENS: ScreenType[] = [
   'booking-landing',
   'system-settings',
   'settings',
+  'internal-chat',
 ];
 
 function ClinicApp() {
@@ -2776,6 +2779,10 @@ function ClinicApp() {
                 />
               )}
 
+              {activeScreen === 'internal-chat' && (
+                <ChatScreen />
+              )}
+
               {(activeScreen === 'settings' || activeScreen === 'system-settings') && (
                 <SettingsScreen
                   presetChronicConditions={presetChronicConditions}
@@ -2831,6 +2838,9 @@ function ClinicApp() {
         onAddAppointment={handleAddAppointment}
         visitTypesList={visitTypesList}
       />
+
+      {/* Floating Chat Widget */}
+      <FloatingChatWidget onNavigate={handleNavigate} />
 
       {/* Database Architecture Inspector Modal */}
       <DatabaseInspectorModal
