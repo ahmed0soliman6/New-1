@@ -29,6 +29,7 @@ import {
   formatAppDate,
   formatAppTime,
 } from '../../utils/numberUtils';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 interface FinanceScreenProps {
   transactions: TransactionRecord[];
@@ -46,6 +47,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
   patients = [],
 }) => {
   const { assertPermission, userProfile } = usePermissions();
+  const { language, isRTL, t } = useLanguage();
 
   // Dynamic Medical Services & Expense Categories loaded from Settings
   const [medicalServices, setMedicalServices] = useState<MedicalServiceItem[]>(loadMedicalServices);

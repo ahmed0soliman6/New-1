@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useLanguage } from '../../i18n/LanguageContext';
 import { Visit, Prescription, LabOrder, RadiologyOrder } from '../../types/database';
 import { PatientDiagnosis } from './DiagnosisCard';
 import { getSmartClinicalSuggestions } from '../../utils/clinicalRecommender';
@@ -34,6 +35,7 @@ export const SmartClinicalPanel: React.FC<SmartClinicalPanelProps> = ({
   onAddRadiology,
   onAddInstruction,
 }) => {
+  const { language } = useLanguage();
   const [activeCategory, setActiveCategory] = useState<'drugs' | 'diagnoses' | 'labs' | 'radiology' | 'instructions'>('drugs');
   const [addedItemNotice, setAddedItemNotice] = useState<string | null>(null);
 
@@ -62,14 +64,18 @@ export const SmartClinicalPanel: React.FC<SmartClinicalPanelProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-[#dde2f5]">
-                حافظة الذاكرة والاقتراحات التلقائية (Clinical Memory & Suggestions)
+                {language === 'en'
+                  ? 'Clinical Memory & Smart Suggestions'
+                  : 'حافظة الذاكرة والاقتراحات التلقائية (Clinical Memory & Suggestions)'}
               </h3>
               <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                تتذكر كشوفاتك وتكراراتك
+                {language === 'en' ? 'Learns from your history' : 'تتذكر كشوفاتك وتكراراتك'}
               </span>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-[#859394]">
-              يقترح النظام الأدوية، التحاليل، الأشعة، التشخيصات والإرشادات الأكثر استخداماً بناءً على تاريخ كشوفاتك لسرعة التعبئة.
+              {language === 'en'
+                ? 'Suggests most frequently prescribed medications, tests, radiology, diagnoses, and advice based on your clinical history for faster entry.'
+                : 'يقترح النظام الأدوية، التحاليل، الأشعة، التشخيصات والإرشادات الأكثر استخداماً بناءً على تاريخ كشوفاتك لسرعة التعبئة.'}
             </p>
           </div>
         </div>
@@ -93,7 +99,9 @@ export const SmartClinicalPanel: React.FC<SmartClinicalPanelProps> = ({
           }`}
         >
           <span className="material-symbols-outlined text-sm">medication</span>
-          <span>الأدوية والعلاجات ({suggestions.frequentDrugs.length})</span>
+          <span>
+            {language === 'en' ? 'Medications' : 'الأدوية والعلاجات'} ({suggestions.frequentDrugs.length})
+          </span>
         </button>
 
         <button
@@ -106,7 +114,9 @@ export const SmartClinicalPanel: React.FC<SmartClinicalPanelProps> = ({
           }`}
         >
           <span className="material-symbols-outlined text-sm">stethoscope</span>
-          <span>التشخيصات ({suggestions.frequentDiagnoses.length})</span>
+          <span>
+            {language === 'en' ? 'Diagnoses' : 'التشخيصات'} ({suggestions.frequentDiagnoses.length})
+          </span>
         </button>
 
         <button
@@ -119,7 +129,9 @@ export const SmartClinicalPanel: React.FC<SmartClinicalPanelProps> = ({
           }`}
         >
           <span className="material-symbols-outlined text-sm">science</span>
-          <span>التحاليل ({suggestions.frequentLabs.length})</span>
+          <span>
+            {language === 'en' ? 'Lab Tests' : 'التحاليل'} ({suggestions.frequentLabs.length})
+          </span>
         </button>
 
         <button
@@ -132,7 +144,9 @@ export const SmartClinicalPanel: React.FC<SmartClinicalPanelProps> = ({
           }`}
         >
           <span className="material-symbols-outlined text-sm">radiology</span>
-          <span>الأشعة والفحوصات ({suggestions.frequentRadiology.length})</span>
+          <span>
+            {language === 'en' ? 'Radiology' : 'الأشعة والفحوصات'} ({suggestions.frequentRadiology.length})
+          </span>
         </button>
 
         <button
@@ -145,7 +159,9 @@ export const SmartClinicalPanel: React.FC<SmartClinicalPanelProps> = ({
           }`}
         >
           <span className="material-symbols-outlined text-sm">description</span>
-          <span>النصائح والإرشادات ({suggestions.frequentInstructions.length})</span>
+          <span>
+            {language === 'en' ? 'Advice & Instructions' : 'النصائح والإرشادات'} ({suggestions.frequentInstructions.length})
+          </span>
         </button>
       </div>
 
@@ -155,14 +171,17 @@ export const SmartClinicalPanel: React.FC<SmartClinicalPanelProps> = ({
           <div>
             {suggestions.frequentDrugs.length === 0 ? (
               <p className="text-xs text-slate-500 dark:text-[#859394] italic py-2">
-                سيقوم النظام تلقائياً بتذكر الأدوية والعلاجات المكتوبة في الكشوفات وتجميعها هنا لسهولة اختيارها بنقرة واحدة.
+                {language === 'en'
+                  ? 'The system will automatically remember prescribed medications and group them here for quick 1-click selection.'
+                  : 'سيقوم النظام تلقائياً بتذكر الأدوية والعلاجات المكتوبة في الكشوفات وتجميعها هنا لسهولة اختيارها بنقرة واحدة.'}
               </p>
             ) : (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2" data-no-translate="true">
                 {suggestions.frequentDrugs.map((d, idx) => (
                   <button
                     key={idx}
                     type="button"
+                    data-no-translate="true"
                     onClick={() => {
                       if (onAddDrug) {
                         onAddDrug({
@@ -170,12 +189,16 @@ export const SmartClinicalPanel: React.FC<SmartClinicalPanelProps> = ({
                           strength: d.strength,
                           dosageForm: d.dosageForm,
                           scientificName: d.scientificName,
-                          instructions: d.instructions || 'جرعة حسـب إرشادات الطبيب',
+                          instructions: d.instructions || (language === 'en' ? 'As directed by physician' : 'جرعة حسـب إرشادات الطبيب'),
                         });
-                        notifyAdded(`تم إضافة الدواء "${d.drugName}" إلى الروشتة`);
+                        notifyAdded(
+                          language === 'en'
+                            ? `Added drug "${d.drugName}" to prescription`
+                            : `تم إضافة الدواء "${d.drugName}" إلى الروشتة`
+                        );
                       }
                     }}
-                    className="px-3 py-2 rounded-xl bg-white dark:bg-[#080e1b] hover:bg-indigo-50 dark:hover:bg-indigo-950/50 border border-slate-200 dark:border-white/10 text-right transition-all cursor-pointer flex items-center justify-between gap-2 shadow-xs group"
+                    className="px-3 py-2 rounded-xl bg-white dark:bg-[#080e1b] hover:bg-indigo-50 dark:hover:bg-indigo-950/50 border border-slate-200 dark:border-white/10 text-right rtl:text-right ltr:text-left transition-all cursor-pointer flex items-center justify-between gap-2 shadow-xs group no-translate clinical-data"
                   >
                     <div>
                       <div className="text-xs font-bold text-slate-900 dark:text-[#dde2f5] group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
@@ -189,7 +212,7 @@ export const SmartClinicalPanel: React.FC<SmartClinicalPanelProps> = ({
                     </div>
                     {d.count > 1 && (
                       <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300">
-                        مكرر {d.count}×
+                        {d.count}×
                       </span>
                     )}
                   </button>
@@ -203,21 +226,26 @@ export const SmartClinicalPanel: React.FC<SmartClinicalPanelProps> = ({
           <div>
             {suggestions.frequentDiagnoses.length === 0 ? (
               <p className="text-xs text-slate-500 dark:text-[#859394] italic py-2">
-                لا توجد تشخيصات مسجلة في الذاكرة بعد.
+                {language === 'en' ? 'No diagnoses recorded in memory yet.' : 'لا توجد تشخيصات مسجلة في الذاكرة بعد.'}
               </p>
             ) : (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2" data-no-translate="true">
                 {suggestions.frequentDiagnoses.map((diag, idx) => (
                   <button
                     key={idx}
                     type="button"
+                    data-no-translate="true"
                     onClick={() => {
                       if (onAddDiagnosis) {
                         onAddDiagnosis(diag.name);
-                        notifyAdded(`تم إضافة التشخيص "${diag.name}"`);
+                        notifyAdded(
+                          language === 'en'
+                            ? `Added diagnosis "${diag.name}"`
+                            : `تم إضافة التشخيص "${diag.name}"`
+                        );
                       }
                     }}
-                    className="px-3 py-2 rounded-xl bg-white dark:bg-[#080e1b] hover:bg-indigo-50 dark:hover:bg-indigo-950/50 border border-slate-200 dark:border-white/10 text-right transition-all cursor-pointer flex items-center justify-between gap-2 shadow-xs group"
+                    className="px-3 py-2 rounded-xl bg-white dark:bg-[#080e1b] hover:bg-indigo-50 dark:hover:bg-indigo-950/50 border border-slate-200 dark:border-white/10 text-right rtl:text-right ltr:text-left transition-all cursor-pointer flex items-center justify-between gap-2 shadow-xs group no-translate clinical-data"
                   >
                     <span className="text-xs font-bold text-slate-900 dark:text-[#dde2f5] group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
                       + {diag.name}
@@ -238,21 +266,26 @@ export const SmartClinicalPanel: React.FC<SmartClinicalPanelProps> = ({
           <div>
             {suggestions.frequentLabs.length === 0 ? (
               <p className="text-xs text-slate-500 dark:text-[#859394] italic py-2">
-                لا توجد تحاليل مسجلة في الذاكرة بعد.
+                {language === 'en' ? 'No lab tests recorded in memory yet.' : 'لا توجد تحاليل مسجلة في الذاكرة بعد.'}
               </p>
             ) : (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2" data-no-translate="true">
                 {suggestions.frequentLabs.map((lab, idx) => (
                   <button
                     key={idx}
                     type="button"
+                    data-no-translate="true"
                     onClick={() => {
                       if (onAddLab) {
                         onAddLab(lab.testName);
-                        notifyAdded(`تم إضافة التحليل "${lab.testName}"`);
+                        notifyAdded(
+                          language === 'en'
+                            ? `Added test "${lab.testName}"`
+                            : `تم إضافة التحليل "${lab.testName}"`
+                        );
                       }
                     }}
-                    className="px-3 py-2 rounded-xl bg-white dark:bg-[#080e1b] hover:bg-indigo-50 dark:hover:bg-indigo-950/50 border border-slate-200 dark:border-white/10 text-right transition-all cursor-pointer flex items-center justify-between gap-2 shadow-xs group"
+                    className="px-3 py-2 rounded-xl bg-white dark:bg-[#080e1b] hover:bg-indigo-50 dark:hover:bg-indigo-950/50 border border-slate-200 dark:border-white/10 text-right rtl:text-right ltr:text-left transition-all cursor-pointer flex items-center justify-between gap-2 shadow-xs group no-translate clinical-data"
                   >
                     <span className="text-xs font-bold text-slate-900 dark:text-[#dde2f5] group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
                       + {lab.testName}
@@ -273,21 +306,26 @@ export const SmartClinicalPanel: React.FC<SmartClinicalPanelProps> = ({
           <div>
             {suggestions.frequentRadiology.length === 0 ? (
               <p className="text-xs text-slate-500 dark:text-[#859394] italic py-2">
-                لا توجد أشعة مسجلة في الذاكرة بعد.
+                {language === 'en' ? 'No radiology scans recorded in memory yet.' : 'لا توجد أشعة مسجلة في الذاكرة بعد.'}
               </p>
             ) : (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2" data-no-translate="true">
                 {suggestions.frequentRadiology.map((rad, idx) => (
                   <button
                     key={idx}
                     type="button"
+                    data-no-translate="true"
                     onClick={() => {
                       if (onAddRadiology) {
                         onAddRadiology(rad.type);
-                        notifyAdded(`تم إضافة الفحص/الأشعة "${rad.type}"`);
+                        notifyAdded(
+                          language === 'en'
+                            ? `Added scan "${rad.type}"`
+                            : `تم إضافة الفحص/الأشعة "${rad.type}"`
+                        );
                       }
                     }}
-                    className="px-3 py-2 rounded-xl bg-white dark:bg-[#080e1b] hover:bg-indigo-50 dark:hover:bg-indigo-950/50 border border-slate-200 dark:border-white/10 text-right transition-all cursor-pointer flex items-center justify-between gap-2 shadow-xs group"
+                    className="px-3 py-2 rounded-xl bg-white dark:bg-[#080e1b] hover:bg-indigo-50 dark:hover:bg-indigo-950/50 border border-slate-200 dark:border-white/10 text-right rtl:text-right ltr:text-left transition-all cursor-pointer flex items-center justify-between gap-2 shadow-xs group no-translate clinical-data"
                   >
                     <span className="text-xs font-bold text-slate-900 dark:text-[#dde2f5] group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
                       + {rad.type}
@@ -308,28 +346,35 @@ export const SmartClinicalPanel: React.FC<SmartClinicalPanelProps> = ({
           <div>
             {suggestions.frequentInstructions.length === 0 ? (
               <p className="text-xs text-slate-500 dark:text-[#859394] italic py-2">
-                لا توجد إرشادات مسجلة في الذاكرة بعد. يمكنك كتابة إرشادات وتذكرها فوراً في الكشوفات القادمة.
+                {language === 'en'
+                  ? 'No instructions recorded in memory yet. You can write instructions and they will be recalled in future examinations.'
+                  : 'لا توجد إرشادات مسجلة في الذاكرة بعد. يمكنك كتابة إرشادات وتذكرها فوراً في الكشوفات القادمة.'}
               </p>
             ) : (
-              <div className="space-y-1.5">
+              <div className="space-y-1.5" data-no-translate="true">
                 {suggestions.frequentInstructions.map((ins, idx) => (
                   <button
                     key={idx}
                     type="button"
+                    data-no-translate="true"
                     onClick={() => {
                       if (onAddInstruction) {
                         onAddInstruction(ins.text);
-                        notifyAdded('تم إضافة الإرشاد الطبي إلى خانة التعليمات');
+                        notifyAdded(
+                          language === 'en'
+                            ? 'Added medical advice to instructions'
+                            : 'تم إضافة الإرشاد الطبي إلى خانة التعليمات'
+                        );
                       }
                     }}
-                    className="w-full text-right p-2.5 rounded-xl bg-white dark:bg-[#080e1b] hover:bg-indigo-50 dark:hover:bg-indigo-950/50 border border-slate-200 dark:border-white/10 transition-all cursor-pointer flex items-center justify-between gap-2 shadow-xs group"
+                    className="w-full text-right rtl:text-right ltr:text-left p-2.5 rounded-xl bg-white dark:bg-[#080e1b] hover:bg-indigo-50 dark:hover:bg-indigo-950/50 border border-slate-200 dark:border-white/10 transition-all cursor-pointer flex items-center justify-between gap-2 shadow-xs group no-translate clinical-data"
                   >
                     <span className="text-xs font-bold text-slate-800 dark:text-[#dde2f5] group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
                       + {ins.text}
                     </span>
                     {ins.count > 1 && (
                       <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 shrink-0">
-                        تكرر {ins.count}×
+                        {ins.count}×
                       </span>
                     )}
                   </button>

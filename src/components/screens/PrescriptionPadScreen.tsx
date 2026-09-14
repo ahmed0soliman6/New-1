@@ -12,6 +12,7 @@ import { usePermissions } from '../../context/AuthContext';
 import { PermissionGate } from '../auth/PermissionGate';
 import { PatientListItem, PrescriptionItem } from '../../types';
 import { useLanguage } from '../../i18n/LanguageContext';
+import { formatAppDate, formatAppTime } from '../../utils/numberUtils';
 
 interface PrescriptionPadScreenProps {
   patient?: PatientListItem | null;
@@ -1377,17 +1378,17 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-600">السن:</span>
-                    <span className="font-bold text-slate-900">{patient ? `${patient.age} سنة` : '—'}</span>
+                    <span className="font-bold text-slate-600">{language === 'en' ? 'Age:' : 'السن:'}</span>
+                    <span className="font-bold text-slate-900">{patient ? `${patient.age} ${language === 'en' ? 'yrs' : 'سنة'}` : '—'}</span>
                   </div>
                   <div className="flex flex-col sm:flex-row sm:items-center gap-x-3 gap-y-0.5 font-mono text-slate-900">
                     <div className="flex items-center gap-1">
-                      <span className="font-bold text-slate-600">التاريخ:</span>
-                      <span>{new Date().toLocaleDateString('ar-EG')}</span>
+                      <span className="font-bold text-slate-600">{language === 'en' ? 'Date:' : 'التاريخ:'}</span>
+                      <span>{formatAppDate(new Date(), undefined, language)}</span>
                     </div>
                     <div className="flex items-center gap-1 text-[#008f97] font-bold">
                       <span className="material-symbols-outlined text-[13px]">schedule</span>
-                      <span>الساعة: {new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</span>
+                      <span>{language === 'en' ? 'Time:' : 'الساعة:'} {formatAppTime(new Date(), language)}</span>
                     </div>
                   </div>
                 </div>

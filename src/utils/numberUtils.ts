@@ -47,11 +47,12 @@ export function toEnglishDigits(input: string | number | null | undefined): stri
 export const convertArabicToEnglishDigits = toEnglishDigits;
 
 /**
- * Formats a date using Arabic month/day names with strict English numerals (0-9)
+ * Formats a date using proper locale (en-US or ar-EG) with strict English numerals (0-9)
  */
 export function formatAppDate(
   dateInput: string | Date | number | null | undefined,
-  options?: Intl.DateTimeFormatOptions
+  optionsOrLang?: Intl.DateTimeFormatOptions | string,
+  lang?: string
 ): string {
   if (!dateInput) return '';
   try {
@@ -59,9 +60,13 @@ export function formatAppDate(
     if (isNaN(d.getTime())) {
       return toEnglishDigits(String(dateInput));
     }
-    const formatted = d.toLocaleDateString('ar-EG-u-nu-latn', options || {
+    const options = typeof optionsOrLang === 'object' ? optionsOrLang : undefined;
+    const explicitLang = typeof optionsOrLang === 'string' ? optionsOrLang : lang;
+    const currentLang = explicitLang || (typeof window !== 'undefined' ? localStorage.getItem('clinic_language') : 'ar') || 'ar';
+    const locale = currentLang === 'en' ? 'en-US' : 'ar-EG-u-nu-latn';
+    const formatted = d.toLocaleDateString(locale, options || {
       day: 'numeric',
-      month: 'long',
+      month: currentLang === 'en' ? 'short' : 'long',
       year: 'numeric',
     });
     return toEnglishDigits(formatted);
@@ -71,11 +76,12 @@ export function formatAppDate(
 }
 
 /**
- * Formats a time string or Date object with strict English numerals (0-9)
+ * Formats a time string or Date object with proper locale and strict English numerals (0-9)
  */
 export function formatAppTime(
   dateInput: string | Date | number | null | undefined,
-  options?: Intl.DateTimeFormatOptions
+  optionsOrLang?: Intl.DateTimeFormatOptions | string,
+  lang?: string
 ): string {
   if (!dateInput) return '';
   try {
@@ -83,7 +89,11 @@ export function formatAppTime(
     if (isNaN(d.getTime())) {
       return toEnglishDigits(String(dateInput));
     }
-    const formatted = d.toLocaleTimeString('ar-EG-u-nu-latn', options || {
+    const options = typeof optionsOrLang === 'object' ? optionsOrLang : undefined;
+    const explicitLang = typeof optionsOrLang === 'string' ? optionsOrLang : lang;
+    const currentLang = explicitLang || (typeof window !== 'undefined' ? localStorage.getItem('clinic_language') : 'ar') || 'ar';
+    const locale = currentLang === 'en' ? 'en-US' : 'ar-EG-u-nu-latn';
+    const formatted = d.toLocaleTimeString(locale, options || {
       hour: '2-digit',
       minute: '2-digit',
     });

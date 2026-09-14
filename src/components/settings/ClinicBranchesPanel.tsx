@@ -8,6 +8,8 @@ import {
 } from '../../utils/clinicBranches';
 import { db } from '../../services/firebase';
 import { saveSettingsDocument } from '../../services/repositories';
+import { useLanguage } from '../../i18n/LanguageContext';
+import { formatAppDate } from '../../utils/numberUtils';
 
 export function formatBranchTime(timeStr?: string): string {
   if (!timeStr) return '';
@@ -23,6 +25,7 @@ export function formatBranchTime(timeStr?: string): string {
 }
 
 export const ClinicBranchesPanel: React.FC = () => {
+  const { language, isRTL, t } = useLanguage();
   const [branches, setBranches] = useState<ClinicBranchItem[]>(() => getClinicBranches());
   const [editingBranch, setEditingBranch] = useState<ClinicBranchItem | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -218,7 +221,7 @@ export const ClinicBranchesPanel: React.FC = () => {
         timeSlot: '11:45 ص',
         visitType: 'كشف عيادة',
         branch: activePreviewBranch,
-        date: new Date().toLocaleDateString('ar-EG'),
+        date: formatAppDate(new Date(), undefined, language),
       })
     : '';
 

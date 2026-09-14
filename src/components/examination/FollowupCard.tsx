@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLanguage } from '../../i18n/LanguageContext';
 import {
   loadLifestylePresets,
   subscribeToLifestylePresets,
@@ -20,6 +21,7 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
   onChangeLifestyleAdvice,
   frequentSuggestions = [],
 }) => {
+  const { language } = useLanguage();
   const [advicePresets, setAdvicePresets] = useState<string[]>(loadLifestylePresets);
   const [customAdviceInput, setCustomAdviceInput] = useState('');
   const [selectedDropdownPreset, setSelectedDropdownPreset] = useState('');
@@ -113,10 +115,14 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
           </div>
           <div>
             <h3 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">
-              المتابعة والاستشارة والنظام الغذائي (Follow-up & Lifestyle)
+              {language === 'en'
+                ? 'Follow-up & Lifestyle Advice'
+                : 'المتابعة والاستشارة والنظام الغذائي (Follow-up & Lifestyle)'}
             </h3>
             <p className="text-[11px] text-slate-500 dark:text-[#859394]">
-              تحديد موعد الاستشارة القادمة وقواعد النظام الغذائي ونمط المعيشة (تطابق تلقائي مع بنود الإعدادات)
+              {language === 'en'
+                ? 'Set follow-up consultation date, dietary rules, and lifestyle instructions'
+                : 'تحديد موعد الاستشارة القادمة وقواعد النظام الغذائي ونمط المعيشة (تطابق تلقائي مع بنود الإعدادات)'}
             </p>
           </div>
         </div>
@@ -127,9 +133,13 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
         <div className="p-3 bg-indigo-500/10 dark:bg-indigo-950/20 rounded-xl border border-indigo-500/20 space-y-2">
           <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300">
             <span className="material-symbols-outlined text-sm">psychology</span>
-            <span>مقترحات الإرشادات والتعليمات المتكررة (إضافة بنقرة واحدة):</span>
+            <span>
+              {language === 'en'
+                ? 'Frequent advice & instructions suggestions (1-click add):'
+                : 'مقترحات الإرشادات والتعليمات المتكررة (إضافة بنقرة واحدة):'}
+            </span>
           </div>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1.5" data-no-translate="true">
             {frequentSuggestions.map((s, idx) => {
               const isAdded = lifestyleAdvice.includes(s.text);
               return (
@@ -143,11 +153,12 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
                       onChangeLifestyleAdvice(updated);
                     }
                   }}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer no-translate clinical-data ${
                     isAdded
                       ? 'bg-indigo-200 dark:bg-indigo-900/60 text-indigo-800 dark:text-indigo-300 opacity-60 cursor-default'
                       : 'bg-white dark:bg-[#111A2E] hover:bg-indigo-50 dark:hover:bg-indigo-900/40 text-slate-800 dark:text-[#dde2f5] border border-indigo-200 dark:border-indigo-800/40 shadow-xs'
                   }`}
+                  data-no-translate="true"
                 >
                   <span>{isAdded ? '✓' : '+'}</span>
                   <span>{s.text}</span>
@@ -166,7 +177,7 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5] block">
-              موعد الاستشارة القادمة:
+              {language === 'en' ? 'Next Consultation Date:' : 'موعد الاستشارة القادمة:'}
             </label>
             {followupDate && (
               <button
@@ -174,7 +185,7 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
                 onClick={() => onChangeFollowupDate('')}
                 className="text-[11px] text-rose-500 hover:text-rose-600 font-bold flex items-center gap-0.5 cursor-pointer"
               >
-                <span>بدون متابعة (إلغاء)</span>
+                <span>{language === 'en' ? 'No follow-up (clear)' : 'بدون متابعة (إلغاء)'}</span>
                 <span className="material-symbols-outlined text-xs">close</span>
               </button>
             )}
@@ -192,7 +203,7 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
               }`}
             >
               {isSelected7 && <span className="material-symbols-outlined text-xs">check</span>}
-              <span>بعد أسبوع (7 أيام)</span>
+              <span>{language === 'en' ? 'In 1 Week (7 days)' : 'بعد أسبوع (7 أيام)'}</span>
             </button>
 
             <button
@@ -205,7 +216,7 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
               }`}
             >
               {isSelected14 && <span className="material-symbols-outlined text-xs">check</span>}
-              <span>بعد أسبوعين (14 يوماً)</span>
+              <span>{language === 'en' ? 'In 2 Weeks (14 days)' : 'بعد أسبوعين (14 يوماً)'}</span>
             </button>
 
             <button
@@ -218,14 +229,17 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
               }`}
             >
               {isSelected30 && <span className="material-symbols-outlined text-xs">check</span>}
-              <span>بعد شهر (30 يوماً)</span>
+              <span>{language === 'en' ? 'In 1 Month (30 days)' : 'بعد شهر (30 يوماً)'}</span>
             </button>
 
             {/* Custom chosen date from calendar appearing right beside 30 days */}
             {isCustomDate && (
               <div className="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#00c2cb] text-slate-950 border border-[#00c2cb] shadow-md ring-2 ring-[#00c2cb]/50 flex items-center gap-1.5 animate-in fade-in">
                 <span className="material-symbols-outlined text-xs">event</span>
-                <span>موعد التقويم: {formatDisplayDate(followupDate)}</span>
+                <span>
+                  {language === 'en' ? 'Calendar Date: ' : 'موعد التقويم: '}
+                  {formatDisplayDate(followupDate)}
+                </span>
                 <span className="material-symbols-outlined text-xs">check_circle</span>
               </div>
             )}
@@ -246,16 +260,21 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
                   ? 'bg-indigo-50/50 dark:bg-indigo-950/20 text-indigo-950 dark:text-indigo-200 border-indigo-300 dark:border-indigo-700 font-bold'
                   : 'bg-slate-50 dark:bg-[#080e1b] text-slate-500 dark:text-[#859394] border-slate-200 dark:border-white/10'
               }`}
-              title="انقر لاختيار موعد الاستشارة من التقويم"
+              title={language === 'en' ? 'Click to choose follow-up date from calendar' : 'انقر لاختيار موعد الاستشارة من التقويم'}
             />
             {followupDate ? (
               <span className="text-emerald-600 dark:text-emerald-400 text-xs font-bold flex items-center gap-1">
                 <span className="material-symbols-outlined text-xs">check_circle</span>
-                <span>الموعد المختار: {formatDisplayDate(followupDate)}</span>
+                <span>
+                  {language === 'en' ? 'Selected date: ' : 'الموعد المختار: '}
+                  {formatDisplayDate(followupDate)}
+                </span>
               </span>
             ) : (
               <span className="text-slate-400 dark:text-[#859394] text-[11px] block">
-                لم يتم تحديد موعد متابعة بعد. يرجى اختيار موعد من الخيارات السريعة أو التقويم.
+                {language === 'en'
+                  ? 'No follow-up date chosen yet. Select a quick option or pick from calendar.'
+                  : 'لم يتم تحديد موعد متابعة بعد. يرجى اختيار موعد من الخيارات السريعة أو التقويم.'}
               </span>
             )}
           </div>
@@ -266,10 +285,12 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
           <div className="space-y-1">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5] block">
-                اختر الإرشادات ونمط الحياة المعتمد (من الإعدادات):
+                {language === 'en'
+                  ? 'Approved Lifestyle & Diet Instructions (from Settings):'
+                  : 'اختر الإرشادات ونمط الحياة المعتمد (من الإعدادات):'}
               </label>
               <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold">
-                {advicePresets.length} إرشاد متاح
+                {advicePresets.length} {language === 'en' ? 'available' : 'إرشاد متاح'}
               </span>
             </div>
 
@@ -279,7 +300,11 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
               onChange={handleSelectFromDropdown}
               className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-indigo-200 dark:border-indigo-900/40 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer font-bold"
             >
-              <option value="">-- اضغط لاختيار إرشاد من بنود الإعدادات --</option>
+              <option value="">
+                {language === 'en'
+                  ? '-- Click to pick an instruction preset from Settings --'
+                  : '-- اضغط لاختيار إرشاد من بنود الإعدادات --'}
+              </option>
               {advicePresets.map((preset, idx) => {
                 const isSelected = lifestyleAdvice.includes(preset);
                 return (
@@ -292,16 +317,23 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
           </div>
 
           {/* Lifestyle Advice Multiline Text Area */}
-          <div className="space-y-1">
+          <div className="space-y-1" data-no-translate="true">
             <label className="text-[11px] font-bold text-slate-600 dark:text-[#859394] block">
-              نص الإرشادات والتعليمات الطبية للمريض (تطبع في الروشتة):
+              {language === 'en'
+                ? 'Patient Instructions & Diet Advice (printed on prescription):'
+                : 'نص الإرشادات والتعليمات الطبية للمريض (تطبع في الروشتة):'}
             </label>
             <textarea
               rows={3}
+              data-no-translate="true"
               value={lifestyleAdvice}
               onChange={(e) => onChangeLifestyleAdvice(e.target.value)}
-              placeholder="اكتب التعليمات الطبية أو اختر من القائمة أعلاه (مثال: • الامتناع عن الأطعمة الدسمة...)"
-              className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-indigo-500 leading-relaxed font-sans"
+              placeholder={
+                language === 'en'
+                  ? 'Enter medical advice or choose from presets above (e.g. • Avoid greasy foods...)'
+                  : 'اكتب التعليمات الطبية أو اختر من القائمة أعلاه (مثال: • الامتناع عن الأطعمة الدسمة...)'
+              }
+              className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-indigo-500 leading-relaxed font-sans no-translate clinical-data"
             />
           </div>
 
@@ -311,14 +343,18 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
               type="text"
               value={customAdviceInput}
               onChange={(e) => setCustomAdviceInput(e.target.value)}
-              placeholder="إضافة إرشاد جديد وحفظه في الإعدادات..."
+              placeholder={
+                language === 'en'
+                  ? 'Add new advice & save to Settings presets...'
+                  : 'إضافة إرشاد جديد وحفظه في الإعدادات...'
+              }
               className="flex-1 bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             />
             <button
               type="submit"
               className="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold cursor-pointer transition-all shrink-0 shadow-xs"
             >
-              + إضافة وحفظ
+              {language === 'en' ? '+ Add & Save' : '+ إضافة وحفظ'}
             </button>
           </form>
         </div>

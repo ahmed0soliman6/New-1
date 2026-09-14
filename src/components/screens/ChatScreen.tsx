@@ -81,6 +81,20 @@ export const ChatScreen: React.FC = () => {
   }, []);
 
   // 2. Fetch Chat Messages from Firestore 'messages' collection in real-time
+  const [fallbackEventToggle, setFallbackEventToggle] = useState(false);
+
+  useEffect(() => {
+    const handleFallbackUpdate = () => {
+      setFallbackEventToggle((prev) => !prev);
+    };
+    window.addEventListener('soli_new_fallback_message', handleFallbackUpdate);
+    window.addEventListener('storage', handleFallbackUpdate);
+    return () => {
+      window.removeEventListener('soli_new_fallback_message', handleFallbackUpdate);
+      window.removeEventListener('storage', handleFallbackUpdate);
+    };
+  }, []);
+
   useEffect(() => {
     if (!db) {
       setLoading(false);
@@ -114,31 +128,51 @@ export const ChatScreen: React.FC = () => {
             }
           });
           
-          setMessages(list);
+          // Merge with fallback messages
+          const fallbackList = JSON.parse(localStorage.getItem('soli_fallback_messages') || '[]');
+          const combined = [...list, ...fallbackList];
+          
+          const uniqueMap = new Map<string, ChatMessage>();
+          combined.forEach((m) => {
+            const key = m.id || `${m.senderId}-${m.text}-${m.createdAt?.seconds}`;
+            uniqueMap.set(key, m);
+          });
+          
+          const sorted = Array.from(uniqueMap.values()).sort((a, b) => {
+            const timeA = a.createdAt?.seconds || 0;
+            const timeB = b.createdAt?.seconds || 0;
+            return timeA - timeB;
+          });
+
+          setMessages(sorted);
           setLoading(false);
 
           // Play sound notification on new incoming message from someone else
           if (
             soundEnabled &&
-            list.length > prevMessagesCount.current &&
+            sorted.length > prevMessagesCount.current &&
             prevMessagesCount.current > 0
           ) {
-            const lastMsg = list[list.length - 1];
+            const lastMsg = sorted[sorted.length - 1];
             if (lastMsg.senderId !== userProfile?.uid) {
               notificationAudio.play().catch(() => {});
             }
           }
-          prevMessagesCount.current = list.length;
+          prevMessagesCount.current = sorted.length;
         },
         (err) => {
           console.warn('Real-time Chat subscription failed:', err);
+          
+          // Render only fallback if firestore subscription is completely blocked
+          const fallbackList = JSON.parse(localStorage.getItem('soli_fallback_messages') || '[]');
+          setMessages(fallbackList);
           setLoading(false);
         }
       );
     });
 
     return () => unsubMessages();
-  }, [soundEnabled, userProfile?.uid, notificationAudio]);
+  }, [soundEnabled, userProfile?.uid, notificationAudio, fallbackEventToggle]);
 
   // Scroll to bottom whenever messages change
   useEffect(() => {
@@ -148,7 +182,7 @@ export const ChatScreen: React.FC = () => {
   // Handle Send Message
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim() || !db || !userProfile) return;
+    if (!inputText.trim() || !userProfile) return;
 
     const messageContent = inputText.trim();
     const announcementFlag = isAnnouncement;
@@ -156,6 +190,7 @@ export const ChatScreen: React.FC = () => {
     setIsAnnouncement(false);
 
     try {
+      if (!db) throw new Error('No DB connection');
       const { collection, addDoc, serverTimestamp } = await import('firebase/firestore');
       await addDoc(collection(db, 'messages'), {
         text: messageContent,
@@ -166,18 +201,45 @@ export const ChatScreen: React.FC = () => {
         isAnnouncement: announcementFlag,
       });
     } catch (err) {
-      console.error('Failed to send message:', err);
+      console.warn('Firestore chat write failed, fallback to local storage:', err);
+      
+      const fallbackMsg = {
+        id: `msg-fallback-${Date.now()}-${Math.random()}`,
+        text: messageContent,
+        senderId: userProfile.uid,
+        senderName: userProfile.displayName || userProfile.username || 'مجهول',
+        senderRole: userProfile.role || 'secretary',
+        createdAt: { seconds: Math.floor(Date.now() / 1000) },
+        isAnnouncement: announcementFlag,
+      };
+
+      const existing = JSON.parse(localStorage.getItem('soli_fallback_messages') || '[]');
+      existing.push(fallbackMsg);
+      localStorage.setItem('soli_fallback_messages', JSON.stringify(existing));
+      window.dispatchEvent(new Event('soli_new_fallback_message'));
     }
   };
 
   // Handle Delete Message (Admins or original sender can delete)
   const handleDeleteMessage = async (msgId: string) => {
-    if (!db) return;
-    try {
-      const { doc, deleteDoc } = await import('firebase/firestore');
-      await deleteDoc(doc(db, 'messages', msgId));
-    } catch (err) {
-      console.error('Failed to delete message:', err);
+    // 1. Try deleting from Firestore
+    let deletedFromFirestore = false;
+    if (db) {
+      try {
+        const { doc, deleteDoc } = await import('firebase/firestore');
+        await deleteDoc(doc(db, 'messages', msgId));
+        deletedFromFirestore = true;
+      } catch (err) {
+        console.warn('Could not delete from firestore, check permission or connectivity:', err);
+      }
+    }
+
+    // 2. Also delete from local fallback storage
+    const fallbackList = JSON.parse(localStorage.getItem('soli_fallback_messages') || '[]');
+    const filtered = fallbackList.filter((m: any) => m.id !== msgId);
+    if (filtered.length !== fallbackList.length) {
+      localStorage.setItem('soli_fallback_messages', JSON.stringify(filtered));
+      window.dispatchEvent(new Event('soli_new_fallback_message'));
     }
   };
 

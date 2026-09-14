@@ -1,4 +1,5 @@
 import React, { useState, useTransition, useMemo } from 'react';
+import { useLanguage } from '../../i18n/LanguageContext';
 import { LabCatalogItem, LabOrderItem, LabStatus } from '../../types';
 
 interface LabCardProps {
@@ -35,6 +36,7 @@ export const LabCard: React.FC<LabCardProps> = ({
   onAddLabToCatalog,
   frequentSuggestions = [],
 }) => {
+  const { language } = useLanguage();
   const [showPicker, setShowPicker] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
@@ -234,13 +236,17 @@ export const LabCard: React.FC<LabCardProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">المعمل والتحاليل الطبية</h3>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">
+                {language === 'en' ? 'Laboratory & Medical Tests' : 'المعمل والتحاليل الطبية'}
+              </h3>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-[#10B981]">
-                {labOrders.length} تحليل
+                {labOrders.length} {language === 'en' ? (labOrders.length === 1 ? 'test' : 'tests') : 'تحليل'}
               </span>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-[#859394]">
-              فصل أوامر التحاليل (Orders) وتسجيل النتائج القياسية والملاحظات (Results)
+              {language === 'en'
+                ? 'Manage test orders and record standard numeric results and reports'
+                : 'فصل أوامر التحاليل (Orders) وتسجيل النتائج القياسية والملاحظات (Results)'}
             </p>
           </div>
         </div>
@@ -252,7 +258,7 @@ export const LabCard: React.FC<LabCardProps> = ({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 text-emerald-700 dark:text-[#10B981] text-xs font-bold transition-all cursor-pointer"
           >
             <span className="material-symbols-outlined text-base">lists</span>
-            <span>+ اختيار من دليلي</span>
+            <span>{language === 'en' ? '+ Pick from Catalog' : '+ اختيار من دليلي'}</span>
           </button>
           <button
             type="button"
@@ -260,7 +266,7 @@ export const LabCard: React.FC<LabCardProps> = ({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all cursor-pointer shadow-xs"
           >
             <span className="material-symbols-outlined text-base">add</span>
-            <span>+ إضافة تحليل جديد</span>
+            <span>{language === 'en' ? '+ Add New Test' : '+ إضافة تحليل جديد'}</span>
           </button>
         </div>
       </div>
@@ -270,7 +276,11 @@ export const LabCard: React.FC<LabCardProps> = ({
         <div className="p-3 bg-emerald-500/10 dark:bg-emerald-950/20 rounded-xl border border-emerald-500/20 space-y-2">
           <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-400">
             <span className="material-symbols-outlined text-sm">psychology</span>
-            <span>مقترحات التحاليل المتكررة لهذا التشخيص (إضافة بنقرة واحدة):</span>
+            <span>
+              {language === 'en'
+                ? 'Frequent lab test suggestions for this diagnosis (1-click add):'
+                : 'مقترحات التحاليل المتكررة لهذا التشخيص (إضافة بنقرة واحدة):'}
+            </span>
           </div>
           <div className="flex flex-wrap gap-1.5">
             {frequentSuggestions.map((s, idx) => {
@@ -518,14 +528,18 @@ export const LabCard: React.FC<LabCardProps> = ({
             biotechnology
           </span>
           <p className="text-xs text-slate-500 dark:text-[#859394]">
-            لم يتم طلب أي تحاليل معملية حتى الآن في هذا الكشف.
+            {language === 'en'
+              ? 'No laboratory tests ordered yet for this examination.'
+              : 'لم يتم طلب أي تحاليل معملية حتى الآن في هذا الكشف.'}
           </p>
           <p className="text-[11px] text-slate-400 mt-1">
-            انقر "+ اختيار من دليلي" أو "+ إضافة تحليل جديد" لطلب تحاليل أو رصد قيمها المخبرية فوراً.
+            {language === 'en'
+              ? 'Click "+ Pick from Catalog" or "+ Add New Test" to order tests or record lab results.'
+              : 'انقر "+ اختيار من دليلي" أو "+ إضافة تحليل جديد" لطلب تحاليل أو رصد قيمها المخبرية فوراً.'}
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-3" data-no-translate="true">
           {labOrders.map((ord) => (
             <div
               key={ord.id}
@@ -543,13 +557,26 @@ export const LabCard: React.FC<LabCardProps> = ({
                       ord.isAbnormal ? 'bg-rose-500' : 'bg-emerald-500'
                     }`}
                   ></span>
-                  <div>
-                    <span className="text-xs font-bold text-slate-900 dark:text-[#dde2f5]">{ord.testName}</span>
-                    <span className="text-[10px] text-slate-500 dark:text-[#859394] mr-2 px-1.5 py-0.5 rounded bg-slate-200/60 dark:bg-white/5">
+                  <div className="clinical-data" data-no-translate="true">
+                    <span
+                      data-no-translate="true"
+                      className="text-xs font-bold text-slate-900 dark:text-[#dde2f5] no-translate clinical-data"
+                    >
+                      {ord.testName}
+                    </span>
+                    <span
+                      data-no-translate="true"
+                      className="text-[10px] text-slate-500 dark:text-[#859394] mr-2 px-1.5 py-0.5 rounded bg-slate-200/60 dark:bg-white/5 no-translate clinical-data"
+                    >
                       {ord.category}
                     </span>
                     {ord.sampleType && (
-                      <span className="text-[10px] text-slate-400 mr-1">({ord.sampleType})</span>
+                      <span
+                        data-no-translate="true"
+                        className="text-[10px] text-slate-400 mr-1 no-translate clinical-data"
+                      >
+                        ({ord.sampleType})
+                      </span>
                     )}
                   </div>
                 </div>
@@ -557,7 +584,9 @@ export const LabCard: React.FC<LabCardProps> = ({
                 <div className="flex items-center gap-2">
                   {/* Status Dropdown */}
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] text-slate-500 dark:text-[#859394]">الحالة:</span>
+                    <span className="text-[11px] text-slate-500 dark:text-[#859394]">
+                      {language === 'en' ? 'Status:' : 'الحالة:'}
+                    </span>
                     <select
                       value={ord.status}
                       onChange={(e) => handleUpdateStatus(ord.id, e.target.value as LabStatus)}
@@ -569,9 +598,15 @@ export const LabCard: React.FC<LabCardProps> = ({
                           : 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-800 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700/50'
                       }`}
                     >
-                      <option value="REQUEST" className="bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5]">طلب (ORDERED)</option>
-                      <option value="RESULT" className="bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5]">نتيجة (RESULT)</option>
-                      <option value="REPORT" className="bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5]">تقرير (REPORT)</option>
+                      <option value="REQUEST" className="bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5]">
+                        {language === 'en' ? 'Order (REQUEST)' : 'طلب (ORDERED)'}
+                      </option>
+                      <option value="RESULT" className="bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5]">
+                        {language === 'en' ? 'Result (RESULT)' : 'نتيجة (RESULT)'}
+                      </option>
+                      <option value="REPORT" className="bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5]">
+                        {language === 'en' ? 'Report (REPORT)' : 'تقرير (REPORT)'}
+                      </option>
                     </select>
                   </div>
 
@@ -579,7 +614,7 @@ export const LabCard: React.FC<LabCardProps> = ({
                     type="button"
                     onClick={() => handleRemove(ord.id)}
                     className="p-1 text-slate-400 hover:text-rose-500 transition-colors cursor-pointer"
-                    title="حذف التحليل"
+                    title={language === 'en' ? 'Delete test' : 'حذف التحليل'}
                   >
                     <span className="material-symbols-outlined text-base">delete</span>
                   </button>
@@ -591,23 +626,41 @@ export const LabCard: React.FC<LabCardProps> = ({
                 <div className="pt-2 border-t border-slate-200 dark:border-white/5 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-[#859394]">
                   <div className="flex items-center gap-1.5">
                     <span className="material-symbols-outlined text-xs text-sky-500 dark:text-cyan-400">pending</span>
-                    <span>تم تسجيل أمر التحليل ({ord.orderedAt}) - بالانتظار</span>
+                    <span>
+                      {language === 'en'
+                        ? `Order logged (${ord.orderedAt}) - Pending`
+                        : `تم تسجيل أمر التحليل (${ord.orderedAt}) - بالانتظار`}
+                    </span>
                     {ord.instructions && (
-                      <span className="text-sky-700 dark:text-cyan-300 font-bold bg-sky-50 dark:bg-cyan-950/50 px-2 py-0.5 rounded border border-sky-200 dark:border-cyan-800/40">
-                        تعليمات: {ord.instructions}
+                      <span
+                        data-no-translate="true"
+                        className="text-sky-700 dark:text-cyan-300 font-bold bg-sky-50 dark:bg-cyan-950/50 px-2 py-0.5 rounded border border-sky-200 dark:border-cyan-800/40 no-translate clinical-data"
+                      >
+                        {language === 'en' ? 'Instructions: ' : 'تعليمات: '}
+                        {ord.instructions}
                       </span>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-slate-700 dark:text-[#dde2f5]">أو أدخل النتيجة الآن:</span>
+                    <span className="text-xs font-semibold text-slate-700 dark:text-[#dde2f5]">
+                      {language === 'en' ? 'Or enter result now:' : 'أو أدخل النتيجة الآن:'}
+                    </span>
                     <input
                       type="text"
+                      data-no-translate="true"
                       value={ord.resultValue || ''}
                       onChange={(e) => handleUpdateField(ord.id, 'resultValue', e.target.value)}
-                      placeholder="مثال: 7 أو 7.2%"
-                      className="w-32 bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] font-mono font-bold text-xs px-2.5 py-1 rounded-lg border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      placeholder={language === 'en' ? 'e.g. 7 or 7.2%' : 'مثال: 7 أو 7.2%'}
+                      className="w-32 bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] font-mono font-bold text-xs px-2.5 py-1 rounded-lg border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-emerald-500 no-translate clinical-data"
                     />
-                    {ord.unit && <span className="font-mono text-[10px] text-slate-400">{ord.unit}</span>}
+                    {ord.unit && (
+                      <span
+                        data-no-translate="true"
+                        className="font-mono text-[10px] text-slate-400 no-translate clinical-data"
+                      >
+                        {ord.unit}
+                      </span>
+                    )}
                   </div>
                 </div>
               )}
@@ -617,24 +670,33 @@ export const LabCard: React.FC<LabCardProps> = ({
                 <div className="pt-2 border-t border-slate-200 dark:border-white/5 grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
                   <div className="sm:col-span-4 flex items-center gap-1.5">
                     <span className="text-xs font-bold text-slate-700 dark:text-[#dde2f5] whitespace-nowrap">
-                      النتيجة المقاسة:
+                      {language === 'en' ? 'Measured Result:' : 'النتيجة المقاسة:'}
                     </span>
                     <input
                       type="text"
+                      data-no-translate="true"
                       value={ord.resultValue || ''}
                       onChange={(e) => handleUpdateField(ord.id, 'resultValue', e.target.value)}
                       placeholder="e.g. 7.2"
-                      className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] font-mono font-bold text-xs p-2 rounded-lg border border-slate-200 dark:border-white/5 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] font-mono font-bold text-xs p-2 rounded-lg border border-slate-200 dark:border-white/5 focus:outline-none focus:ring-1 focus:ring-emerald-500 no-translate clinical-data"
                     />
                     {ord.unit && (
-                      <span className="text-[11px] text-slate-500 font-mono">{ord.unit}</span>
+                      <span
+                        data-no-translate="true"
+                        className="text-[11px] text-slate-500 font-mono no-translate clinical-data"
+                      >
+                        {ord.unit}
+                      </span>
                     )}
                   </div>
 
                   <div className="sm:col-span-4 text-xs text-slate-500 dark:text-[#859394]">
-                    <span>النطاق الطبيعي: </span>
-                    <span className="font-mono text-slate-700 dark:text-[#dde2f5]">
-                      {ord.referenceRange || 'غير محدد'}
+                    <span>{language === 'en' ? 'Reference Range: ' : 'النطاق الطبيعي: '}</span>
+                    <span
+                      data-no-translate="true"
+                      className="font-mono text-slate-700 dark:text-[#dde2f5] no-translate clinical-data"
+                    >
+                      {ord.referenceRange || (language === 'en' ? 'Unspecified' : 'غير محدد')}
                     </span>
                   </div>
 
@@ -648,7 +710,9 @@ export const LabCard: React.FC<LabCardProps> = ({
                           : 'bg-slate-100 dark:bg-[#111A2E] text-slate-600 dark:text-[#859394] border-slate-200 dark:border-white/5'
                       }`}
                     >
-                      {ord.isAbnormal ? '⚠️ نتيجة خارج المعدل الطبيعي' : 'ضمن المعدل الطبيعي ✓'}
+                      {ord.isAbnormal
+                        ? (language === 'en' ? '⚠️ Abnormal Result' : '⚠️ نتيجة خارج المعدل الطبيعي')
+                        : (language === 'en' ? 'Within Normal Range ✓' : 'ضمن المعدل الطبيعي ✓')}
                     </button>
                   </div>
                 </div>
@@ -658,15 +722,22 @@ export const LabCard: React.FC<LabCardProps> = ({
               {ord.status === 'REPORT' && (
                 <div className="pt-2 border-t border-slate-200 dark:border-white/5 space-y-1.5">
                   <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-[#dde2f5]">
-                    <span>ملاحظات وتقرير التحليل المعملي التفصيلي:</span>
-                    <span className="text-[10px] text-emerald-600 font-mono">سجل المعمل</span>
+                    <span>{language === 'en' ? 'Detailed Lab Notes & Report:' : 'ملاحظات وتقرير التحليل المعملي التفصيلي:'}</span>
+                    <span className="text-[10px] text-emerald-600 font-mono">
+                      {language === 'en' ? 'Lab Record' : 'سجل المعمل'}
+                    </span>
                   </div>
                   <textarea
                     rows={2}
+                    data-no-translate="true"
                     value={ord.reportNotes || ''}
                     onChange={(e) => handleUpdateField(ord.id, 'reportNotes', e.target.value)}
-                    placeholder="اكتب التقرير المجهري، نمو المزرعة، أو الحساسية البكتيرية..."
-                    className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-lg border border-slate-200 dark:border-white/5 focus:outline-none focus:ring-1 focus:ring-emerald-500 leading-relaxed resize-none"
+                    placeholder={
+                      language === 'en'
+                        ? 'Enter microscopic findings, culture growth, or sensitivity...'
+                        : 'اكتب التقرير المجهري، نمو المزرعة، أو الحساسية البكتيرية...'
+                    }
+                    className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-lg border border-slate-200 dark:border-white/5 focus:outline-none focus:ring-1 focus:ring-emerald-500 leading-relaxed resize-none no-translate clinical-data"
                   />
                 </div>
               )}

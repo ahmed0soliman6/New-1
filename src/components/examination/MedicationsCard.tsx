@@ -1,4 +1,5 @@
 import React, { useState, useTransition } from 'react';
+import { useLanguage } from '../../i18n/LanguageContext';
 import { DrugCatalogItem, PrescriptionItem } from '../../types';
 
 interface MedicationsCardProps {
@@ -51,6 +52,7 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
   onPrintPrescription,
   frequentSuggestions = [],
 }) => {
+  const { language } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddCustomModal, setShowAddCustomModal] = useState(false);
   const [isSearchingOnline, setIsSearchingOnline] = useState(false);
@@ -232,14 +234,16 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-[#dde2f5]">
-                الروشتة الإلكترونية (Rx)
+                {language === 'en' ? 'Electronic Prescription (Rx)' : 'الروشتة الإلكترونية (Rx)'}
               </h3>
               <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-teal-100 dark:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#45dee7]">
-                {prescriptionItems.length} أدوية بالروشتة
+                {prescriptionItems.length} {language === 'en' ? (prescriptionItems.length === 1 ? 'medication' : 'medications') : 'أدوية بالروشتة'}
               </span>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-[#859394]">
-              توصيف الدواء بالاسم التجاري والجرعة والمدة المرتبطة بملف الكشف
+              {language === 'en'
+                ? 'Specify trade name, strength, dosage and duration linked to examination file'
+                : 'توصيف الدواء بالاسم التجاري والجرعة والمدة المرتبطة بملف الكشف'}
             </p>
           </div>
         </div>
@@ -250,20 +254,20 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
               type="button"
               onClick={onPrintPrescription}
               className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
-              title="طباعة الروشتة مباشرة"
+              title={language === 'en' ? 'Print prescription directly' : 'طباعة الروشتة مباشرة'}
             >
               <span className="material-symbols-outlined text-base">print</span>
-              <span>طباعة الروشتة</span>
+              <span>{language === 'en' ? 'Print Prescription' : 'طباعة الروشتة'}</span>
             </button>
           )}
 
           <button
             type="button"
             onClick={() => setShowAddCustomModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs font-bold transition-all cursor-pointer shadow-xs"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs font-bold transition-all cursor-pointer shadow-xs"
           >
             <span className="material-symbols-outlined text-base">add</span>
-            <span>+ إضافة دواء غير مدرج</span>
+            <span>{language === 'en' ? '+ Add Unlisted Medication' : '+ إضافة دواء غير مدرج'}</span>
           </button>
         </div>
       </div>
@@ -273,7 +277,11 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
         <div className="p-3 bg-teal-500/10 dark:bg-teal-950/20 rounded-xl border border-teal-500/20 space-y-2">
           <div className="flex items-center gap-1.5 text-xs font-bold text-teal-700 dark:text-teal-300">
             <span className="material-symbols-outlined text-sm">psychology</span>
-            <span>مقترحات الأدوية المعتادة لنوع التشخيص (إضافة بنقرة واحدة):</span>
+            <span>
+              {language === 'en'
+                ? 'Frequent medication suggestions for diagnosis (1-click add):'
+                : 'مقترحات الأدوية المعتادة لنوع التشخيص (إضافة بنقرة واحدة):'}
+            </span>
           </div>
           <div className="flex flex-wrap gap-1.5">
             {frequentSuggestions.map((s, idx) => {
@@ -325,19 +333,29 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-[#00c2cb] text-xl">travel_explore</span>
             <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-[#dde2f5]">
-              البحث الشامل في الأدوية وأرشيف الدواء المصري (EDA Index)
+              {language === 'en'
+                ? 'Comprehensive Drug Search & Egyptian Drug Index (EDA)'
+                : 'البحث الشامل في الأدوية وأرشيف الدواء المصري (EDA Index)'}
             </h4>
           </div>
           <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-teal-100 dark:bg-[#00c2cb]/20 text-teal-800 dark:text-[#45dee7] flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>بحث بالاسم التجاري والعلمي (عربي / English)</span>
+            <span>
+              {language === 'en'
+                ? 'Search by Trade & Generic Name (Arabic / English)'
+                : 'بحث بالاسم التجاري والعلمي (عربي / English)'}
+            </span>
           </span>
         </div>
 
         <div className="relative">
           <input
             type="text"
-            placeholder="ابحث هنا بالاسم التجاري أو الاسم العلمي (مثال: Concor, كونسور, Augmentin, أوجمنتين, Paracetamol, باراسيتامول)..."
+            placeholder={
+              language === 'en'
+                ? 'Search by trade or generic name (e.g. Concor, Augmentin, Paracetamol)...'
+                : 'ابحث هنا بالاسم التجاري أو الاسم العلمي (مثال: Concor, كونسور, Augmentin, أوجمنتين, Paracetamol, باراسيتامول)...'
+            }
             value={searchQuery}
             onChange={(e) => handleSearchChange(e.target.value)}
             className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-sm p-3.5 pr-11 pl-28 rounded-xl border border-slate-200 dark:border-white/10 focus:border-[#00c2cb] focus:outline-none focus:ring-2 focus:ring-[#00c2cb]/20 font-bold transition-all"
@@ -356,7 +374,7 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
                 }}
                 className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-[#18233C] text-slate-500 dark:text-[#859394] hover:text-rose-500 text-xs font-bold cursor-pointer"
               >
-                مسح ✕
+                {language === 'en' ? 'Clear ✕' : 'مسح ✕'}
               </button>
             )}
             <button
@@ -365,7 +383,7 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
               className="px-2.5 py-1.5 rounded-lg bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold text-[11px] flex items-center gap-1 shadow-xs cursor-pointer"
             >
               <span className="material-symbols-outlined text-sm">language</span>
-              <span>بحث أونلاين</span>
+              <span>{language === 'en' ? 'Online Search' : 'بحث أونلاين'}</span>
             </button>
           </div>
         </div>
@@ -376,21 +394,35 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
             <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-[#859394] border-b border-slate-100 dark:border-white/5 pb-1.5">
               <span className="flex items-center gap-1">
                 <span className="material-symbols-outlined text-xs text-[#00c2cb]">manage_search</span>
-                <span>نتائج البحث في قاعدة الدواء المسبقة والأرشيف المصري لـ "{searchQuery}":</span>
+                <span>
+                  {language === 'en'
+                    ? `Drug search results for "${searchQuery}":`
+                    : `نتائج البحث في قاعدة الدواء المسبقة والأرشيف المصري لـ "${searchQuery}":`}
+                </span>
               </span>
               <span className="font-mono text-teal-600 dark:text-[#00c2cb] font-bold">
-                {isSearchingOnline ? 'جاري الاستعلام...' : `${onlineResults.length} دواء مطايق`}
+                {isSearchingOnline
+                  ? (language === 'en' ? 'Querying...' : 'جاري الاستعلام...')
+                  : (language === 'en' ? `${onlineResults.length} matching drugs` : `${onlineResults.length} دواء مطابق`)}
               </span>
             </div>
 
             {isSearchingOnline ? (
               <div className="py-4 text-center text-xs text-[#00c2cb] font-bold flex items-center justify-center gap-2">
                 <span className="w-4 h-4 border-2 border-[#00c2cb] border-t-transparent rounded-full animate-spin"></span>
-                <span>جاري البحث عبر أرشيف هيئة الدواء المصرية...</span>
+                <span>
+                  {language === 'en'
+                    ? 'Searching Egyptian Drug Authority (EDA) archive...'
+                    : 'جاري البحث عبر أرشيف هيئة الدواء المصرية...'}
+                </span>
               </div>
             ) : onlineResults.length === 0 ? (
               <div className="py-4 text-center text-xs text-slate-500 space-y-2">
-                <p>لم يتم العثور على نتائج مباشرة تطابق "{searchQuery}".</p>
+                <p>
+                  {language === 'en'
+                    ? `No direct results found matching "${searchQuery}".`
+                    : `لم يتم العثور على نتائج مباشرة تطابق "${searchQuery}".`}
+                </p>
                 <button
                   type="button"
                   onClick={() => {
@@ -399,7 +431,7 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
                   }}
                   className="px-4 py-2 rounded-xl bg-[#00c2cb] text-slate-950 font-bold text-xs cursor-pointer shadow-xs"
                 >
-                  + إضافته كدواء مخصص فوراً للروشتة
+                  {language === 'en' ? '+ Add as Custom Drug to Rx Now' : '+ إضافته كدواء مخصص فوراً للروشتة'}
                 </button>
               </div>
             ) : (
@@ -488,16 +520,22 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
             prescriptions
           </span>
           <p className="text-xs font-bold text-slate-600 dark:text-[#859394]">
-            لم يتم إضافة أدوية إلى قائمة الروشتة بعد.
+            {language === 'en'
+              ? 'No medications added to the prescription yet.'
+              : 'لم يتم إضافة أدوية إلى قائمة الروشتة بعد.'}
           </p>
           <p className="text-[11px] text-slate-400 mt-1">
-            استخدم صندوق البحث الشامل بأعلى البطاقة للبحث في أدوية العيادة وأرشيف الدواء المصري.
+            {language === 'en'
+              ? 'Use the comprehensive search box above to search clinic drugs and the Egyptian Drug Index.'
+              : 'استخدم صندوق البحث الشامل بأعلى البطاقة للبحث في أدوية العيادة وأرشيف الدواء المصري.'}
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-3" data-no-translate="true">
           <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 dark:text-[#859394] px-1">
-            <span>قائمة الأدوية المعتمدة بالروشتة:</span>
+            <span>
+              {language === 'en' ? 'Approved Prescription Medications:' : 'قائمة الأدوية المعتمدة بالروشتة:'}
+            </span>
             <span className="text-teal-600 font-mono">Prescription Snapshot</span>
           </div>
 
@@ -511,15 +549,27 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
                   <span className="w-6 h-6 rounded-full bg-teal-100 dark:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#00c2cb] font-mono text-xs font-bold flex items-center justify-center">
                     {idx + 1}
                   </span>
-                  <div>
-                    <span className="text-xs font-bold text-slate-900 dark:text-[#dde2f5]">{item.drugName}</span>
+                  <div className="clinical-data" data-no-translate="true">
+                    <span
+                      data-no-translate="true"
+                      className="text-xs font-bold text-slate-900 dark:text-[#dde2f5] no-translate clinical-data"
+                    >
+                      {item.drugName}
+                    </span>
                     {item.scientificName && (
-                      <span className="text-[10px] text-slate-400 mr-2 font-mono" dir="ltr">
+                      <span
+                        data-no-translate="true"
+                        className="text-[10px] text-slate-400 mr-2 font-mono no-translate clinical-data"
+                        dir="ltr"
+                      >
                         ({item.scientificName})
                       </span>
                     )}
                     {item.dosageForm && (
-                      <span className="text-[10px] text-teal-700 dark:text-[#45dee7] mr-1 px-1.5 py-0.5 rounded bg-teal-50 dark:bg-[#00c2cb]/10">
+                      <span
+                        data-no-translate="true"
+                        className="text-[10px] text-teal-700 dark:text-[#45dee7] mr-1 px-1.5 py-0.5 rounded bg-teal-50 dark:bg-[#00c2cb]/10 no-translate clinical-data"
+                      >
                         {item.dosageForm}
                       </span>
                     )}
@@ -530,7 +580,7 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
                   type="button"
                   onClick={() => handleRemove(item.id)}
                   className="p-1 text-slate-400 hover:text-rose-500 transition-colors cursor-pointer self-end sm:self-center"
-                  title="حذف من الروشتة"
+                  title={language === 'en' ? 'Remove from prescription' : 'حذف من الروشتة'}
                 >
                   <span className="material-symbols-outlined text-base">delete</span>
                 </button>
@@ -539,13 +589,19 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
               {/* Editable Dosage & Duration Fields */}
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 pt-1 border-t border-slate-200 dark:border-white/5">
                 <div className="sm:col-span-7 flex flex-col sm:flex-row items-start sm:items-center gap-1.5">
-                  <span className="text-[11px] text-slate-500 dark:text-[#859394] whitespace-nowrap">الجرعة:</span>
+                  <span className="text-[11px] text-slate-500 dark:text-[#859394] whitespace-nowrap">
+                    {language === 'en' ? 'Dosage:' : 'الجرعة:'}
+                  </span>
                   <div className="flex-1 flex items-center gap-1 w-full">
                     <input
                       type="text"
                       value={item.dosage || ''}
                       onChange={(e) => handleUpdateSnapshotField(item.id, 'dosage', e.target.value)}
-                      placeholder="طريقة الاستخدام وتوقيت الجرعة..."
+                      placeholder={
+                        language === 'en'
+                          ? 'Directions and timing...'
+                          : 'طريقة الاستخدام وتوقيت الجرعة...'
+                      }
                       className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-xs p-1.5 rounded-lg border border-slate-200 dark:border-white/5 focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
                     />
                     <select
@@ -558,27 +614,49 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
                       defaultValue=""
                       className="bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] text-[11px] p-1.5 rounded-lg border border-slate-200 dark:border-white/10 focus:outline-none cursor-pointer max-w-[130px]"
                     >
-                      <option value="" disabled>اختر التوقيت...</option>
-                      <option value="كل 6 ساعات (4 مرات يومياً)">كل 6 ساعات</option>
-                      <option value="كل 8 ساعات (3 مرات يومياً)">كل 8 ساعات</option>
-                      <option value="كل 12 ساعة (مرتين يومياً)">كل 12 ساعة</option>
-                      <option value="كل 24 ساعة (مرة يومياً)">كل 24 ساعة</option>
-                      <option value="قبل الأكل">قبل الأكل</option>
-                      <option value="بعد الأكل">بعد الأكل</option>
-                      <option value="صباحاً ومساءً">صباحاً ومساءً</option>
-                      <option value="عند اللزوم">عند اللزوم</option>
-                      <option value="عند النوم">عند النوم</option>
+                      <option value="" disabled>
+                        {language === 'en' ? 'Quick timing...' : 'اختر التوقيت...'}
+                      </option>
+                      <option value={language === 'en' ? 'Every 6 hours (4 times daily)' : 'كل 6 ساعات (4 مرات يومياً)'}>
+                        {language === 'en' ? 'Every 6 hrs' : 'كل 6 ساعات'}
+                      </option>
+                      <option value={language === 'en' ? 'Every 8 hours (3 times daily)' : 'كل 8 ساعات (3 مرات يومياً)'}>
+                        {language === 'en' ? 'Every 8 hrs' : 'كل 8 ساعات'}
+                      </option>
+                      <option value={language === 'en' ? 'Every 12 hours (twice daily)' : 'كل 12 ساعة (مرتين يومياً)'}>
+                        {language === 'en' ? 'Every 12 hrs' : 'كل 12 ساعة'}
+                      </option>
+                      <option value={language === 'en' ? 'Every 24 hours (once daily)' : 'كل 24 ساعة (مرة يومياً)'}>
+                        {language === 'en' ? 'Once daily' : 'كل 24 ساعة'}
+                      </option>
+                      <option value={language === 'en' ? 'Before meals' : 'قبل الأكل'}>
+                        {language === 'en' ? 'Before meals' : 'قبل الأكل'}
+                      </option>
+                      <option value={language === 'en' ? 'After meals' : 'بعد الأكل'}>
+                        {language === 'en' ? 'After meals' : 'بعد الأكل'}
+                      </option>
+                      <option value={language === 'en' ? 'Morning & evening' : 'صباحاً ومساءً'}>
+                        {language === 'en' ? 'Morning & evening' : 'صباحاً ومساءً'}
+                      </option>
+                      <option value={language === 'en' ? 'As needed (PRN)' : 'عند اللزوم'}>
+                        {language === 'en' ? 'As needed' : 'عند اللزوم'}
+                      </option>
+                      <option value={language === 'en' ? 'At bedtime' : 'عند النوم'}>
+                        {language === 'en' ? 'At bedtime' : 'عند النوم'}
+                      </option>
                     </select>
                   </div>
                 </div>
 
                 <div className="sm:col-span-5 flex items-center gap-1.5">
-                  <span className="text-[11px] text-slate-500 dark:text-[#859394] whitespace-nowrap">المدة:</span>
+                  <span className="text-[11px] text-slate-500 dark:text-[#859394] whitespace-nowrap">
+                    {language === 'en' ? 'Duration:' : 'المدة:'}
+                  </span>
                   <input
                     type="text"
                     value={item.duration || ''}
                     onChange={(e) => handleUpdateSnapshotField(item.id, 'duration', e.target.value)}
-                    placeholder="مثال: لمدة شهر، أسبوعين..."
+                    placeholder={language === 'en' ? 'e.g. 1 month, 2 weeks...' : 'مثال: لمدة شهر، أسبوعين...'}
                     className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-xs p-1.5 rounded-lg border border-slate-200 dark:border-white/5 focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
                   />
                 </div>

@@ -3,7 +3,8 @@ import { CLINIC_INFO } from '../../data/previewClinicData';
 import { PatientListItem, ScreenType } from '../../types';
 import { usePermissions } from '../../context/AuthContext';
 import { exportPatientMedicalDossierPdf } from '../../utils/exportPatientDossierPdf';
-import { toEnglishDigits } from '../../utils/numberUtils';
+import { toEnglishDigits, formatAppDate, formatAppTime } from '../../utils/numberUtils';
+import { useLanguage } from '../../i18n/LanguageContext';
 import { printPrescriptionDocument, printVisitReportDocument } from '../../utils/printPrescription';
 import { getPrescriptionDoctorInfo } from '../../utils/prescriptionDoctor';
 import { findBranch } from '../../utils/clinicBranches';
@@ -81,6 +82,7 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
   followUps = [],
 }) => {
   const { canAccess } = usePermissions();
+  const { language, isRTL, t } = useLanguage();
 
   // Tab state
   const [activeTab, setActiveTab] = useState<
@@ -1113,7 +1115,7 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
                 const allMeds = vPrescriptions.flatMap((pr) => pr.items || []);
 
                 const handleSendVisitWhatsapp = () => {
-                  const visitDateStr = new Date(v.createdAt).toLocaleDateString('ar-EG', {
+                  const visitDateStr = new Date(v.createdAt).toLocaleDateString(language === 'en' ? 'en-US' : 'ar-EG', {
                     year: 'numeric',
                     month: 'long',
                     day: 'numeric',
@@ -1185,19 +1187,12 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
                         <div className="text-xs font-mono text-[#008f97] dark:text-[#00c2cb] font-bold flex flex-wrap items-center gap-2">
                           <span className="flex items-center gap-1">
                             <span className="material-symbols-outlined text-[13px]">calendar_today</span>
-                            {new Date(v.createdAt).toLocaleDateString('ar-EG', {
-                              year: 'numeric',
-                              month: 'long',
-                              day: 'numeric',
-                            })}
+                            {formatAppDate(v.createdAt, undefined, language)}
                           </span>
                           <span className="text-slate-400">•</span>
                           <span className="flex items-center gap-1 text-slate-600 dark:text-slate-300">
                             <span className="material-symbols-outlined text-[13px]">schedule</span>
-                            الساعة: {new Date(v.createdAt).toLocaleTimeString('ar-EG', {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
+                            {language === 'en' ? 'Time:' : 'الساعة:'} {formatAppTime(v.createdAt, language)}
                           </span>
                         </div>
                         <div className="font-extrabold text-sm text-slate-900 dark:text-white mt-0.5">
@@ -1374,7 +1369,7 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
                     .join('\n');
                   const message = `مرحباً بك أستاذ/ة *${fullName || patient.name}* 🌸
 إليك الروشتة الطبية الخاصة بزيارتكم لدى *عيادة ${CLINIC_INFO.doctorName}* 🩺
-🗓 تاريخ الروشتة: *${new Date(pr.createdAt).toLocaleDateString('ar-EG')}*
+🗓 تاريخ الروشتة: *${formatAppDate(pr.createdAt, undefined, language)}*
 
 💊 *الأدوية والجرعات:*
 ${medsList}
@@ -1396,10 +1391,10 @@ ${pr.notes ? `📝 *إرشادات الطبيب:* ${pr.notes}\n\n` : ''}مع ت�
                         </div>
                         <div>
                           <strong className="text-slate-900 dark:text-white block">
-                            روشتة بتاريخ {new Date(pr.createdAt).toLocaleDateString('ar-EG')}
+                            {language === 'en' ? 'Prescription dated' : 'روشتة بتاريخ'} {formatAppDate(pr.createdAt, undefined, language)}
                           </strong>
                           <span className="text-[10px] text-slate-400 font-mono">
-                            {pr.items.length} أصناف دوائية مسجلة
+                            {pr.items.length} {language === 'en' ? 'prescribed items' : 'أصناف دوائية مسجلة'}
                           </span>
                         </div>
                       </div>
@@ -1564,7 +1559,7 @@ ${pr.notes ? `📝 *إرشادات الطبيب:* ${pr.notes}\n\n` : ''}مع ت�
                         <div>
                           <div className="text-xs font-extrabold text-slate-900 dark:text-white">{l.testName}</div>
                           <div className="text-[10px] text-slate-400 font-mono">
-                            تاريخ الطلب: {new Date(l.orderedAt).toLocaleDateString('ar-EG')}{' '}
+                            {language === 'en' ? 'Order Date:' : 'تاريخ الطلب:'} {formatAppDate(l.orderedAt, undefined, language)}{' '}
                             {l.notes ? `• ${l.notes}` : ''}
                           </div>
                         </div>
@@ -1647,7 +1642,7 @@ ${pr.notes ? `📝 *إرشادات الطبيب:* ${pr.notes}\n\n` : ''}مع ت�
                         <div>
                           <div className="text-xs font-extrabold text-slate-900 dark:text-white">{r.radiologyName}</div>
                           <div className="text-[10px] text-slate-400 font-mono">
-                            تاريخ الفحص: {new Date(r.orderedAt).toLocaleDateString('ar-EG')}{' '}
+                            {language === 'en' ? 'Exam Date:' : 'تاريخ الفحص:'} {formatAppDate(r.orderedAt, undefined, language)}{' '}
                             {r.notes ? `• ${r.notes}` : ''}
                           </div>
                         </div>
@@ -1716,11 +1711,11 @@ ${pr.notes ? `📝 *إرشادات الطبيب:* ${pr.notes}\n\n` : ''}مع ت�
                       فاتورة كشف وزيارة بالعيادة
                     </span>
                     <span className="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center gap-1.5 flex-wrap">
-                      <span>{new Date(inv.createdAt).toLocaleDateString('ar-EG')}</span>
+                      <span>{formatAppDate(inv.createdAt, undefined, language)}</span>
                       <span>•</span>
                       <span className="text-[#008f97] dark:text-[#00c2cb] font-bold flex items-center gap-0.5">
                         <span className="material-symbols-outlined text-[11px]">schedule</span>
-                        <span>الساعة: {new Date(inv.createdAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span>{language === 'en' ? 'Time:' : 'الساعة:'} {formatAppTime(inv.createdAt, language)}</span>
                       </span>
                       <span>•</span>
                       <span>#{inv.invoiceId.slice(0, 8)}</span>

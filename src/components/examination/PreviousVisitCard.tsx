@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useLanguage } from '../../i18n/LanguageContext';
 import {
   PatientListItem,
   PrescriptionItem,
@@ -29,10 +30,11 @@ export const PreviousVisitCard: React.FC<PreviousVisitCardProps> = ({
   radiologyOrders = [],
   onCopyMedications,
 }) => {
+  const { language } = useLanguage();
   const [isExpanded, setIsExpanded] = useState(true);
   const [copiedNotification, setCopiedNotification] = useState(false);
 
-  // Derive date and time formatted in Arabic
+  // Derive date and time formatted according to current language
   const rawDate = visit?.createdAt;
   let formattedDate = '';
   let formattedTime = '';
@@ -41,12 +43,12 @@ export const PreviousVisitCard: React.FC<PreviousVisitCardProps> = ({
     try {
       const d = new Date(rawDate);
       if (!isNaN(d.getTime())) {
-        formattedDate = d.toLocaleDateString('ar-EG', {
+        formattedDate = d.toLocaleDateString(language === 'en' ? 'en-US' : 'ar-EG', {
           day: 'numeric',
           month: 'long',
           year: 'numeric',
         });
-        formattedTime = d.toLocaleTimeString('ar-EG', {
+        formattedTime = d.toLocaleTimeString(language === 'en' ? 'en-US' : 'ar-EG', {
           hour: '2-digit',
           minute: '2-digit',
           hour12: true,
@@ -74,7 +76,7 @@ export const PreviousVisitCard: React.FC<PreviousVisitCardProps> = ({
   // Derive diagnosis strictly from visit data
   let diagnosisText = '';
   if (visit?.clinicalData?.diagnosis && visit.clinicalData.diagnosis.length > 0) {
-    diagnosisText = visit.clinicalData.diagnosis.join(' ، ');
+    diagnosisText = visit.clinicalData.diagnosis.join(language === 'en' ? ', ' : ' ، ');
   }
 
   // Derive medications strictly from prescription
@@ -91,17 +93,29 @@ export const PreviousVisitCard: React.FC<PreviousVisitCardProps> = ({
   // Derive Labs strictly from labOrders
   const labItemsText: string[] = (labOrders || []).map((l) => {
     if (l.status === 'RESULT' && l.result) {
-      return `نتيجة تحليل ${l.testName} "${l.result}"`;
+      return language === 'en'
+        ? `Lab result ${l.testName}: "${l.result}"`
+        : `نتيجة تحليل ${l.testName} "${l.result}"`;
     }
-    return `${l.testName} "${l.status === 'RESULT' ? (l.result || 'معتمد') : 'مطلوب'}"`;
+    const statusText = l.status === 'RESULT'
+      ? (l.result || (language === 'en' ? 'Verified' : 'معتمد'))
+      : (language === 'en' ? 'Requested' : 'مطلوب');
+    return `${l.testName} "${statusText}"`;
   });
 
   // Derive Radiology strictly from radiologyOrders
   const radiologyItemsText: string[] = (radiologyOrders || []).map((r) => {
     if (r.status === 'REPORT' && r.result) {
-      return `أشعة ${r.radiologyName} "${r.result}"`;
+      return language === 'en'
+        ? `Scan report ${r.radiologyName}: "${r.result}"`
+        : `أشعة ${r.radiologyName} "${r.result}"`;
     }
-    return `اشعه ${r.radiologyName} "${r.status === 'REPORT' || r.status === 'RESULT' ? 'تقرير معتمد' : 'مطلوب'}"`;
+    const statusText = (r.status === 'REPORT' || r.status === 'RESULT')
+      ? (language === 'en' ? 'Report Verified' : 'تقرير معتمد')
+      : (language === 'en' ? 'Requested' : 'مطلوب');
+    return language === 'en'
+      ? `Scan ${r.radiologyName} "${statusText}"`
+      : `اشعه ${r.radiologyName} "${statusText}"`;
   });
 
   // Derive notes strictly from prescription notes or clinical treatment
@@ -112,12 +126,12 @@ export const PreviousVisitCard: React.FC<PreviousVisitCardProps> = ({
     const mapped: PrescriptionItem[] = medicationsList.map((m, idx) => ({
       id: `rx-copied-${Date.now()}-${idx}`,
       drugName: m.name,
-      dosage: m.dose || 'قرص واحد',
-      dosageForm: m.form || 'أقراص',
-      frequency: m.frequency || 'يومياً',
-      timing: 'بعد الأكل',
-      duration: '5 أيام',
-      notes: 'تكرار من الزيارة السابقة',
+      dosage: m.dose || (language === 'en' ? '1 tab' : 'قرص واحد'),
+      dosageForm: m.form || (language === 'en' ? 'Tablets' : 'أقراص'),
+      frequency: m.frequency || (language === 'en' ? 'Daily' : 'يومياً'),
+      timing: language === 'en' ? 'After meals' : 'بعد الأكل',
+      duration: language === 'en' ? '5 days' : '5 أيام',
+      notes: language === 'en' ? 'Copied from previous visit' : 'تكرار من الزيارة السابقة',
     }));
     onCopyMedications(mapped);
     setCopiedNotification(true);
@@ -137,7 +151,7 @@ export const PreviousVisitCard: React.FC<PreviousVisitCardProps> = ({
           </div>
           <div>
             <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-              تفاصيل الزيارة السابقة
+              {language === 'en' ? 'Previous Visit Details' : 'تفاصيل الزيارة السابقة'}
             </h3>
           </div>
         </div>
@@ -145,7 +159,7 @@ export const PreviousVisitCard: React.FC<PreviousVisitCardProps> = ({
         {/* Badges: Total Visits & Date / Time */}
         <div className="flex items-center gap-2 flex-wrap">
           <span className="px-2.5 py-1 rounded-full bg-teal-600 text-white dark:bg-[#00c2cb] dark:text-slate-950 text-xs font-bold shadow-xs">
-            إجمالي الزيارات: {visitsDisplayCount}
+            {language === 'en' ? `Total Visits: ${visitsDisplayCount}` : `إجمالي الزيارات: ${visitsDisplayCount}`}
           </span>
 
           {formattedDate && (
@@ -159,10 +173,10 @@ export const PreviousVisitCard: React.FC<PreviousVisitCardProps> = ({
               type="button"
               onClick={handleCopy}
               className="px-3 py-1 rounded-full bg-white dark:bg-[#080e1b] hover:bg-teal-50 dark:hover:bg-teal-950/40 text-[#008f97] dark:text-[#45dee7] border border-[#00c2cb]/40 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
-              title="نسخ أدوية الزيارة السابقة إلى الروشتة الحالية مباشرة"
+              title={language === 'en' ? 'Copy medications from previous visit directly into current prescription' : 'نسخ أدوية الزيارة السابقة إلى الروشتة الحالية مباشرة'}
             >
               <span className="material-symbols-outlined text-sm">content_copy</span>
-              <span>نسخ الأدوية للروشتة</span>
+              <span>{language === 'en' ? 'Copy Medications' : 'نسخ الأدوية للروشتة'}</span>
             </button>
           )}
 
@@ -170,7 +184,7 @@ export const PreviousVisitCard: React.FC<PreviousVisitCardProps> = ({
             type="button"
             onClick={() => setIsExpanded(!isExpanded)}
             className="text-slate-500 hover:text-slate-900 dark:text-[#859394] dark:hover:text-white p-1 rounded-lg hover:bg-slate-200/50 dark:hover:bg-white/5 transition-colors cursor-pointer"
-            title={isExpanded ? 'طي البطاقة' : 'عرض التفاصيل'}
+            title={isExpanded ? (language === 'en' ? 'Collapse' : 'طي البطاقة') : (language === 'en' ? 'Expand' : 'عرض التفاصيل')}
           >
             <span className="material-symbols-outlined text-base">
               {isExpanded ? 'expand_less' : 'expand_more'}
@@ -182,7 +196,11 @@ export const PreviousVisitCard: React.FC<PreviousVisitCardProps> = ({
       {copiedNotification && (
         <div className="bg-emerald-500/15 border-b border-emerald-500/30 px-4 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
           <span className="material-symbols-outlined text-sm">check_circle</span>
-          <span>تم استيراد أدوية الزيارة السابقة إلى الروشتة الحالية بنجاح!</span>
+          <span>
+            {language === 'en'
+              ? 'Previous visit medications copied to current prescription successfully!'
+              : 'تم استيراد أدوية الزيارة السابقة إلى الروشتة الحالية بنجاح!'}
+          </span>
         </div>
       )}
 
@@ -194,9 +212,12 @@ export const PreviousVisitCard: React.FC<PreviousVisitCardProps> = ({
             <div className="flex flex-col gap-1">
               <span className="font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-1.5 text-xs sm:text-sm">
                 <span>🩺</span>
-                <span>الأعراض:</span>
+                <span>{language === 'en' ? 'Symptoms & Chief Complaint:' : 'الأعراض والشكوى:'}</span>
               </span>
-              <p className="text-slate-700 dark:text-[#bbc9ca] font-medium leading-relaxed pr-6">
+              <p
+                data-no-translate="true"
+                className="text-slate-700 dark:text-[#bbc9ca] font-medium leading-relaxed px-2 no-translate clinical-data"
+              >
                 {symptomsText}
               </p>
             </div>
@@ -207,9 +228,12 @@ export const PreviousVisitCard: React.FC<PreviousVisitCardProps> = ({
             <div className="flex flex-col gap-1 pt-1">
               <span className="font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-1.5 text-xs sm:text-sm">
                 <span>📋</span>
-                <span>التشخيص:</span>
+                <span>{language === 'en' ? 'Diagnosis:' : 'التشخيص:'}</span>
               </span>
-              <p className="text-slate-800 dark:text-teal-200 font-bold leading-relaxed pr-6">
+              <p
+                data-no-translate="true"
+                className="text-slate-800 dark:text-teal-200 font-bold leading-relaxed px-2 no-translate clinical-data"
+              >
                 {diagnosisText}
               </p>
             </div>
@@ -220,13 +244,14 @@ export const PreviousVisitCard: React.FC<PreviousVisitCardProps> = ({
             <div className="flex flex-col gap-1.5 pt-1">
               <span className="font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-1.5 text-xs sm:text-sm">
                 <span>💊</span>
-                <span>العلاج الموصوف:</span>
+                <span>{language === 'en' ? 'Prescribed Treatment:' : 'العلاج الموصوف:'}</span>
               </span>
-              <ul className="space-y-1.5 pr-6">
+              <ul className="space-y-1.5 px-2">
                 {medicationsList.map((med, idx) => (
                   <li
                     key={idx}
-                    className="text-slate-800 dark:text-[#dde2f5] font-semibold flex items-baseline gap-2"
+                    data-no-translate="true"
+                    className="text-slate-800 dark:text-[#dde2f5] font-semibold flex items-baseline gap-2 no-translate clinical-data"
                   >
                     <span className="text-teal-600 dark:text-[#00c2cb] font-bold text-base leading-none">•</span>
                     <span>{med.name}</span>
@@ -246,7 +271,11 @@ export const PreviousVisitCard: React.FC<PreviousVisitCardProps> = ({
             <div className="pt-2 border-t border-slate-200/60 dark:border-white/5 flex flex-col gap-2">
               {/* Lab item */}
               {labItemsText.map((txt, idx) => (
-                <div key={idx} className="text-slate-800 dark:text-[#dde2f5] font-semibold flex items-center gap-2">
+                <div
+                  key={idx}
+                  data-no-translate="true"
+                  className="text-slate-800 dark:text-[#dde2f5] font-semibold flex items-center gap-2 no-translate clinical-data"
+                >
                   <span className="material-symbols-outlined text-emerald-600 dark:text-emerald-400 text-base">
                     science
                   </span>
@@ -256,7 +285,11 @@ export const PreviousVisitCard: React.FC<PreviousVisitCardProps> = ({
 
               {/* Radiology item */}
               {radiologyItemsText.map((txt, idx) => (
-                <div key={idx} className="text-slate-800 dark:text-[#dde2f5] font-semibold flex items-center gap-2">
+                <div
+                  key={idx}
+                  data-no-translate="true"
+                  className="text-slate-800 dark:text-[#dde2f5] font-semibold flex items-center gap-2 no-translate clinical-data"
+                >
                   <span className="material-symbols-outlined text-sky-600 dark:text-sky-400 text-base">
                     radiology
                   </span>
@@ -270,7 +303,8 @@ export const PreviousVisitCard: React.FC<PreviousVisitCardProps> = ({
                   <span className="material-symbols-outlined text-amber-500 text-base shrink-0 mt-0.5">
                     edit_note
                   </span>
-                  <span>ملاحظات: {notesText}</span>
+                  <span>{language === 'en' ? 'Notes:' : 'ملاحظات:'} </span>
+                  <span data-no-translate="true" className="no-translate clinical-data">{notesText}</span>
                 </div>
               )}
             </div>

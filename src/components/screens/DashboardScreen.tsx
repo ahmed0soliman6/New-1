@@ -8,6 +8,7 @@ import { findBranch } from '../../utils/clinicBranches';
 import { loadMedicalServices, MedicalServiceItem } from '../../utils/financeManager';
 import { ClinicAlertPayload } from '../../utils/alertManager';
 import { toEnglishDigits } from '../../utils/numberUtils';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 interface DashboardScreenProps {
   onNavigate: (screen: ScreenType) => void;
@@ -46,6 +47,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
 }) => {
   const { canAccess } = usePermissions();
   const doctorInfo = usePrescriptionDoctor();
+  const { language, isRTL, t } = useLanguage();
 
   const [dashboardTimeframe, setDashboardTimeframe] = useState<'today' | 'week' | 'month' | 'all'>('today');
   const [activeMainTab, setActiveMainTab] = useState<'appointments' | 'followups'>('appointments');
@@ -295,18 +297,21 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
   // Time Greeting (Morning / Evening)
   const greetingText = useMemo(() => {
     const hour = new Date().getHours();
+    if (language === 'en') {
+      return hour >= 5 && hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+    }
     return hour >= 5 && hour < 13 ? 'صباح الخير' : 'مساء الخير';
-  }, []);
+  }, [language]);
 
-  // Formatted today Arabic date
-  const todayArabicDate = useMemo(() => {
-    return new Date().toLocaleDateString('ar-EG', {
+  // Formatted today date (locale aware)
+  const todayFormattedDate = useMemo(() => {
+    return new Date().toLocaleDateString(language === 'en' ? 'en-US' : 'ar-EG', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
       day: 'numeric',
     });
-  }, []);
+  }, [language]);
 
   // Timeframe date filtering helper
   const isInTimeframe = (dateStr?: string) => {
@@ -536,17 +541,19 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
         <div className="flex items-center gap-3 z-10 min-w-0 w-full">
           <div className="space-y-1 min-w-0 flex-1">
             <h1 className="text-lg sm:text-2xl font-black text-white tracking-tight flex items-center gap-2 flex-wrap">
-              <span className="break-words">{doctorInfo.doctorName}</span>
+              <span className="break-words">
+                {language === 'en' ? (doctorInfo.doctorNameEn || doctorInfo.doctorName) : doctorInfo.doctorName}
+              </span>
               <span
                 className="material-symbols-outlined text-teal-400 text-base sm:text-xl shrink-0"
-                title="طبيب معتمد"
+                title={language === 'en' ? 'Verified Physician' : 'طبيب معتمد'}
               >
                 verified
               </span>
             </h1>
 
             <p className="text-xs sm:text-sm text-[#00c2cb] font-bold">
-              {doctorInfo.specialtyAr}
+              {language === 'en' ? (doctorInfo.specialtyEn || doctorInfo.specialtyAr) : doctorInfo.specialtyAr}
             </p>
           </div>
 
@@ -555,7 +562,7 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
               <span className="material-symbols-outlined text-sm text-[#00c2cb]">
                 calendar_today
               </span>
-              <span>{todayArabicDate}</span>
+              <span>{todayFormattedDate}</span>
             </span>
           </div>
         </div>

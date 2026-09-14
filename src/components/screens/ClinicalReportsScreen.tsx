@@ -1,12 +1,15 @@
 import React, { useState, useMemo } from 'react';
 import { CLINIC_INFO } from '../../data/previewClinicData';
 import { useDoctorName } from '../../hooks/useDoctorName';
+import { useLanguage } from '../../i18n/LanguageContext';
+import { formatAppDate } from '../../utils/numberUtils';
 
 interface ClinicalReportsScreenProps {
   onExportReport?: (type: 'pdf' | 'excel') => void;
 }
 
 export const ClinicalReportsScreen: React.FC<ClinicalReportsScreenProps> = () => {
+  const { language, isRTL, t } = useLanguage();
   const [timeRange, setTimeRange] = useState<'today' | 'week' | 'month' | 'quarter'>('month');
   const [toast, setToast] = useState<string | null>(null);
 
@@ -140,7 +143,7 @@ export const ClinicalReportsScreen: React.FC<ClinicalReportsScreenProps> = () =>
           <div class="header">
             <h1>سولي ميديكال كلينيك - ${CLINIC_INFO.name}</h1>
             <h2>${activeDoctorName} - التقرير الطبي الشامل (${rangeData.label})</h2>
-            <p style="font-size: 12px; color: #64748b; margin-top: 4px;">تاريخ الاستخراج: ${new Date().toLocaleDateString('ar-EG')}</p>
+            <p style="font-size: 12px; color: #64748b; margin-top: 4px;">${language === 'en' ? 'Export Date' : 'تاريخ الاستخراج'}: ${formatAppDate(new Date(), undefined, language)}</p>
           </div>
 
           <div class="kpi-grid">
@@ -213,9 +216,9 @@ export const ClinicalReportsScreen: React.FC<ClinicalReportsScreenProps> = () =>
 
     if (format === 'Excel') {
       const csvRows = [
-        ['\uFEFFتاريخ التقرير', new Date().toLocaleDateString('ar-EG')],
-        ['الطبيب المعالج', activeDoctorName],
-        ['الفترة المحددة', rangeData.label],
+        [language === 'en' ? '\uFEFFReport Date' : '\uFEFFتاريخ التقرير', formatAppDate(new Date(), undefined, language)],
+        [language === 'en' ? 'Attending Physician' : 'الطبيب المعالج', activeDoctorName],
+        [language === 'en' ? 'Selected Period' : 'الفترة المحددة', rangeData.label],
         [''],
         ['المؤشر الإكلينيكي / المالي', 'القيمة'],
         ['إجمالي الكشوفات والزيارات', rangeData.totalVisits],

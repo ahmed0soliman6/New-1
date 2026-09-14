@@ -89,6 +89,8 @@ export const translations: TranslationDictionary = {
   'header.syncError': { ar: 'غير متصل', en: 'Disconnected' },
   'header.notifications': { ar: 'الإشعارات والتنبيهات', en: 'Notifications & Alerts' },
   'header.urgentFollowups': { ar: 'متابعات عاجلة', en: 'Urgent Follow-ups' },
+  'header.alerts': { ar: 'التنبيهات', en: 'Alerts' },
+  'header.followUps': { ar: 'المتابعات', en: 'Follow-ups' },
   'header.waitingPatients': { ar: 'مرضى بالانتظار', en: 'Waiting Patients' },
   'header.databaseInspector': { ar: 'فاحص قاعدة البيانات', en: 'Database Inspector' },
 
@@ -712,22 +714,549 @@ export const ARABIC_PHRASE_DICTIONARY: Record<string, string> = {
   'الإنجليزية': 'English',
   'النسخ الاحتياطي': 'Backup',
   'استرجاع': 'Restore',
+
+  // Examination Screen Tabs & Cards
+  'عرض الكل (All Cards)': 'All Cards',
+  'عرض الكل': 'View All',
+  'الشكوى والأمراض المزمنة': 'Complaints & Chronic Conditions',
+  'الشكوى والأعراض والأمراض المزمنة': 'Intake & Chronic Conditions',
+  'الشكوى والأعراض والأمراض المزمنة (Intake & Chronic Conditions)': 'Intake & Chronic Conditions',
+  'تعديل الشكوى والأمراض': 'Edit Complaint & Chronic Conditions',
+  'إغلاق التعديل': 'Close Edit',
+  'الشكوى والأعراض المقدمة:': 'Presented Complaints & Symptoms:',
+  'الأمراض المزمنة للمريض:': "Patient's Chronic Conditions:",
+  'لا توجد أعراض مسجلة': 'No symptoms recorded',
+  'لا توجد أمراض مزمنة مسجلة': 'No chronic conditions recorded',
+  'المعمل والتحاليل': 'Labs & Diagnostics',
+  'الأشعة والتصوير': 'Radiology & Imaging',
+  'الأدوية والروشتة': 'Medications & Prescription',
+  'المتابعة والنظام الغذائي': 'Follow-up & Guidance',
+  'المتابعة والاستشارة': 'Follow-up & Consultation',
+  'تثبيت القياسات': 'Save Measurements',
+  'تم الحفظ': 'Saved',
+  'العلامات الحيوية والقياسات البدنية (Vital Signs & BMI)': 'Vital Signs & Physical Measurements',
+  'العلامات الحيوية والقياسات البدنية': 'Vital Signs & Physical Measurements',
+  'تسجيل ومتابعة المؤشرات الحيوية اللحظية للمريض': 'Track and record patient real-time vital indicators',
+  'الضغط (BP)': 'Blood Pressure (BP)',
+  'النبض (HR)': 'Pulse (HR)',
+  'الحرارة (Temp)': 'Temperature (Temp)',
+  'السكر (RBS)': 'Random Blood Sugar (RBS)',
+  'الوزن (Weight)': 'Weight',
+  'الطول (Height)': 'Height',
+  'نسبة الأكسجين SpO2': 'Oxygen Saturation (SpO2)',
+  'مؤشر كتلة الجسم BMI': 'Body Mass Index (BMI)',
+  'نسبة الأكسجين': 'Oxygen Saturation',
+  'مرتفع طفيف': 'Slightly Elevated',
+  'استدعاء سريع من قوالب الروشتة والأدلة الطبية': 'Quick Prescription Templates & Clinical Protocols',
+  'استدعاء سريع من قوالب الروشتة والأدلة الطبية (Quick Template & Clinical Guides):': 'Quick Prescription Templates & Clinical Protocols:',
+  'اختر قالباً محفوظاً أو استدعِ بروتوكولاً إكلينيكياً معتمداً لتعبئة الروشتة فوراً': 'Select a saved template or protocol to auto-fill prescription',
+  '-- اختر قالب روشتة متكررة لاستدعائه --': '-- Select a recurring prescription template --',
+  'تفاصيل الزيارة السابقة': 'Previous Visit Details',
+  'إجمالي الزيارات:': 'Total Visits:',
+  'إجمالي الزيارات': 'Total Visits',
+  'نسخ للروشتة': 'Copy to Prescription',
+  'نسخ Medications للروشتة': 'Copy to Prescription',
+  'الأعراض:': 'Symptoms:',
+  'جلسة الكشف الحالية': 'Current Examination Session',
+  'الملف الطبي الشامل': 'Comprehensive Medical File',
+  'كشف / مريض آخر': 'Examine Another Patient',
+  'مريض آخر': 'Another Patient',
+
+  // Patient Records & Files
+  'السجلات والملفات الطبية الإلكترونية (EMR)': 'Electronic Medical Records (EMR)',
+  'ملفات المرضى والأرشيف الطبي': 'Patient Records & Medical Archive',
+  'ملفات': 'Files',
+  'ملف نشط': 'Active File',
+  'ملفات نشطة': 'Active Files',
+  '+ فتح ملف مريض جديد': '+ Open New Patient File',
+  'فتح ملف مريض جديد +': '+ Open New Patient File',
+  'اضغط على بطاقة أي مريض لفتح الملف الطبي الشامل وتعديل البيانات': 'Click any patient card to open full dossier and edit data',
+  'بحث بالاسم، رقم الهاتف، أو رقم الملف...': 'Search by name, phone, or file #...',
+  'بحث بـ Name, Phone Number, File #...': 'Search by name, phone, or file #...',
+  'عرض وتعديل الملف الكامل': 'View & Edit Full Dossier',
+  'الملف الكامل': 'Full Dossier',
+  'كشوفات': 'Visits',
+  'روشتات': 'Prescriptions',
+  'آخر زيارة:': 'Last Visit:',
+  'تاريخ التسجيل:': 'Registration Date:',
+  'كشف': 'Examine',
+  'لا يوجد مرضى مطابقين لنتائج البحث': 'No patients matching search criteria',
+  'حساسية دوائية': 'Drug Allergy',
+  'بدون هاتف': 'No phone',
+
+  // Patient Dossier Full Screen
+  'معلومات المريض والبيانات الأساسية': 'Patient Information & Basic Details',
+  'البيانات الأساسية وتعديل معلومات المريض': 'Basic Information & Edit Details',
+  'يمكنك مراجعة وتعديل بيانات المريض والاتصال والتاريخ الصحي وحفظ التغييرات مباشرة': 'Review and edit patient data, contact info, and medical history directly',
+  'عرض الأساسية فقط': 'View Basic Only',
+  'الكل (عرض جميع البطاقات)': 'All (View All Cards)',
+  'تعديل البيانات الأساسية': 'Edit Basic Details',
+  'إلغاء التعديل': 'Cancel Edit',
+  'بيانات الطوارئ والتواصل': 'Emergency Contact & Communication',
+  'Emergency Contact': 'Emergency Contact',
+  'جهة الاتصال للطوارئ': 'Emergency Contact',
+  'اسم جهة الاتصال:': 'Contact Name:',
+  'اسم جهة الاتصال': 'Contact Name',
+  'صلة القرابة:': 'Relationship:',
+  'صلة القرابة': 'Relationship',
+  'قريب': 'Relative',
+  'رقم هاتف الطوارئ:': 'Emergency Phone:',
+  'رقم هاتف الطوارئ': 'Emergency Phone',
+  'اتصال': 'Call',
+  'ملاحظات الطبيب والعيادة العامة:': "Doctor's General & Clinic Notes:",
+  'ملاحظات الطبيب والعيادة العامة': "Doctor's General & Clinic Notes",
+  'لا توجد ملاحظات إضافية مسجلة في هذا الملف.': 'No additional notes recorded in this file.',
+  'سجل الحساسية الدوائية والغذائية': 'Drug & Food Allergies Record',
+  'لا توجد حساسية دوائية مسجلة في هذا الملف (سليم)': 'No drug allergies recorded in this file (Clean)',
+  'الأمراض المزمنة المثبتة': 'Documented Chronic Conditions',
+  'لا توجد أمراض مزمنة مسجلة في هذا الملف': 'No chronic conditions recorded in this file',
+  'سجل الكشوفات والزيارات الطبية': 'Medical Visits & Consultation Timeline',
+  'لا توجد كشوفات أو زيارات سابقة مسجلة لهذا المريض حتى الآن': 'No previous visits or exams recorded for this patient yet',
+  'تسجيل كشف جديد': 'Register New Exam',
+  'طباعة تقرير الزيارة': 'Print Visit Report',
+  'إرسال تقرير الزيارة (واتساب)': 'Send Visit Report (WhatsApp)',
+  'إرسال تقرير الزيارة عبر واتساب': 'Send Visit Report via WhatsApp',
+  'كشف أول مرة (جديد)': 'First Visit (New)',
+  'حجز عبر الواتساب': 'Booked via WhatsApp',
+  'التشخيص الإكلينيكي:': 'Clinical Diagnosis:',
+  'العلاج والتعليمات:': 'Treatment & Instructions:',
+  'تحاليل مطلوبة:': 'Requested Lab Tests:',
+  'أشعة مطلوبة:': 'Requested Radiology:',
+  'موعد المتابعة:': 'Follow-up Date:',
+  'الروشتات والوصفات الطبية المعتمدة للمريض': 'Approved Prescriptions & Medication Orders',
+  'لا توجد روشتات مسجلة لهذا المريض حتى الآن': 'No prescriptions recorded for this patient yet',
+  'روشتة بتاريخ': 'Prescription Dated',
+  'أصناف دوائية مسجلة': 'Prescribed Medications',
+  'إرسال الروشتة عبر واتساب': 'Send Prescription via WhatsApp',
+  'إرسال عبر واتساب': 'Send via WhatsApp',
+  'وفق إرشادات الطبيب': 'As directed by physician',
+  'تقرير معتمد': 'Verified Report',
+  'مطلوب': 'Requested',
+  'تم الفحص': 'Examined',
+  'ملاحظات:': 'Notes:',
+  'العلاج الموصوف:': 'Prescribed Treatment:',
+  'فصيلة الدم:': 'Blood Type:',
+  'المحافظة والعنوان بالتفصيل:': 'Governorate & Detailed Address:',
+  'غير مسجل': 'Not Registered',
+  'نموذج تعديل بيانات المريض': 'Edit Patient Details Form',
+  'عدل الحقول المطلوبة ثم اضغط حفظ التعديلات': 'Update required fields then click Save Changes',
+  'الاسم بالكامل': 'Full Name',
+  'رقم الهاتف المحمول': 'Mobile Phone Number',
+  'العمر (سنوات)': 'Age (Years)',
+  'تاريخ الميلاد (اختياري)': 'Date of Birth (Optional)',
+  'المحافظة / المنطقة': 'Governorate / Region',
+  'العنوان بالتفصيل': 'Detailed Address',
+  'حفظ التعديلات في الملف': 'Save Changes to File',
+  'ملاحظات الطبيب وتنبيهات العيادة': "Doctor's Notes & Clinic Alerts",
+  'الأمراض المزمنة المسجلة في الملف': 'Chronic Diseases Recorded in File',
+  'الحساسية الدوائية والغذائية المسجلة': 'Recorded Drug & Food Allergies',
+  'بيانات جهة الاتصال للطوارئ': 'Emergency Contact Information',
+
+  // Dosage Forms & Administration
+  'أقراص (Tablets)': 'Tablets',
+  'أقراص': 'Tablets',
+  'قرص': 'Tablet',
+  'قرصين': '2 Tablets',
+  'كبسولات (Capsules)': 'Capsules',
+  'كبسولات': 'Capsules',
+  'كبسولة': 'Capsule',
+  'شراب (Syrup)': 'Syrup',
+  'شراب': 'Syrup',
+  'معلقة كبيرة': 'Tablespoon',
+  'معلقة صغيرة': 'Teaspoon',
+  'حقن (Injections)': 'Injections',
+  'حقن': 'Injections',
+  'حقنة': 'Injection',
+  'حقنة عضل': 'Intramuscular (IM) Injection',
+  'حقنة وريد': 'Intravenous (IV) Injection',
+  'حقنة تحت الجلد': 'Subcutaneous Injection',
+  'نقط (Drops)': 'Drops',
+  'نقط': 'Drops',
+  'قطرة': 'Eye/Ear Drops',
+  'نقط بالفم': 'Oral Drops',
+  'فوار (Effervescent)': 'Effervescent',
+  'فوار': 'Effervescent',
+  'كيس فوار': 'Effervescent Sachet',
+  'مرهم / كريم (Ointment/Cream)': 'Ointment / Cream',
+  'مرهم': 'Ointment',
+  'كريم': 'Cream',
+  'جل (Gel)': 'Gel',
+  'جل': 'Gel',
+  'بخاخ (Inhaler/Spray)': 'Spray / Inhaler',
+  'بخاخ': 'Spray / Inhaler',
+  'بخة': 'Puff',
+  'بختين': '2 Puffs',
+  'لبوس (Suppository)': 'Suppository',
+  'لبوس': 'Suppository',
+  'لبوسة': 'Suppository',
+  'أكياس (Sachets)': 'Sachets',
+  'أكياس': 'Sachets',
+  'كيس': 'Sachet',
+  'محلول': 'Solution',
+  'محلول معالجة الجفاف': 'Oral Rehydration Solution (ORS)',
+  'غسول': 'Lotion / Mouthwash',
+  'شامبو طبي': 'Medicated Shampoo',
+
+  // Dosage Instructions & Timing
+  'بعد الأكل': 'After meals',
+  'قبل الأكل': 'Before meals',
+  'أثناء الأكل': 'With meals',
+  'وسط الأكل': 'During meals',
+  'قبل الإفطار': 'Before breakfast',
+  'بعد الإفطار': 'After breakfast',
+  'قبل الغداء': 'Before lunch',
+  'بعد الغداء': 'After lunch',
+  'قبل العشاء': 'Before dinner',
+  'بعد العشاء': 'After dinner',
+  'قبل النوم': 'Before bedtime',
+  'على الريق': 'On an empty stomach (Fasting)',
+  'عند الحاجة': 'As needed (PRN)',
+  'عند اللزوم': 'When necessary (PRN)',
+  'قرص واحد يومياً': '1 tablet daily',
+  'قرص واحد مساءً قبل النوم': '1 tablet at bedtime',
+  'قرص واحد صباحاً': '1 tablet in morning',
+  'قرص واحد صباحاً على الريق': '1 tablet in morning on empty stomach',
+  'قرص مرتين يومياً': '1 tablet twice daily',
+  'قرص 3 مرات يومياً': '1 tablet 3 times daily',
+  'قرص 4 مرات يومياً': '1 tablet 4 times daily',
+  'قرص كل 8 ساعات': '1 tablet every 8 hours',
+  'قرص كل 12 ساعة': '1 tablet every 12 hours',
+  'قرص كل 24 ساعة': '1 tablet every 24 hours',
+  'صباحاً ومساءً': 'Morning & Evening',
+  'صباحاً فقط': 'Morning only',
+  'مساءً فقط': 'Evening only',
+  'علاج مستمر شهرياً': 'Continuous monthly therapy',
+  'علاج مستمر': 'Continuous treatment',
+  'كورس كامل': 'Complete course',
+  'لمدة 3 أيام': 'For 3 days',
+  'لمدة 5 أيام': 'For 5 days',
+  'لمدة 7 أيام': 'For 7 days',
+  'لمدة 10 أيام': 'For 10 days',
+  'لمدة 14 يوماً': 'For 14 days',
+  'لمدة أسبوع': 'For 1 week',
+  'لمدة أسبوعين': 'For 2 weeks',
+  'لمدة 3 أسابيع': 'For 3 weeks',
+  'لمدة شهر': 'For 1 month',
+  'لمدة شهرين': 'For 2 months',
+  'لمدة 3 أشهر': 'For 3 months',
+  'لمدة 6 أشهر': 'For 6 months',
+  'حسب إرشادات الطبيب': 'As directed by physician',
+  'مع شرب كمية وافرة من الماء': 'With plenty of water',
+  'تجنب التعرض المباشر للشمس': 'Avoid direct sunlight exposure',
+
+  // Specialties & Medical Catalog Sections
+  'الجهاز الهضمي': 'Gastroenterology',
+  'الجهاز الهضمي والكبد': 'Gastroenterology & Hepatology',
+  'القلب والأوعية': 'Cardiovascular',
+  'القلب والأوعية الدموية': 'Cardiovascular Disease',
+  'الجهاز التنفسي': 'Respiratory & Pulmonology',
+  'الجهاز التنفسي والصدر': 'Chest & Respiratory',
+  'الغدد والسكري': 'Endocrinology & Diabetes',
+  'الغدد الصماء والسكر': 'Endocrinology & Diabetes',
+  'الكلى والمسالك': 'Nephrology & Urology',
+  'الكلى والمسالك البولية': 'Nephrology & Urology',
+  'باطنة عامة': 'General Internal Medicine',
+  'أمراض الدم': 'Hematology',
+  'المناعة والروماتيزم': 'Rheumatology & Immunology',
+  'الأعصاب': 'Neurology',
+  'المخ والأعصاب': 'Neurology & Neurosurgery',
+  'الأطفال': 'Pediatrics',
+  'النساء والتوليد': 'Obstetrics & Gynecology',
+  'الجلدية': 'Dermatology',
+  'الجلدية والتناسلية': 'Dermatology & Venereology',
+  'العظام': 'Orthopedics',
+  'جراحة العظام': 'Orthopedic Surgery',
+  'أنف وأذن وحنجرة': 'ENT (Otolaryngology)',
+  'العيون': 'Ophthalmology',
+  'طب وجراحة العيون': 'Ophthalmology & Eye Surgery',
+  'طب الأسنان': 'Dentistry',
+  'جراحة عامة': 'General Surgery',
+  'علاج طبيعي': 'Physical Therapy',
+  'التغذية العلاجية': 'Clinical Nutrition',
+  'نفسية وعصبية': 'Psychiatry & Mental Health',
+
+  // Laboratory & Radiology Catalog Phrases
+  'موجات صوتية (Ultrasound)': 'Ultrasound',
+  'موجات صوتية': 'Ultrasound',
+  'أشعة مقطعية (CT)': 'CT Scan',
+  'أشعة مقطعية': 'CT Scan',
+  'أشعة سينية (X-Ray)': 'X-Ray',
+  'أشعة سينية': 'X-Ray',
+  'أشعة عادية': 'Plain X-Ray',
+  'رنين مغناطيسي (MRI)': 'MRI Scan',
+  'رنين مغناطيسي': 'MRI Scan',
+  'دوبلر ملون (Doppler)': 'Color Doppler',
+  'دوبلر ملون': 'Color Doppler',
+  'دوبلر أوردة وشرايين': 'Vascular Doppler',
+  'إيكو على القلب (Echocardiography)': 'Echocardiography (Echo)',
+  'إيكو على القلب': 'Echocardiography (Echo)',
+  'مسح ذري (PET/Nuclear)': 'Nuclear Scan / PET',
+  'مسح ذري': 'Nuclear Scan',
+  'رسم قلب (ECG)': 'ECG',
+  'رسم قلب بالمجهود': 'Stress ECG',
+  'هولتر رسم قلب 24 ساعة': '24h Holter ECG',
+  'هولتر ضغط 24 ساعة': '24h ABPM Blood Pressure Holter',
+  'كيمياء حيوية (Biochemistry)': 'Biochemistry',
+  'كيمياء حيوية': 'Biochemistry',
+  'أمراض دم (Hematology)': 'Hematology',
+  'أمراض دم': 'Hematology',
+  'تحاليل بول ومناعة': 'Urine & Immunology',
+  'مناعة وأمصال (Serology/Immunology)': 'Immunology & Serology',
+  'مناعة وأمصال': 'Immunology & Serology',
+  'ميكروبيولوجي ومزارع': 'Microbiology & Cultures',
+  'هرمونات ودلالات أورام': 'Hormones & Tumor Markers',
+  'تحليل بول كامل': 'Complete Urine Analysis',
+  'تحليل براز كامل': 'Complete Stool Analysis',
+  'صورة دم كاملة (CBC)': 'Complete Blood Count (CBC)',
+  'صورة دم كاملة': 'Complete Blood Count (CBC)',
+  'وظائف كبد': 'Liver Function Tests (LFT)',
+  'وظائف كلى': 'Kidney Function Tests (KFT)',
+  'سكر تراكمي (HbA1c)': 'HbA1c Glycated Hemoglobin',
+  'سكر تراكمي': 'HbA1c Glycated Hemoglobin',
+  'سكر صائم': 'Fasting Blood Sugar',
+  'سكر بعد الأكل بساعتين': '2h Postprandial Glucose',
+  'منحنى السكر': 'Glucose Tolerance Test (GTT)',
+  'دهون كاملة بالدم (Lipid Profile)': 'Lipid Profile',
+  'دهون كاملة بالدم': 'Lipid Profile',
+  'كوليسترول كلي': 'Total Cholesterol',
+  'دهون ثلاثية': 'Triglycerides',
+  'هرمونات الغدة الدرقية (TSH, Free T3, Free T4)': 'Thyroid Profile (TSH, FT3, FT4)',
+  'هرمونات الغدة الدرقية': 'Thyroid Hormones Profile',
+  'سرعة ترسيب (ESR)': 'ESR (Erythrocyte Sedimentation Rate)',
+  'سرعة ترسيب': 'ESR',
+  'بروتين سي التفاعلي (CRP)': 'CRP (C-Reactive Protein)',
+  'بروتين سي التفاعلي': 'CRP',
+  'فيتامين د (Vitamin D)': 'Vitamin D (25-OH)',
+  'فيتامين د': 'Vitamin D',
+  'فيتامين ب12 (Vitamin B12)': 'Vitamin B12',
+  'فيتامين ب12': 'Vitamin B12',
+  'إنزيمات القلب (Troponin)': 'Cardiac Enzymes (Troponin)',
+  'إنزيمات القلب': 'Cardiac Enzymes',
+  'حمض البوليك بالدم (Uric Acid)': 'Uric Acid',
+  'حمض البوليك بالدم': 'Serum Uric Acid',
+  'كالسيوم كلي ومتأين': 'Total & Ionized Calcium',
+  'حديد ومخزون الحديد (Ferritin)': 'Serum Iron & Ferritin',
+  'مزرعة وحساسية ميكروبية': 'Culture & Sensitivity Test',
+  'دم وريدي Serum': 'Venous Serum Blood',
+  'عينة بول صباحية': 'Morning Urine Specimen',
+  'عينة براز': 'Stool Specimen',
+  'مسحة': 'Swab',
+  'دم': 'Blood',
+  'بول': 'Urine',
+  'براز': 'Stool',
+
+  // Appointments, Queue & Payment Statuses
+  'مجدول': 'Scheduled',
+  'فى الانتظار حضر المريض': 'In Waiting (Patient Checked In)',
+  'حضر وسدد': 'Checked In & Paid',
+  'بانتظار التأكيد': 'Pending Confirmation',
+  'ملغى': 'Cancelled',
+  'قيد الانتظار': 'In Waiting Queue',
+  'غير مدفوعة': 'Unpaid',
+  'مدفوعة': 'Paid',
+  'مدفوع جزئياً': 'Partially Paid',
+  'مستحق': 'Due',
+  'مسترد': 'Refunded',
+  'ج.م': 'EGP',
+  'جنيه مصري': 'EGP',
+  'إنستاباي': 'InstaPay',
+  'فودافون كاش': 'Vodafone Cash',
+  'كاش': 'Cash',
+  'بطاقة ائتمان': 'Credit Card',
+  'محفظة إلكترونية': 'E-Wallet',
+  'تأمين صحي': 'Health Insurance',
+  'نقداً بالخزينة': 'Cash at Register',
+
+  // Common UI words & helpers
+  'بنجاح ✓': 'Successfully ✓',
+  'مضاف ✓': 'Added ✓',
+  'تم التحديث بنجاح': 'Updated Successfully',
+  'تم الحذف بنجاح': 'Deleted Successfully',
+  'حذف من الدليل': 'Delete from Catalog',
+  'إضافة للدليل': 'Add to Catalog',
+  'عام': 'General',
+  'أو': 'or',
+  'طبيب العيادة': 'Clinic Doctor',
+  'استقبال العيادة': 'Clinic Reception',
+  'أيام مخصصة': 'Custom Days',
+  'يومياً': 'Daily',
+  'الأحد، الثلاثاء، الخميس': 'Sun, Tue, Thu',
+  'السبت، الإثنين، الأربعاء': 'Sat, Mon, Wed',
+  'طوال أيام الأسبوع عدا الجمعة': 'All week except Friday',
+  'كشف عيادة باطنة': 'Internal Medicine Clinic Visit',
+  'كشف واستشارة باطنة': 'Internal Medicine Consultation',
+  'استشارة سريعة': 'Quick Consultation',
+  'تقرير طبي': 'Medical Report',
+  'تقرير زيارة': 'Visit Report',
+  'روشتة طبية': 'Medical Prescription',
+  'مستعجل': 'Urgent',
+  'عادي': 'Routine / Normal',
+  'حرج': 'Critical',
+  'سليم': 'Normal / Clean',
+  'غير طبيعي': 'Abnormal',
+  'إيجابي': 'Positive (+)',
+  'سلبي': 'Negative (-)',
+  'سالب': 'Negative (-)',
+  'موجب': 'Positive (+)',
+  'مرتفع': 'High',
+  'منخفض': 'Low',
+  'طبيعي': 'Normal',
+  'مكتمل': 'Completed',
+  'قيد التنفيذ': 'In Progress',
+  'مرفوض': 'Rejected',
+  'مقبول': 'Approved',
+  'معتمد': 'Verified',
+  'طبيب معالج': 'Treating Physician',
+  'الفرع الرئيسي': 'Main Branch',
+  'فرع العيادة': 'Clinic Branch',
+  'مواعيد العمل': 'Working Hours',
+  'رقم التواصل': 'Contact Phone',
+  'الهاتف الأرضي': 'Landline Phone',
+  'البريد الإلكتروني': 'Email Address',
+  'الموقع الإلكتروني': 'Website',
+  'رمز QR': 'QR Code',
+  'الشعار': 'Logo',
+  'الترويسة': 'Header',
+  'التذييل': 'Footer',
+  'تضمين الشعار': 'Include Logo',
+  'تضمين رمز QR': 'Include QR Code',
+  'تضمين الفروع': 'Include Branches',
+  'تنسيق الطباعة': 'Print Layout',
+  'حجم الورق': 'Paper Size',
+  'ورق عادي': 'Plain Paper',
+  'ورق مجهز': 'Pre-printed Paper',
+  'طابعة الروشتات': 'Prescription Printer',
+  'طابعة الإيصالات': 'Receipt Printer',
+  'طابعة حرارية': 'Thermal Printer',
+  'طابعة ليزر': 'Laser Printer',
+  'حفظ كملف PDF': 'Save as PDF',
+  'تصدير كملف Excel': 'Export to Excel (CSV)',
+  'مزامنة البيانات': 'Data Synchronization',
+  'مزامنة سحابية': 'Cloud Sync',
+  'حالة الاتصال': 'Connection Status',
+  'فاحص البيانات': 'Data Inspector',
+  'سجلات النظام': 'System Logs',
+  'تفريغ الذاكرة': 'Clear Cache',
+  'إعادة ضبط المصنع': 'Factory Reset',
+
+  // Common Labels with Colon & Dynamic Keys
+  'اسم المريض:': 'Patient Name:',
+  'التشخيص:': 'Diagnosis:',
+  'التاريخ:': 'Date:',
+  'رقم الملف:': 'File #:',
+  'السن:': 'Age:',
+  'رقم الهاتف:': 'Phone Number:',
+  'الساعة:': 'Time:',
+  'المريض:': 'Patient:',
+  'الطبيب المعالج:': 'Attending Physician:',
+  'طبيب الكشف:': 'Consulting Doctor:',
+  'تاريخ الكشف:': 'Exam Date:',
+  'تاريخ الزيارة:': 'Visit Date:',
+  'تاريخ الموعد:': 'Appointment Date:',
+  'موعد الزيارة:': 'Visit Time:',
+  'الفرع:': 'Branch:',
+  'الحالة:': 'Status:',
+  'النوع:': 'Gender:',
+  'العنوان:': 'Address:',
+  'الرقم القومي:': 'National ID:',
+  'الشكوى:': 'Chief Complaint:',
+  'الأعراض الحالية:': 'Current Symptoms:',
+  'الجرعة:': 'Dosage:',
+  'المدة:': 'Duration:',
+  'التعليمات:': 'Instructions:',
+  'ملاحظات إضافية:': 'Additional Notes:',
+  'المبلغ المستحق:': 'Amount Due:',
+  'المبلغ المدفوع:': 'Paid Amount:',
+  'المبلغ المتبقي:': 'Remaining Due:',
+  'طريقة الدفع:': 'Payment Method:',
+
+  // Common Standalone Words
+  'مريض': 'Patient',
+  'المريض': 'Patient',
+  'المرضى': 'Patients',
+  'الطبيب': 'Doctor',
+  'مدير': 'Admin',
+  'المستخدم': 'User',
+  'الرئيسية': 'Main / Dashboard',
+  'الآن': 'Now',
+  'مجهول': 'Unknown',
+  'غير معروف': 'Unknown',
+  'إنشاء': 'Create',
+  'إخفاء': 'Hide',
+  'إظهار': 'Show',
+  'المفضلة': 'Favorites',
+  'نداء': 'Call',
+  'دخول الكشف': 'Enter Consultation',
+  'فتح التقويم': 'Open Calendar',
+  'تثبيت التطبيق': 'Install App (PWA)',
+  'تبديل العرض': 'Toggle View',
+  'فى الانتظار': 'In Waiting',
+  'مستمر': 'Continuous',
+  'جاري الاستعلام...': 'Querying...',
+  'الأيام القادمة': 'Upcoming Days',
+  'العنوان الرئيسي للعيادة': 'Main Clinic Address',
+  'التخصص الطبي العام للعيادة': 'Clinic Primary Medical Specialty',
+  'المسالك البولية': 'Urology & Nephrology',
+  'استقبال وعام': 'Reception & General',
+  'أمراض مزمنة شائعة': 'Common Chronic Conditions',
+  'أمراض شائعة': 'Common Diseases',
+  'أدوية العيادة': 'Clinic Medications',
+  'العيادة الرئيسية - المهندسين': 'Main Clinic - Mohandessin',
+  'الفرع الرئيسي - المهندسين': 'Main Branch - Mohandessin',
+  'باطنة وجهاز هضمي': 'Internal Medicine & GI',
+  'القلب والضغط': 'Cardiology & Hypertension',
+  'العظام والمفاصل': 'Orthopedics & Joints',
+  'جهاز هضمي': 'Gastroenterology',
+  'درقية': 'Thyroid',
+  'مناعة وفيروسات': 'Immunology & Virology',
+  'مسكن وخافض حرارة': 'Analgesic & Antipyretic',
+  'عينة مصل دم (Serum)': 'Serum Blood Specimen',
+  'عينة دم وريدي': 'Venous Blood Sample',
+  'أقراص ممتدة المفعول': 'Extended-Release Tablets',
+  'شراب معلق (Suspension)': 'Suspension Syrup',
+  'قبل الأكل بنصف ساعة': '30 minutes before meals',
+  'قرص واحد يومياً بعد الغداء': '1 tablet daily after lunch',
+  'من السبت إلى الخميس': 'Saturday to Thursday',
+  'كلمة المرور الجديدة يجب ألا تقل عن 8 خانات.': 'New password must be at least 8 characters.',
+
+  // Common Clinical Templates
+  'جرثومة المعدة وقرحة الاثنى عشر (H. Pylori)': 'H. Pylori & Peptic Ulcer',
+  'ارتفاع ضغط الدم الشرياني (Essential HTN)': 'Essential Hypertension (HTN)',
+  'السكري من النوع الثاني واعتلال الأعصاب (T2D)': 'Type 2 Diabetes & Neuropathy (T2D)',
+  'القولون العصبي وعسر الهضم الوظيفي (IBS)': 'Irritable Bowel Syndrome (IBS)',
+  'التهاب المفاصل والخشونة': 'Osteoarthritis & Joint Inflammation',
+  'النزلة المعوية والإسهال الحاد': 'Gastroenteritis & Acute Diarrhea',
+  'حساسية الصدر والربو الشعبي': 'Bronchial Asthma & Allergies',
+  'قصور الغدة الدرقية': 'Hypothyroidism',
+  'فرط نشاط الغدة الدرقية': 'Hyperthyroidism',
+  'فقر الدم ونقص الحديد (Anemia)': 'Iron Deficiency Anemia',
+  'التهاب الحلق واللوزتين': 'Pharyngitis & Tonsillitis',
+  'عدوى المسالك البولية (UTI)': 'Urinary Tract Infection (UTI)',
+  'ارتجاع المريء وحرقة المعدة (GERD)': 'Gastroesophageal Reflux (GERD)',
+  'الدهون الثلاثية والكبد الدهني': 'Hypertriglyceridemia & Fatty Liver',
 };
 
-// Sorted array of dictionary keys by length (descending) for longest-match greedy substitution
-let sortedDictionaryKeys: string[] | null = null;
-function getSortedDictionaryKeys(): string[] {
-  if (!sortedDictionaryKeys) {
-    sortedDictionaryKeys = Object.keys(ARABIC_PHRASE_DICTIONARY).sort(
-      (a, b) => b.length - a.length
-    );
+// Build a reverse index for O(1) translation lookup of Arabic to English
+let translationsReverseMap: Record<string, string> | null = null;
+
+function getTranslationsReverseMap(): Record<string, string> {
+  if (!translationsReverseMap) {
+    translationsReverseMap = {};
+    for (const key of Object.keys(translations)) {
+      const entry = translations[key];
+      if (entry && entry.ar) {
+        translationsReverseMap[entry.ar.trim()] = entry.en;
+      }
+    }
   }
-  return sortedDictionaryKeys;
+  return translationsReverseMap;
 }
 
 /**
- * Translates an arbitrary Arabic string to English using the phrase dictionary
- * with smart multi-tier fuzzy matching, regex normalization, and word-level substitutions.
+ * Translates an arbitrary Arabic string to English cleanly and safely.
+ * Prioritizes direct dictionary matches, bilingual parenthetical extraction,
+ * normalized number/badge patterns, and compound expressions without performing
+ * destructive greedy substring replacements that break RTL/LTR bidirectional rendering.
  */
 export function translateArabicToEnglish(text: string): string {
   if (!text || typeof text !== 'string') return text;
@@ -739,14 +1268,48 @@ export function translateArabicToEnglish(text: string): string {
     return ARABIC_PHRASE_DICTIONARY[trimmed];
   }
 
-  // 2. Check direct key dictionary in translations
-  for (const key of Object.keys(translations)) {
-    if (translations[key].ar === trimmed) {
-      return translations[key].en;
+  // 2. Check direct key dictionary in translations (O(1) look up now)
+  const revMap = getTranslationsReverseMap();
+  if (revMap[trimmed]) {
+    return revMap[trimmed];
+  }
+
+  // 3. Parenthetical bilingual extraction:
+  // Many headings have a pattern like: "العلامات الحيوية (Vital Signs)" or "عرض الكل (All Cards)"
+  // If the parenthetical part already contains an English phrase, return it cleanly in English mode!
+  const parenEnMatch = trimmed.match(/^(.+?)\s*[\(\[]([A-Za-z0-9\s&/#\.\-\+\:]+)[\)\]]\s*:?$/);
+  if (parenEnMatch) {
+    const enPart = parenEnMatch[2].trim();
+    if (enPart.length > 1) {
+      return trimmed.endsWith(':') ? `${enPart}:` : enPart;
     }
   }
 
-  // 3. Normalized matching (strip leading/trailing numbers, bullets, dots, colons, brackets)
+  // 4. Time format: "الساعة 11:01 م", "11:01 م", "الساعة: 09:30 ص"
+  const timeMatch = trimmed.match(/^(?:الساعة\s*:?\s*)?(\d{1,2}:\d{2})\s*(م|ص|AM|PM|am|pm)?$/i);
+  if (timeMatch) {
+    const tVal = timeMatch[1];
+    const period =
+      timeMatch[2] === 'م' || timeMatch[2]?.toLowerCase() === 'pm'
+        ? 'PM'
+        : timeMatch[2] === 'ص' || timeMatch[2]?.toLowerCase() === 'am'
+        ? 'AM'
+        : '';
+    return period ? `${tVal} ${period}` : tVal;
+  }
+
+  // 5. Counted badges and units pattern:
+  // e.g. "12 ملف نشط", "1 كشوفات", "3 روشتات", "26 سنة"
+  const countMatch = trimmed.match(/^([0-9\u0660-\u0669]+)\s+(.+)$/);
+  if (countMatch) {
+    const count = countMatch[1];
+    const unit = countMatch[2].trim();
+    if (ARABIC_PHRASE_DICTIONARY[unit]) {
+      return `${count} ${ARABIC_PHRASE_DICTIONARY[unit]}`;
+    }
+  }
+
+  // 6. Normalized matching (strip leading/trailing numbers, bullets, dots, colons, brackets)
   const normalizedMatch = trimmed.match(/^([0-9\.\-\#\:\s\•\(\)\+]+)?(.*?)([0-9\.\-\#\:\s\•\(\)\+]+)?$/);
   if (normalizedMatch) {
     const prefix = normalizedMatch[1] || '';
@@ -758,30 +1321,34 @@ export function translateArabicToEnglish(text: string): string {
     }
   }
 
-  // 4. Check for common dynamic prefixes like "تحويل من جدول المواعيد: " or "رقم الملف الطبي التلقائي: #4"
+  // 7. Dynamic prefixes with colon like "آخر زيارة: 13 سبتمبر 2026" or "التشخيص: ..."
   const colonIdx = trimmed.indexOf(':');
-  if (colonIdx > 0) {
+  if (colonIdx > 0 && colonIdx < 40) {
     const left = trimmed.slice(0, colonIdx).trim();
     const right = trimmed.slice(colonIdx + 1).trim();
-    const transLeft = ARABIC_PHRASE_DICTIONARY[left] || translateArabicToEnglish(left);
-    if (transLeft !== left) {
-      return `${transLeft}: ${right}`;
+    const transLeft = ARABIC_PHRASE_DICTIONARY[left] || (ARABIC_PHRASE_DICTIONARY[`${left}:`]?.replace(/:$/, ''));
+    if (transLeft) {
+      const transRight = ARABIC_PHRASE_DICTIONARY[right] || right;
+      return `${transLeft}: ${transRight}`;
     }
   }
 
-  // 5. If string contains Arabic characters, perform greedy multi-phrase replacement
-  const arabicRegex = /[\u0600-\u06FF]/;
-  if (arabicRegex.test(trimmed)) {
-    let result = trimmed;
-    const keys = getSortedDictionaryKeys();
-    for (const phrase of keys) {
-      if (result.includes(phrase)) {
-        const enVal = ARABIC_PHRASE_DICTIONARY[phrase];
-        result = result.split(phrase).join(enVal);
+  // 8. Delimited phrases matching (e.g. separated by " • ", " - ", " / ", " | ")
+  const delimiters = [' • ', ' - ', ' / ', ' | '];
+  for (const delim of delimiters) {
+    if (trimmed.includes(delim)) {
+      const parts = trimmed.split(delim);
+      const translatedParts = parts.map((part) => {
+        const pTrim = part.trim();
+        return ARABIC_PHRASE_DICTIONARY[pTrim] || pTrim;
+      });
+      const translatedCount = translatedParts.filter((p, i) => p !== parts[i].trim()).length;
+      if (translatedCount > 0 && translatedCount >= Math.floor(parts.length / 2)) {
+        return translatedParts.join(delim);
       }
     }
-    return result;
   }
 
+  // If no full or structured translation is found, return trimmed string without destructive substring replacement.
   return trimmed;
 }

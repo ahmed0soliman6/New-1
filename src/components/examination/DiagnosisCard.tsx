@@ -1,4 +1,5 @@
 import React, { useState, useTransition, useMemo } from 'react';
+import { useLanguage } from '../../i18n/LanguageContext';
 import { DiagnosisCatalogItem } from '../../types';
 
 export interface PatientDiagnosis {
@@ -50,6 +51,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({
   onAddDiagnosisToCatalog,
   frequentSuggestions = [],
 }) => {
+  const { language } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFilter, setSearchFilter] = useState('');
   const [showPicker, setShowPicker] = useState(false);
@@ -221,13 +223,17 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">التشخيص الطبي السريري (ICD-10)</h3>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">
+                {language === 'en' ? 'Clinical Diagnosis (ICD-10)' : 'التشخيص الطبي السريري (ICD-10)'}
+              </h3>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400">
-                {diagnoses.length} تشخيص
+                {diagnoses.length} {language === 'en' ? (diagnoses.length === 1 ? 'diagnosis' : 'diagnoses') : 'تشخيص'}
               </span>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-[#859394]">
-              تحديد التشخيص الأساسي والتشخيصات الفرعية المصاحبة
+              {language === 'en'
+                ? 'Specify primary diagnosis and accompanying secondary conditions'
+                : 'تحديد التشخيص الأساسي والتشخيصات الفرعية المصاحبة'}
             </p>
           </div>
         </div>
@@ -239,7 +245,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 text-amber-700 dark:text-amber-400 text-xs font-bold transition-all cursor-pointer"
           >
             <span className="material-symbols-outlined text-base">lists</span>
-            <span>+ دليل التشخيصات</span>
+            <span>{language === 'en' ? '+ Diagnosis Catalog' : '+ دليل التشخيصات'}</span>
           </button>
           <button
             type="button"
@@ -247,7 +253,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-900 text-xs font-bold transition-all cursor-pointer shadow-xs"
           >
             <span className="material-symbols-outlined text-base">add</span>
-            <span>+ إضافة تشخيص غير مدرج</span>
+            <span>{language === 'en' ? '+ Add Unlisted Diagnosis' : '+ إضافة تشخيص غير مدرج'}</span>
           </button>
         </div>
       </div>
@@ -257,7 +263,11 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({
         <div className="p-3 bg-amber-500/10 dark:bg-amber-950/20 rounded-xl border border-amber-500/20 space-y-2">
           <div className="flex items-center gap-1.5 text-xs font-bold text-amber-700 dark:text-amber-400">
             <span className="material-symbols-outlined text-sm">psychology</span>
-            <span>مقترحات الذاكرة والتشخيصات المتكررة (إضافة بنقرة واحدة):</span>
+            <span>
+              {language === 'en'
+                ? 'Clinical memory suggestions & frequent diagnoses (1-click add):'
+                : 'مقترحات الذاكرة والتشخيصات المتكررة (إضافة بنقرة واحدة):'}
+            </span>
           </div>
           <div className="flex flex-wrap gap-1.5">
             {frequentSuggestions.map((s, idx) => {
@@ -304,19 +314,29 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-amber-500 text-xl">manage_search</span>
             <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-[#dde2f5]">
-              البحث الشامل في التشخيصات الطبية وأكواد ICD-10 والاختصارات
+              {language === 'en'
+                ? 'Comprehensive Search in Clinical Diagnoses, ICD-10 & Abbreviations'
+                : 'البحث الشامل في التشخيصات الطبية وأكواد ICD-10 والاختصارات'}
             </h4>
           </div>
           <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>يدعم الاختصارات (HTN, DM, GERD, UTI, URTI, IBS, COPD)</span>
+            <span>
+              {language === 'en'
+                ? 'Supports abbreviations (HTN, DM, GERD, UTI, URTI, IBS, COPD)'
+                : 'يدعم الاختصارات (HTN, DM, GERD, UTI, URTI, IBS, COPD)'}
+            </span>
           </span>
         </div>
 
         <div className="relative">
           <input
             type="text"
-            placeholder="ابحث بالاسم العربي/الإنجليزي أو الكود أو الاختصار الطبي (مثال: HTN, DM, GERD, القولون, I10)..."
+            placeholder={
+              language === 'en'
+                ? 'Search by English/Arabic name, code or medical abbreviation (e.g. HTN, DM, GERD)...'
+                : 'ابحث بالاسم العربي/الإنجليزي أو الكود أو الاختصار الطبي (مثال: HTN, DM, GERD, القولون, I10)...'
+            }
             value={searchQuery}
             onChange={(e) => handleSearchChange(e.target.value)}
             className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-sm p-3.5 pr-11 pl-28 rounded-xl border border-slate-200 dark:border-white/10 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20 font-bold transition-all"
@@ -335,7 +355,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({
                 }}
                 className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-[#18233C] text-slate-500 dark:text-[#859394] hover:text-rose-500 text-xs font-bold cursor-pointer"
               >
-                مسح ✕
+                {language === 'en' ? 'Clear ✕' : 'مسح ✕'}
               </button>
             )}
             <button
@@ -344,7 +364,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({
               className="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] flex items-center gap-1 shadow-xs cursor-pointer"
             >
               <span className="material-symbols-outlined text-sm">language</span>
-              <span>بحث أونلاين</span>
+              <span>{language === 'en' ? 'Online Search' : 'بحث أونلاين'}</span>
             </button>
           </div>
         </div>
@@ -355,21 +375,35 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({
             <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-[#859394] border-b border-slate-100 dark:border-white/5 pb-1.5">
               <span className="flex items-center gap-1">
                 <span className="material-symbols-outlined text-xs text-amber-500">saved_search</span>
-                <span>نتائج البحث للتشخيصات السريرية لـ "{searchQuery}":</span>
+                <span>
+                  {language === 'en'
+                    ? `Search results for "${searchQuery}":`
+                    : `نتائج البحث للتشخيصات السريرية لـ "${searchQuery}":`}
+                </span>
               </span>
               <span className="font-mono text-amber-600 dark:text-amber-400 font-bold">
-                {isSearchingOnline ? 'جاري الاستعلام...' : `${onlineResults.length} تشخيص مطايق`}
+                {isSearchingOnline
+                  ? (language === 'en' ? 'Querying...' : 'جاري الاستعلام...')
+                  : (language === 'en' ? `${onlineResults.length} matching diagnoses` : `${onlineResults.length} تشخيص مطابق`)}
               </span>
             </div>
 
             {isSearchingOnline ? (
               <div className="py-4 text-center text-xs text-amber-500 font-bold flex items-center justify-center gap-2">
                 <span className="w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></span>
-                <span>جاري البحث في الفهرس الطبي الدولي ICD-10...</span>
+                <span>
+                  {language === 'en'
+                    ? 'Searching in international ICD-10 medical index...'
+                    : 'جاري البحث في الفهرس الطبي الدولي ICD-10...'}
+                </span>
               </div>
             ) : onlineResults.length === 0 ? (
               <div className="py-4 text-center text-xs text-slate-500 space-y-2">
-                <p>لم يتم العثور على نتائج مباشرة تطابق "{searchQuery}".</p>
+                <p>
+                  {language === 'en'
+                    ? `No direct results found matching "${searchQuery}".`
+                    : `لم يتم العثور على نتائج مباشرة تطابق "${searchQuery}".`}
+                </p>
                 <button
                   type="button"
                   onClick={() => {
@@ -514,14 +548,18 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({
             diagnosis
           </span>
           <p className="text-xs text-slate-500 dark:text-[#859394]">
-            لم يتم تحديد أي تشخيص طبي حتى الآن.
+            {language === 'en'
+              ? 'No clinical diagnosis selected yet.'
+              : 'لم يتم تحديد أي تشخيص طبي حتى الآن.'}
           </p>
           <p className="text-[11px] text-slate-400 mt-1">
-            اختر من التشخيصات المفضلة أعلاه أو اضغط "+ إضافة تشخيص غير مدرج".
+            {language === 'en'
+              ? 'Select from frequent presets above or click "+ Add Unlisted Diagnosis".'
+              : 'اختر من التشخيصات المفضلة أعلاه أو اضغط "+ إضافة تشخيص غير مدرج".'}
           </p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-2" data-no-translate="true">
           {diagnoses.map((diag) => (
             <div
               key={diag.id}
@@ -540,23 +578,34 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({
                       ? 'bg-amber-500 text-slate-900 font-bold shadow-xs'
                       : 'bg-slate-200 dark:bg-white/10 text-slate-600 dark:text-[#859394] hover:bg-amber-100'
                   }`}
-                  title="انقر لتعيين كتشخيص رئيسي"
+                  title={language === 'en' ? 'Click to set as primary diagnosis' : 'انقر لتعيين كتشخيص رئيسي'}
                 >
-                  {diag.isPrimary ? 'تشخيص رئيسي ★' : 'فرعي'}
+                  {diag.isPrimary
+                    ? (language === 'en' ? 'Primary ★' : 'تشخيص رئيسي ★')
+                    : (language === 'en' ? 'Secondary' : 'فرعي')}
                 </button>
 
-                <div>
+                <div className="clinical-data" data-no-translate="true">
                   <div className="flex items-center gap-2">
                     {diag.code && (
                       <span className="font-mono text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-100/70 dark:bg-amber-900/30 px-1.5 py-0.5 rounded">
                         {diag.code}
                       </span>
                     )}
-                    <span className="text-xs font-bold text-slate-900 dark:text-[#dde2f5]">{diag.nameAr}</span>
+                    <span
+                      data-no-translate="true"
+                      className="text-xs font-bold text-slate-900 dark:text-[#dde2f5] no-translate clinical-data"
+                    >
+                      {language === 'en' && diag.nameEn ? diag.nameEn : diag.nameAr}
+                    </span>
                   </div>
-                  {diag.nameEn && (
-                    <span className="text-[10px] text-slate-400 block font-mono mt-0.5" dir="ltr">
-                      {diag.nameEn}
+                  {(language === 'en' ? (diag.nameEn ? diag.nameAr : undefined) : diag.nameEn) && (
+                    <span
+                      data-no-translate="true"
+                      className="text-[10px] text-slate-400 block font-mono mt-0.5 no-translate clinical-data"
+                      dir={language === 'en' ? 'rtl' : 'ltr'}
+                    >
+                      {language === 'en' ? diag.nameAr : diag.nameEn}
                     </span>
                   )}
                 </div>
@@ -567,7 +616,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({
                   type="button"
                   onClick={() => handleRemove(diag.id)}
                   className="p-1 text-slate-400 hover:text-rose-500 transition-colors cursor-pointer"
-                  title="حذف التشخيص"
+                  title={language === 'en' ? 'Delete diagnosis' : 'حذف التشخيص'}
                 >
                   <span className="material-symbols-outlined text-base">delete</span>
                 </button>

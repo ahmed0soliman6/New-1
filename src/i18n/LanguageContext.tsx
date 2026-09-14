@@ -84,12 +84,36 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
     const rootEl = document.getElementById('root');
     if (!rootEl) return;
 
+    let observer: MutationObserver | null = null;
+
+    const safeModify = (action: () => void) => {
+      if (observer) {
+        observer.disconnect();
+      }
+      action();
+      if (observer && rootEl) {
+        observer.observe(rootEl, {
+          childList: true,
+          subtree: true,
+          characterData: true,
+        });
+      }
+    };
+
     const translateElementAttributes = (el: Element) => {
       if (
         el.closest('#printable-prescription-pad') ||
         el.closest('[data-no-translate="true"]') ||
         el.closest('.no-translate') ||
-        el.closest('.patient-name')
+        el.closest('.patient-name') ||
+        el.closest('.clinical-data') ||
+        el.closest('.patient-data') ||
+        el.closest('.rx-item') ||
+        el.closest('.rx-instructions') ||
+        el.closest('.diagnosis-text') ||
+        el.closest('.patient-phone') ||
+        el.closest('.patient-address') ||
+        el.closest('.patient-notes')
       ) {
         return;
       }
@@ -104,13 +128,17 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
             }
             const translated = translateArabicToEnglish(ph.trim());
             if (translated !== ph.trim()) {
-              el.placeholder = translated;
+              safeModify(() => {
+                el.placeholder = translated;
+              });
             }
           } else {
             if (originalPlaceholderMap.has(el)) {
               const orig = originalPlaceholderMap.get(el);
               if (orig !== undefined && el.placeholder !== orig) {
-                el.placeholder = orig;
+                safeModify(() => {
+                  el.placeholder = orig;
+                });
               }
             }
           }
@@ -126,13 +154,17 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
             }
             const translated = translateArabicToEnglish(el.title.trim());
             if (translated !== el.title.trim()) {
-              el.title = translated;
+              safeModify(() => {
+                el.title = translated;
+              });
             }
           } else {
             if (originalTitleMap.has(el)) {
               const orig = originalTitleMap.get(el);
               if (orig !== undefined && el.title !== orig) {
-                el.title = orig;
+                safeModify(() => {
+                  el.title = orig;
+                });
               }
             }
           }
@@ -147,13 +179,17 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
             }
             const translated = translateArabicToEnglish(ariaLabel.trim());
             if (translated !== ariaLabel.trim()) {
-              el.setAttribute('aria-label', translated);
+              safeModify(() => {
+                el.setAttribute('aria-label', translated);
+              });
             }
           } else {
             if (originalAriaLabelMap.has(el)) {
               const orig = originalAriaLabelMap.get(el);
               if (orig !== undefined && el.getAttribute('aria-label') !== orig) {
-                el.setAttribute('aria-label', orig);
+                safeModify(() => {
+                  el.setAttribute('aria-label', orig);
+                });
               }
             }
           }
@@ -176,12 +212,20 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
         return;
       }
 
-      // Skip elements marked explicitly as no-translate or inside prescription pad simulation
+      // Skip elements marked explicitly as no-translate or inside clinical/prescription data
       if (
         parent.closest('#printable-prescription-pad') ||
         parent.closest('[data-no-translate="true"]') ||
         parent.closest('.no-translate') ||
-        parent.closest('.patient-name')
+        parent.closest('.patient-name') ||
+        parent.closest('.clinical-data') ||
+        parent.closest('.patient-data') ||
+        parent.closest('.rx-item') ||
+        parent.closest('.rx-instructions') ||
+        parent.closest('.diagnosis-text') ||
+        parent.closest('.patient-phone') ||
+        parent.closest('.patient-address') ||
+        parent.closest('.patient-notes')
       ) {
         return;
       }
@@ -192,25 +236,33 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
         if (!trimmed) return;
 
         if (language === 'en') {
-          // Store original if not yet stored
+          // Store original Arabic source if not yet stored
+          const original = originalTextMap.get(node) ?? raw;
           if (!originalTextMap.has(node)) {
             originalTextMap.set(node, raw);
           }
 
-          // Check if there's an Arabic translation
-          const translated = translateArabicToEnglish(trimmed);
-          if (translated !== trimmed) {
-            // Keep leading and trailing whitespace
-            const leadingWs = raw.match(/^\s*/)?.[0] || '';
-            const trailingWs = raw.match(/\s*$/)?.[0] || '';
-            node.nodeValue = leadingWs + translated + trailingWs;
+          // Check if there's an Arabic translation from the original source
+          const origTrimmed = original.trim();
+          const translated = translateArabicToEnglish(origTrimmed);
+          if (translated !== origTrimmed) {
+            const leadingWs = original.match(/^\s*/)?.[0] || '';
+            const trailingWs = original.match(/\s*$/)?.[0] || '';
+            const finalValue = leadingWs + translated + trailingWs;
+            if (node.nodeValue !== finalValue) {
+              safeModify(() => {
+                node.nodeValue = finalValue;
+              });
+            }
           }
         } else {
           // Restore original Arabic
           if (originalTextMap.has(node)) {
             const orig = originalTextMap.get(node);
             if (orig !== undefined && node.nodeValue !== orig) {
-              node.nodeValue = orig;
+              safeModify(() => {
+                node.nodeValue = orig;
+              });
             }
           }
         }
@@ -230,7 +282,7 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
     walk(rootEl);
 
     // Run mutation observer for dynamically rendered elements
-    const observer = new MutationObserver((mutations) => {
+    observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         if (mutation.type === 'characterData') {
           translateNode(mutation.target);
@@ -249,7 +301,9 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
     });
 
     return () => {
-      observer.disconnect();
+      if (observer) {
+        observer.disconnect();
+      }
     };
   }, [language]);
 

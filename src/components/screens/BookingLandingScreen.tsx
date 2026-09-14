@@ -16,6 +16,7 @@ import { QrCodeImage } from '../QrCodeImage';
 import { safeStorage } from '../../services/storage';
 import { db } from '../../services/firebase';
 import { subscribeToPrescriptionSettings } from '../../services/repositories/settingsRepo';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 interface BookingLandingScreenProps {
   onAddAppointment?: (appointment: AppointmentListItem) => void;
@@ -83,6 +84,7 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
   onNavigateToAppointments,
   isEmbed = false,
 }) => {
+  const { language, isRTL, t } = useLanguage();
   const [doctorProfile, setDoctorProfile] = useState<PrescriptionDoctorInfo>(() => getPrescriptionDoctorInfo());
   const [branches, setBranches] = useState<ClinicBranchItem[]>(() => getClinicBranches());
   const [visitTypes, setVisitTypes] = useState<{ id: string; name: string; fee: number }[]>(() => getMergedVisitTypesAndServices());
@@ -104,13 +106,13 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
 
   const doctorInfo = useMemo(() => {
     return {
-      name: doctorProfile.doctorName,
-      specialty: doctorProfile.specialtyAr,
-      credentials: doctorProfile.degreesAr,
+      name: language === 'en' ? (doctorProfile.doctorNameEn || doctorProfile.doctorName) : doctorProfile.doctorName,
+      specialty: language === 'en' ? (doctorProfile.specialtyEn || doctorProfile.specialtyAr) : doctorProfile.specialtyAr,
+      credentials: language === 'en' ? (doctorProfile.degreesEn || doctorProfile.degreesAr) : doctorProfile.degreesAr,
       phone: doctorProfile.phone,
       logoUrl: doctorProfile.logoUrl
     };
-  }, [doctorProfile]);
+  }, [doctorProfile, language]);
 
   // Real-time Firestore subscription to fetch real doctor settings, clinic branches, visit types and services
   useEffect(() => {

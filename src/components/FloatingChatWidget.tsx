@@ -31,10 +31,25 @@ export const FloatingChatWidget: React.FC<FloatingChatWidgetProps> = ({ onNaviga
   const [inputText, setInputText] = useState('');
   const [unreadCount, setUnreadCount] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
+  const [fallbackEventToggle, setFallbackEventToggle] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const widgetRef = useRef<HTMLDivElement>(null);
   const prevMessagesCount = useRef(0);
   const isFirstLoad = useRef(true);
+
+  // Click outside to close
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (isOpen && widgetRef.current && !widgetRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
 
   // Audio object for notification sound
   const notificationAudio = useMemo(() => {
@@ -48,18 +63,33 @@ export const FloatingChatWidget: React.FC<FloatingChatWidgetProps> = ({ onNaviga
       setEnabled(saved !== 'false');
     };
 
+    const handleFallbackUpdate = () => {
+      setFallbackEventToggle((prev) => !prev);
+    };
+
     window.addEventListener('soli_floating_chat_settings_changed', checkEnabled);
-    window.addEventListener('storage', checkEnabled);
+    window.addEventListener('soli_new_fallback_message', handleFallbackUpdate);
+    window.addEventListener('storage', () => {
+      checkEnabled();
+      handleFallbackUpdate();
+    });
     
     return () => {
       window.removeEventListener('soli_floating_chat_settings_changed', checkEnabled);
-      window.removeEventListener('storage', checkEnabled);
+      window.removeEventListener('soli_new_fallback_message', handleFallbackUpdate);
+      window.removeEventListener('storage', handleFallbackUpdate);
     };
   }, []);
 
   // 2. Real-time messages subscription
   useEffect(() => {
-    if (!db || !enabled || !userProfile) return;
+    if (!enabled || !userProfile) return;
+
+    if (!db) {
+      const fallbackList = JSON.parse(localStorage.getItem('soli_fallback_messages') || '[]');
+      setMessages(fallbackList);
+      return;
+    }
 
     let unsubMessages = () => {};
     import('firebase/firestore').then(({ collection, onSnapshot, query, orderBy, limit }) => {
@@ -88,12 +118,28 @@ export const FloatingChatWidget: React.FC<FloatingChatWidgetProps> = ({ onNaviga
             }
           });
 
-          setMessages(list);
+          // Merge with local fallback messages
+          const fallbackList = JSON.parse(localStorage.getItem('soli_fallback_messages') || '[]');
+          const combined = [...list, ...fallbackList];
+
+          const uniqueMap = new Map<string, ChatMessage>();
+          combined.forEach((m) => {
+            const key = m.id || `${m.senderId}-${m.text}-${m.createdAt?.seconds}`;
+            uniqueMap.set(key, m);
+          });
+
+          const sorted = Array.from(uniqueMap.values()).sort((a, b) => {
+            const timeA = a.createdAt?.seconds || 0;
+            const timeB = b.createdAt?.seconds || 0;
+            return timeA - timeB;
+          });
+
+          setMessages(sorted);
 
           // Handle notifications and badge
           if (!isFirstLoad.current) {
-            if (list.length > prevMessagesCount.current) {
-              const lastMsg = list[list.length - 1];
+            if (sorted.length > prevMessagesCount.current) {
+              const lastMsg = sorted[sorted.length - 1];
               if (lastMsg.senderId !== userProfile.uid) {
                 if (!isOpen) {
                   setUnreadCount((prev) => prev + 1);
@@ -106,14 +152,18 @@ export const FloatingChatWidget: React.FC<FloatingChatWidgetProps> = ({ onNaviga
           } else {
             isFirstLoad.current = false;
           }
-          prevMessagesCount.current = list.length;
+          prevMessagesCount.current = sorted.length;
         },
-        (err) => console.warn('Floating widget subscription error:', err)
+        (err) => {
+          console.warn('Floating widget subscription error, loading fallbacks:', err);
+          const fallbackList = JSON.parse(localStorage.getItem('soli_fallback_messages') || '[]');
+          setMessages(fallbackList);
+        }
       );
     });
 
     return () => unsubMessages();
-  }, [enabled, userProfile, isOpen, isMuted, notificationAudio]);
+  }, [enabled, userProfile, isOpen, isMuted, notificationAudio, fallbackEventToggle]);
 
   // Scroll to bottom
   useEffect(() => {
@@ -127,12 +177,13 @@ export const FloatingChatWidget: React.FC<FloatingChatWidgetProps> = ({ onNaviga
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim() || !db) return;
+    if (!inputText.trim()) return;
 
     const text = inputText.trim();
     setInputText('');
 
     try {
+      if (!db) throw new Error('No DB connection');
       const { collection, addDoc, serverTimestamp } = await import('firebase/firestore');
       await addDoc(collection(db, 'messages'), {
         text,
@@ -143,7 +194,24 @@ export const FloatingChatWidget: React.FC<FloatingChatWidgetProps> = ({ onNaviga
         isAnnouncement: false,
       });
     } catch (err) {
-      console.error('Failed to send from floating chat:', err);
+      console.warn('Failed to send from floating chat to Firestore, using local fallback:', err);
+      
+      const fallbackMsg = {
+        id: `msg-fallback-${Date.now()}-${Math.random()}`,
+        text,
+        senderId: userProfile.uid,
+        senderName: userProfile.displayName || userProfile.username || 'مجهول',
+        senderRole: userProfile.role || 'secretary',
+        createdAt: { seconds: Math.floor(Date.now() / 1000) },
+        isAnnouncement: false,
+      };
+
+      const existing = JSON.parse(localStorage.getItem('soli_fallback_messages') || '[]');
+      existing.push(fallbackMsg);
+      localStorage.setItem('soli_fallback_messages', JSON.stringify(existing));
+      
+      // Dispatch events for real-time tab synchronization and update
+      window.dispatchEvent(new Event('soli_new_fallback_message'));
     }
   };
 
@@ -168,7 +236,7 @@ export const FloatingChatWidget: React.FC<FloatingChatWidgetProps> = ({ onNaviga
   };
 
   return (
-    <div className={`fixed bottom-6 z-50 flex flex-col items-end gap-3 ${isRTL ? 'left-6' : 'right-6'}`}>
+    <div ref={widgetRef} className={`fixed bottom-6 z-50 flex flex-col items-end gap-3 ${isRTL ? 'left-6' : 'right-6'}`}>
       
       {/* Mini Chat Window */}
       {isOpen && (

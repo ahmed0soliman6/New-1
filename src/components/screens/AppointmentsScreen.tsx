@@ -4,7 +4,8 @@ import { db } from '../../services/firebase';
 import { CLINIC_INFO } from '../../data/previewClinicData';
 import { AppointmentListItem, ScreenType, PatientListItem } from '../../types';
 import { usePermissions } from '../../context/AuthContext';
-import { toEnglishDigits } from '../../utils/numberUtils';
+import { toEnglishDigits, formatAppDate } from '../../utils/numberUtils';
+import { useLanguage } from '../../i18n/LanguageContext';
 import { getClinicBranches, findBranch } from '../../utils/clinicBranches';
 import { WhatsappReminderModal } from '../modals/WhatsappReminderModal';
 
@@ -71,6 +72,7 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
   visitTypesList = [],
 }) => {
   const { canAccess } = usePermissions();
+  const { language, isRTL, t } = useLanguage();
 
   // Dynamic visit types configured in Settings
   const activeVisitTypes = useMemo(() => {
@@ -518,7 +520,11 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
     if (parsedNotes) {
       setAppointmentNotes(parsedNotes);
     } else {
-      setAppointmentNotes(`طلب حجز عبر واتساب (${new Date().toLocaleDateString('ar-EG')})`);
+      setAppointmentNotes(
+        language === 'en'
+          ? `WhatsApp booking request (${formatAppDate(new Date(), undefined, language)})`
+          : `طلب حجز عبر واتساب (${formatAppDate(new Date(), undefined, language)})`
+      );
     }
 
     setIsWhatsappModalOpen(false);

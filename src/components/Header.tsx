@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { CLINIC_INFO } from '../data/previewClinicData';
 import { useDoctorName } from '../hooks/useDoctorName';
 import { QueueItem, AppointmentListItem, PatientListItem, TransactionRecord, ScreenType } from '../types';
@@ -76,6 +76,20 @@ export const Header: React.FC<HeaderProps> = ({
   const [activeNotifyTab, setActiveNotifyTab] = useState<'queue' | 'alerts' | 'followups'>('queue');
   const activeDoctorName = useDoctorName();
   const [whatsappToast, setWhatsappToast] = useState<string | null>(null);
+
+  const notificationRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showNotifications && notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
+        setShowNotifications(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showNotifications]);
 
   // Filter urgent follow-ups: Only patients with less than 2 days remaining (< 2 days: 0 days, 1 day, or overdue)
   const urgentFollowUps = useMemo(() => {
@@ -209,7 +223,7 @@ Wishing you great health and wellness ✨`
         {/* Left Side / End Side: Notifications Hub */}
         <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
           {/* Notifications Dropdown Button */}
-          <div className="relative shrink-0">
+          <div ref={notificationRef} className="relative shrink-0">
             <button
               onClick={() => setShowNotifications(!showNotifications)}
               className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center transition-all relative cursor-pointer ${

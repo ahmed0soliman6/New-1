@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLanguage } from '../../i18n/LanguageContext';
 import { SymptomCatalogItem } from '../../types';
 
 interface SymptomsAndExamCardProps {
@@ -20,6 +21,7 @@ export const SymptomsAndExamCard: React.FC<SymptomsAndExamCardProps> = ({
   onChangePhysicalExam,
   initialSelectedSymptoms = [],
 }) => {
+  const { language } = useLanguage();
   const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>(initialSelectedSymptoms);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newSymptomName, setNewSymptomName] = useState('');
@@ -74,10 +76,14 @@ export const SymptomsAndExamCard: React.FC<SymptomsAndExamCardProps> = ({
           </div>
           <div className="min-w-0">
             <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-[#dde2f5] truncate">
-              الأعراض والشكوى السريرية والفحص البدني
+              {language === 'en'
+                ? 'Symptoms, Complaints & Physical Examination'
+                : 'الأعراض والشكوى السريرية والفحص البدني'}
             </h3>
             <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-[#859394]">
-              أدلة الأعراض السريرية السريعة وملاحظات الفحص البدني المباشر
+              {language === 'en'
+                ? 'Clinical symptoms quick list & direct physical examination notes'
+                : 'أدلة الأعراض السريرية السريعة وملاحظات الفحص البدني المباشر'}
             </p>
           </div>
         </div>
@@ -88,16 +94,18 @@ export const SymptomsAndExamCard: React.FC<SymptomsAndExamCardProps> = ({
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-[#d0bcff] hover:bg-purple-100 text-xs font-bold transition-all cursor-pointer shrink-0 self-start sm:self-center"
         >
           <span className="material-symbols-outlined text-base">add_circle</span>
-          <span>+ إضافة عرض جديد</span>
+          <span>{language === 'en' ? '+ Add New Symptom' : '+ إضافة عرض جديد'}</span>
         </button>
       </div>
 
       {/* Quick Symptoms selection chips */}
       <div className="space-y-1.5 min-w-0">
         <span className="text-[11px] font-bold text-slate-500 dark:text-[#859394] block">
-          الأعراض الشائعة (انقر للإضافة أو الإزالة السريعة):
+          {language === 'en'
+            ? 'Common symptoms (click to quickly add or remove):'
+            : 'الأعراض الشائعة (انقر للإضافة أو الإزالة السريعة):'}
         </span>
-        <div className="flex flex-wrap gap-2 min-w-0">
+        <div className="flex flex-wrap gap-2 min-w-0" data-no-translate="true">
           {(symptomsCatalog || []).filter((s) => Boolean(s && s.name)).map((sym) => {
             const symName = sym.name;
             const isSelected = selectedSymptoms.includes(symName);
@@ -113,7 +121,9 @@ export const SymptomsAndExamCard: React.FC<SymptomsAndExamCardProps> = ({
                 }`}
               >
                 {isSelected && <span className="material-symbols-outlined text-sm shrink-0">check</span>}
-                <span className="break-words">{symName}</span>
+                <span className="break-words no-translate clinical-data" data-no-translate="true">
+                  {symName}
+                </span>
               </button>
             );
           })}
@@ -122,32 +132,46 @@ export const SymptomsAndExamCard: React.FC<SymptomsAndExamCardProps> = ({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
         {/* Chief complaint */}
-        <div className="space-y-1.5">
+        <div className="space-y-1.5" data-no-translate="true">
           <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5] flex items-center justify-between">
-            <span>الشكوى وتاريخ المرض الحالي (Chief Complaint & HPI):</span>
-            <span className="text-[10px] text-slate-400">نص تفصيلي</span>
+            <span>{language === 'en' ? 'Chief Complaint & HPI:' : 'الشكوى وتاريخ المرض الحالي (Chief Complaint & HPI):'}</span>
+            <span className="text-[10px] text-slate-400">
+              {language === 'en' ? 'Detailed text' : 'نص تفصيلي'}
+            </span>
           </label>
           <textarea
             rows={4}
             value={complaint}
+            data-no-translate="true"
             onChange={(e) => onChangeComplaint(e.target.value)}
-            placeholder="اكتب شكوى المريض بالتفصيل وتطور الأعراض..."
-            className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-3 rounded-xl border border-slate-200 dark:border-white/5 focus:outline-none focus:ring-1 focus:ring-[#00c2cb] leading-relaxed resize-none"
+            placeholder={
+              language === 'en'
+                ? 'Enter patient complaint details and symptom timeline...'
+                : 'اكتب شكوى المريض بالتفصيل وتطور الأعراض...'
+            }
+            className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-3 rounded-xl border border-slate-200 dark:border-white/5 focus:outline-none focus:ring-1 focus:ring-[#00c2cb] leading-relaxed resize-none no-translate clinical-data"
           />
         </div>
 
         {/* Physical examination */}
-        <div className="space-y-1.5">
+        <div className="space-y-1.5" data-no-translate="true">
           <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5] flex items-center justify-between">
-            <span>الفحص الإكلينيكي البدني (Physical Examination):</span>
-            <span className="text-[10px] text-[#008f97] dark:text-[#00c2cb]">فحص الغرفة</span>
+            <span>{language === 'en' ? 'Physical Examination:' : 'الفحص الإكلينيكي البدني (Physical Examination):'}</span>
+            <span className="text-[10px] text-[#008f97] dark:text-[#00c2cb]">
+              {language === 'en' ? 'Room Exam' : 'فحص الغرفة'}
+            </span>
           </label>
           <textarea
             rows={4}
             value={physicalExam}
+            data-no-translate="true"
             onChange={(e) => onChangePhysicalExam(e.target.value)}
-            placeholder="فحص البطن، القلب، الرئتين، الأطراف السفلية، العلامات الموضعية..."
-            className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-3 rounded-xl border border-slate-200 dark:border-white/5 focus:outline-none focus:ring-1 focus:ring-[#00c2cb] leading-relaxed resize-none"
+            placeholder={
+              language === 'en'
+                ? 'Chest, abdomen, cardiovascular, limbs, local signs...'
+                : 'فحص البطن، القلب، الرئتين، الأطراف السفلية، العلامات الموضعية...'
+            }
+            className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-3 rounded-xl border border-slate-200 dark:border-white/5 focus:outline-none focus:ring-1 focus:ring-[#00c2cb] leading-relaxed resize-none no-translate clinical-data"
           />
         </div>
       </div>

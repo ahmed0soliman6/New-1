@@ -1,4 +1,5 @@
 import React, { useState, useTransition, useMemo } from 'react';
+import { useLanguage } from '../../i18n/LanguageContext';
 import { RadiologyCatalogItem, RadiologyOrderItem, RadiologyStatus } from '../../types';
 
 interface RadiologyCardProps {
@@ -32,6 +33,7 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
   onAddRadiologyToCatalog,
   frequentSuggestions = [],
 }) => {
+  const { language } = useLanguage();
   const [showPicker, setShowPicker] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
@@ -208,13 +210,17 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">الأشعة والتصوير الطبي</h3>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">
+                {language === 'en' ? 'Radiology & Medical Imaging' : 'الأشعة والتصوير الطبي'}
+              </h3>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-[#38BDF8]">
-                {radiologyOrders.length} فحص
+                {radiologyOrders.length} {language === 'en' ? (radiologyOrders.length === 1 ? 'scan' : 'scans') : 'فحص'}
               </span>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-[#859394]">
-              إدارة طلبات الأشعة، تسجيل النتائج، وكتابة التقارير الطبية
+              {language === 'en'
+                ? 'Manage radiology scan orders, record impressions, and clinical findings'
+                : 'إدارة طلبات الأشعة، تسجيل النتائج، وكتابة التقارير الطبية'}
             </p>
           </div>
         </div>
@@ -226,7 +232,7 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-50 dark:bg-sky-900/30 hover:bg-sky-100 text-sky-700 dark:text-[#38BDF8] text-xs font-bold transition-all cursor-pointer"
           >
             <span className="material-symbols-outlined text-base">lists</span>
-            <span>+ اختيار من دليلي</span>
+            <span>{language === 'en' ? '+ Pick from Catalog' : '+ اختيار من دليلي'}</span>
           </button>
           <button
             type="button"
@@ -234,7 +240,7 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] text-xs font-bold transition-all cursor-pointer shadow-xs"
           >
             <span className="material-symbols-outlined text-base">add</span>
-            <span>+ إضافة نوع جديد</span>
+            <span>{language === 'en' ? '+ Add New Scan' : '+ إضافة نوع جديد'}</span>
           </button>
         </div>
       </div>
@@ -244,7 +250,11 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
         <div className="p-3 bg-sky-500/10 dark:bg-sky-950/20 rounded-xl border border-sky-500/20 space-y-2">
           <div className="flex items-center gap-1.5 text-xs font-bold text-sky-700 dark:text-sky-300">
             <span className="material-symbols-outlined text-sm">psychology</span>
-            <span>مقترحات الأشعة والفحوصات المتكررة (إضافة بنقرة واحدة):</span>
+            <span>
+              {language === 'en'
+                ? 'Frequent radiology suggestions for this diagnosis (1-click add):'
+                : 'مقترحات الأشعة والفحوصات المتكررة (إضافة بنقرة واحدة):'}
+            </span>
           </div>
           <div className="flex flex-wrap gap-1.5">
             {frequentSuggestions.map((s, idx) => {
@@ -482,14 +492,18 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
             radiology
           </span>
           <p className="text-xs text-slate-500 dark:text-[#859394]">
-            لم يتم طلب أي فحوصات أشعة حتى الآن في هذا الكشف.
+            {language === 'en'
+              ? 'No radiology scans ordered yet for this examination.'
+              : 'لم يتم طلب أي فحوصات أشعة حتى الآن في هذا الكشف.'}
           </p>
           <p className="text-[11px] text-slate-400 mt-1">
-            انقر "+ اختيار من دليلي" أو "+ إضافة نوع جديد" لطلب أشعة أو تسجيل تقريرها فوراً.
+            {language === 'en'
+              ? 'Click "+ Pick from Catalog" or "+ Add New Scan" to order imaging or log reports.'
+              : 'انقر "+ اختيار من دليلي" أو "+ إضافة نوع جديد" لطلب أشعة أو تسجيل تقريرها فوراً.'}
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-3" data-no-translate="true">
           {radiologyOrders.map((ord) => (
             <div
               key={ord.id}
@@ -499,9 +513,17 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-sky-500"></span>
-                  <div>
-                    <span className="text-xs font-bold text-slate-900 dark:text-[#dde2f5]">{ord.name}</span>
-                    <span className="text-[10px] text-slate-500 dark:text-[#859394] mr-2 px-1.5 py-0.5 rounded bg-slate-200/60 dark:bg-white/5">
+                  <div className="clinical-data" data-no-translate="true">
+                    <span
+                      data-no-translate="true"
+                      className="text-xs font-bold text-slate-900 dark:text-[#dde2f5] no-translate clinical-data"
+                    >
+                      {ord.name}
+                    </span>
+                    <span
+                      data-no-translate="true"
+                      className="text-[10px] text-slate-500 dark:text-[#859394] mr-2 px-1.5 py-0.5 rounded bg-slate-200/60 dark:bg-white/5 no-translate clinical-data"
+                    >
                       {ord.category}
                     </span>
                   </div>
@@ -510,7 +532,9 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
                 <div className="flex items-center gap-2">
                   {/* Status Dropdown */}
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] text-slate-500 dark:text-[#859394]">الحالة:</span>
+                    <span className="text-[11px] text-slate-500 dark:text-[#859394]">
+                      {language === 'en' ? 'Status:' : 'الحالة:'}
+                    </span>
                     <select
                       value={ord.status}
                       onChange={(e) => handleUpdateOrderStatus(ord.id, e.target.value as RadiologyStatus)}
@@ -522,9 +546,15 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
                           : 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-800 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700/50'
                       }`}
                     >
-                      <option value="REQUEST" className="bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5]">طلب (REQUEST)</option>
-                      <option value="RESULT" className="bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5]">نتيجة (RESULT)</option>
-                      <option value="REPORT" className="bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5]">تقرير (REPORT)</option>
+                      <option value="REQUEST" className="bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5]">
+                        {language === 'en' ? 'Order (REQUEST)' : 'طلب (REQUEST)'}
+                      </option>
+                      <option value="RESULT" className="bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5]">
+                        {language === 'en' ? 'Result (RESULT)' : 'نتيجة (RESULT)'}
+                      </option>
+                      <option value="REPORT" className="bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5]">
+                        {language === 'en' ? 'Report (REPORT)' : 'تقرير (REPORT)'}
+                      </option>
                     </select>
                   </div>
 
@@ -532,7 +562,7 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
                     type="button"
                     onClick={() => handleRemoveOrder(ord.id)}
                     className="p-1 text-slate-400 hover:text-rose-500 transition-colors cursor-pointer"
-                    title="حذف من الكشف"
+                    title={language === 'en' ? 'Remove scan' : 'حذف من الكشف'}
                   >
                     <span className="material-symbols-outlined text-base">delete</span>
                   </button>
@@ -543,14 +573,19 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
               {ord.status === 'RESULT' && (
                 <div className="pt-2 border-t border-slate-200 dark:border-white/5 flex flex-col sm:flex-row gap-2 items-start sm:items-center">
                   <span className="text-xs font-bold text-slate-700 dark:text-[#dde2f5] whitespace-nowrap">
-                    ملخص النتيجة السريرية:
+                    {language === 'en' ? 'Clinical Result Summary:' : 'ملخص النتيجة السريرية:'}
                   </span>
                   <input
                     type="text"
+                    data-no-translate="true"
                     value={ord.resultSummary || ''}
                     onChange={(e) => handleUpdateOrderField(ord.id, 'resultSummary', e.target.value)}
-                    placeholder="مثال: فحص سليم طبيعي، لا توجد جلطات DVT أو توسعات شريانية..."
-                    className="flex-1 w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-xs p-2 rounded-lg border border-slate-200 dark:border-white/5 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    placeholder={
+                      language === 'en'
+                        ? 'e.g. Normal scan, no DVT or aneurysms observed...'
+                        : 'مثال: فحص سليم طبيعي، لا توجد جلطات DVT أو توسعات شريانية...'
+                    }
+                    className="flex-1 w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-xs p-2 rounded-lg border border-slate-200 dark:border-white/5 focus:outline-none focus:ring-1 focus:ring-emerald-500 no-translate clinical-data"
                   />
                 </div>
               )}
@@ -559,15 +594,22 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
               {ord.status === 'REPORT' && (
                 <div className="pt-2 border-t border-slate-200 dark:border-white/5 space-y-1.5">
                   <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-[#dde2f5]">
-                    <span>نص التقرير الإشعاعي المفصل (Radiological Findings & Impression):</span>
-                    <span className="text-[10px] text-sky-600 font-mono">سجل الأشعة الطبي</span>
+                    <span>
+                      {language === 'en'
+                        ? 'Detailed Radiology Report (Findings & Impression):'
+                        : 'نص التقرير الإشعاعي المفصل (Radiological Findings & Impression):'}
+                    </span>
+                    <span className="text-[10px] text-sky-600 font-mono">
+                      {language === 'en' ? 'Imaging Record' : 'سجل الأشعة الطبي'}
+                    </span>
                   </div>
                   <textarea
                     rows={3}
+                    data-no-translate="true"
                     value={ord.reportDetails || ''}
                     onChange={(e) => handleUpdateOrderField(ord.id, 'reportDetails', e.target.value)}
                     placeholder="Findings: Normal cardiac silhouette, clear lung fields, no pleural effusion. Impression: Clear chest."
-                    className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-lg border border-slate-200 dark:border-white/5 focus:outline-none focus:ring-1 focus:ring-sky-500 leading-relaxed resize-none"
+                    className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-lg border border-slate-200 dark:border-white/5 focus:outline-none focus:ring-1 focus:ring-sky-500 leading-relaxed resize-none no-translate clinical-data"
                   />
                 </div>
               )}
@@ -578,16 +620,25 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
                   <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-[#859394]">
                     <div className="flex items-center gap-1.5">
                       <span className="material-symbols-outlined text-xs text-amber-500">schedule</span>
-                      <span>طلب فحص جديد ({ord.orderedAt})</span>
+                      <span>
+                        {language === 'en' ? `Order logged (${ord.orderedAt})` : `طلب فحص جديد (${ord.orderedAt})`}
+                      </span>
                     </div>
-                    <span className="text-xs text-sky-600 dark:text-[#38BDF8] font-semibold">أو اكتب التقرير/النتيجة الآن:</span>
+                    <span className="text-xs text-sky-600 dark:text-[#38BDF8] font-semibold">
+                      {language === 'en' ? 'Or write report/result now:' : 'أو اكتب التقرير/النتيجة الآن:'}
+                    </span>
                   </div>
                   <input
                     type="text"
+                    data-no-translate="true"
                     value={ord.reportDetails || ord.resultSummary || ''}
                     onChange={(e) => handleUpdateOrderField(ord.id, 'reportDetails', e.target.value)}
-                    placeholder="مثال: تقرير أشعة الصدر: الصدر سليم ولا توجد ارتشاحات رئوية..."
-                    className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-lg border border-amber-300 dark:border-amber-700/50 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    placeholder={
+                      language === 'en'
+                        ? 'e.g. Chest X-Ray: Normal cardiothoracic ratio, clear costophrenic angles...'
+                        : 'مثال: تقرير أشعة الصدر: الصدر سليم ولا توجد ارتشاحات رئوية...'
+                    }
+                    className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-lg border border-amber-300 dark:border-amber-700/50 focus:outline-none focus:ring-1 focus:ring-sky-500 no-translate clinical-data"
                   />
                 </div>
               )}

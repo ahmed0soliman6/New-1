@@ -2,7 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { PatientListItem, ScreenType } from '../../types';
 import { usePermissions } from '../../context/AuthContext';
 import { PatientDetailFullScreen } from './PatientDetailFullScreen';
-import { toEnglishDigits } from '../../utils/numberUtils';
+import { toEnglishDigits, formatAppDate } from '../../utils/numberUtils';
+import { useLanguage } from '../../i18n/LanguageContext';
 import type {
   FollowUp,
   Invoice,
@@ -60,6 +61,7 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
   followUps = [],
 }) => {
   const { canAccess } = usePermissions();
+  const { language, isRTL, t } = useLanguage();
   const [viewingPatientId, setViewingPatientId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [patientToDelete, setPatientToDelete] = useState<PatientListItem | null>(null);
@@ -223,9 +225,9 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
                       </div>
 
                       <div className="text-xs text-slate-500 dark:text-[#859394] flex flex-wrap items-center gap-x-3 gap-y-1">
-                        <span className="font-mono">{toEnglishDigits(p.phone || 'بدون هاتف')}</span>
+                        <span className="font-mono">{toEnglishDigits(p.phone || (language === 'en' ? 'No phone' : 'بدون هاتف'))}</span>
                         <span>•</span>
-                        <span>{toEnglishDigits(p.age)} سنة</span>
+                        <span>{toEnglishDigits(p.age)} {language === 'en' ? 'yrs' : 'سنة'}</span>
                         {p.address && (
                           <>
                             <span>•</span>
@@ -234,11 +236,11 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
                         )}
                         <span>•</span>
                         <span className="text-[#008f97] dark:text-[#00c2cb] font-semibold">
-                          {toEnglishDigits(pVisitsCount)} كشوفات
+                          {toEnglishDigits(pVisitsCount)} {language === 'en' ? 'Visits' : 'كشوفات'}
                         </span>
                         <span>•</span>
                         <span className="text-purple-600 dark:text-[#d0bcff]">
-                          {toEnglishDigits(pPrescriptionsCount)} روشتات
+                          {toEnglishDigits(pPrescriptionsCount)} {language === 'en' ? 'Prescriptions' : 'روشتات'}
                         </span>
                       </div>
 
@@ -246,19 +248,19 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
                       <div className="text-[11px] text-slate-500 dark:text-[#859394] flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 font-mono">
                         <div className="flex items-center gap-1 text-slate-700 dark:text-slate-300">
                           <span className="material-symbols-outlined text-[13px] text-[#008f97] dark:text-[#00c2cb]">calendar_today</span>
-                          <span>تاريخ التسجيل: {toEnglishDigits(p.registrationDate || '—')}</span>
+                          <span>{language === 'en' ? 'Registered:' : 'تاريخ التسجيل:'} {toEnglishDigits(p.registrationDate || '—')}</span>
                           {p.registrationTime && (
                             <span className="text-[#008f97] dark:text-[#00c2cb] font-bold">
-                              الساعة {toEnglishDigits(p.registrationTime)}
+                              {language === 'en' ? 'at ' : 'الساعة '}{toEnglishDigits(p.registrationTime)}
                             </span>
                           )}
                         </div>
                         {p.lastVisitDate && (
                           <div className="flex items-center gap-1 text-teal-700 dark:text-teal-400">
                             <span className="material-symbols-outlined text-[13px]">history</span>
-                            <span>آخر زيارة: {toEnglishDigits(p.lastVisitDate)}</span>
+                            <span>{language === 'en' ? 'Last Visit:' : 'آخر زيارة:'} {toEnglishDigits(p.lastVisitDate)}</span>
                             {p.lastVisitTime && (
-                              <span className="font-bold">الساعة {toEnglishDigits(p.lastVisitTime)}</span>
+                              <span className="font-bold">{language === 'en' ? 'at ' : 'الساعة '}{toEnglishDigits(p.lastVisitTime)}</span>
                             )}
                           </div>
                         )}

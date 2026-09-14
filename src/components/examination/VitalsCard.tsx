@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 interface VitalsData {
   bp: string;
@@ -16,6 +17,7 @@ interface VitalsCardProps {
 }
 
 export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onSave }) => {
+  const { language } = useLanguage();
   const [vitals, setVitals] = useState<VitalsData>({
     bp: initialVitals?.bp || '',
     pulse: initialVitals?.pulse || '',
@@ -50,10 +52,10 @@ export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onSave })
           </div>
           <div>
             <h3 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">
-              العلامات الحيوية والقياسات البدنية (Vital Signs & BMI)
+              {language === 'en' ? 'Vital Signs & Physical Measurements' : 'العلامات الحيوية والقياسات البدنية'}
             </h3>
             <p className="text-[11px] text-slate-500 dark:text-[#859394]">
-              تسجيل ومتابعة المؤشرات الحيوية اللحظية للمريض
+              {language === 'en' ? 'Record and track real-time patient vital indicators' : 'تسجيل ومتابعة المؤشرات الحيوية اللحظية للمريض'}
             </p>
           </div>
         </div>
@@ -62,7 +64,7 @@ export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onSave })
           {savedFeedback && (
             <span className="text-[11px] font-bold text-emerald-600 dark:text-[#10B981] flex items-center gap-1">
               <span className="material-symbols-outlined text-sm">check</span>
-              <span>تم الحفظ</span>
+              <span>{language === 'en' ? 'Saved' : 'تم الحفظ'}</span>
             </span>
           )}
           <button
@@ -70,7 +72,7 @@ export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onSave })
             onClick={handleSave}
             className="px-3 py-1.5 rounded-xl bg-teal-50 dark:bg-[#00c2cb]/15 text-[#008f97] dark:text-[#00c2cb] hover:bg-teal-100 text-xs font-bold transition-all cursor-pointer"
           >
-            تثبيت القياسات
+            {language === 'en' ? 'Save Measurements' : 'تثبيت القياسات'}
           </button>
         </div>
       </div>
@@ -79,8 +81,8 @@ export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onSave })
         {/* Blood Pressure */}
         <div className="bg-slate-50 dark:bg-[#080e1b] p-3 rounded-xl border border-slate-200 dark:border-white/5 flex flex-col gap-1">
           <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-[#859394]">
-            <span>الضغط (BP)</span>
-            <span className="w-2 h-2 rounded-full bg-amber-500" title="مرتفع طفيف"></span>
+            <span>{language === 'en' ? 'Blood Pressure (BP)' : 'الضغط (BP)'}</span>
+            <span className="w-2 h-2 rounded-full bg-amber-500" title={language === 'en' ? 'Slightly elevated' : 'مرتفع طفيف'}></span>
           </div>
           <div className="flex items-baseline gap-1">
             <input
@@ -95,7 +97,7 @@ export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onSave })
 
         {/* Pulse */}
         <div className="bg-slate-50 dark:bg-[#080e1b] p-3 rounded-xl border border-slate-200 dark:border-white/5 flex flex-col gap-1">
-          <span className="text-[11px] text-slate-500 dark:text-[#859394]">النبض (HR)</span>
+          <span className="text-[11px] text-slate-500 dark:text-[#859394]">{language === 'en' ? 'Pulse (HR)' : 'النبض (HR)'}</span>
           <div className="flex items-baseline gap-1">
             <input
               type="text"
@@ -109,7 +111,7 @@ export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onSave })
 
         {/* Temperature */}
         <div className="bg-slate-50 dark:bg-[#080e1b] p-3 rounded-xl border border-slate-200 dark:border-white/5 flex flex-col gap-1">
-          <span className="text-[11px] text-slate-500 dark:text-[#859394]">الحرارة (Temp)</span>
+          <span className="text-[11px] text-slate-500 dark:text-[#859394]">{language === 'en' ? 'Temperature (Temp)' : 'الحرارة (Temp)'}</span>
           <div className="flex items-baseline gap-1">
             <input
               type="text"
@@ -124,7 +126,7 @@ export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onSave })
         {/* Blood Sugar */}
         <div className="bg-slate-50 dark:bg-[#080e1b] p-3 rounded-xl border border-slate-200 dark:border-white/5 flex flex-col gap-1">
           <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-[#859394]">
-            <span>السكر (RBS)</span>
+            <span>{language === 'en' ? 'Blood Sugar (RBS)' : 'السكر (RBS)'}</span>
             <span className="w-2 h-2 rounded-full bg-purple-500"></span>
           </div>
           <div className="flex items-baseline gap-1">
@@ -140,7 +142,7 @@ export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onSave })
 
         {/* Weight */}
         <div className="bg-slate-50 dark:bg-[#080e1b] p-3 rounded-xl border border-slate-200 dark:border-white/5 flex flex-col gap-1">
-          <span className="text-[11px] text-slate-500 dark:text-[#859394]">الوزن (Weight)</span>
+          <span className="text-[11px] text-slate-500 dark:text-[#859394]">{language === 'en' ? 'Weight' : 'الوزن (Weight)'}</span>
           <div className="flex items-baseline gap-1">
             <input
               type="text"
@@ -154,7 +156,7 @@ export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onSave })
 
         {/* Height */}
         <div className="bg-slate-50 dark:bg-[#080e1b] p-3 rounded-xl border border-slate-200 dark:border-white/5 flex flex-col gap-1">
-          <span className="text-[11px] text-slate-500 dark:text-[#859394]">الطول (Height)</span>
+          <span className="text-[11px] text-slate-500 dark:text-[#859394]">{language === 'en' ? 'Height' : 'الطول (Height)'}</span>
           <div className="flex items-baseline gap-1">
             <input
               type="text"
@@ -169,11 +171,11 @@ export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onSave })
         {/* SpO2 & BMI */}
         <div className="bg-slate-50 dark:bg-[#080e1b] p-3 rounded-xl border border-slate-200 dark:border-white/5 flex flex-col justify-between">
           <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-[#859394]">
-            <span>الأكسجين SpO2</span>
+            <span>{language === 'en' ? 'Oxygen (SpO2)' : 'الأكسجين SpO2'}</span>
             <span className="font-mono font-bold text-emerald-600 dark:text-[#10B981]">{vitals.spo2}%</span>
           </div>
           <div className="text-[11px] font-semibold text-slate-700 dark:text-[#bbc9ca] flex items-center justify-between pt-1 border-t border-slate-200 dark:border-white/5">
-            <span>كتلة الجسم BMI:</span>
+            <span>{language === 'en' ? 'BMI:' : 'كتلة الجسم BMI:'}</span>
             <span className="font-mono font-bold text-amber-600 dark:text-amber-400">{bmi || '--'}</span>
           </div>
         </div>

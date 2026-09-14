@@ -38,6 +38,7 @@ import {
   ExamDisplaySettings,
 } from '../../utils/examDisplaySettings';
 import { useLanguage } from '../../i18n/LanguageContext';
+import { formatAppDate, formatAppTime } from '../../utils/numberUtils';
 import {
   RecurringRxTemplate,
   loadRecurringTemplates,
@@ -516,15 +517,15 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
 
   // Generate WhatsApp formatted message
   const generateWhatsAppMessage = () => {
-    const todayStr = new Date().toLocaleDateString('ar-EG', {
+    const todayStr = formatAppDate(new Date(), {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
-    });
+    }, language);
 
     const diagnosisList = patientDiagnoses.length > 0
       ? patientDiagnoses.map((d) => d.nameAr).join('، ')
-      : 'فحص واستشارة باطنة';
+      : (language === 'en' ? 'Internal Medicine Consultation' : 'فحص واستشارة باطنة');
 
     let medsSection = '';
     if (activePrescription.length > 0) {
@@ -561,11 +562,11 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
     let followUpSection = '';
     if (followupDate) {
       try {
-        const formattedFollowUp = new Date(followupDate).toLocaleDateString('ar-EG', {
+        const formattedFollowUp = formatAppDate(followupDate, {
           year: 'numeric',
           month: 'long',
           day: 'numeric',
-        });
+        }, language);
         followUpSection = `\n\n🗓 *موعد المتابعة الاستشارية القادمة:* ${formattedFollowUp}`;
       } catch {
         followUpSection = `\n\n🗓 *موعد المتابعة الاستشارية القادمة:* ${followupDate}`;
@@ -1170,7 +1171,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                 : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
             }`}
           >
-            عرض الكل (All Cards)
+            {language === 'en' ? 'All Cards' : 'عرض الكل'}
           </button>
 
           {/* Vitals Tab */}
@@ -1184,7 +1185,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                   : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
               }`}
             >
-              العلامات الحيوية
+              {language === 'en' ? 'Vital Signs' : 'العلامات الحيوية'}
             </button>
           )}
 
@@ -1198,7 +1199,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                 : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
             }`}
           >
-            الشكوى والأمراض المزمنة
+            {language === 'en' ? 'Intake & Chronic' : 'الشكوى والأمراض المزمنة'}
           </button>
 
           {/* Labs Tab */}
@@ -1212,7 +1213,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                   : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
               }`}
             >
-              <span>المعمل والتحاليل</span>
+              <span>{language === 'en' ? 'Labs & Diagnostics' : 'المعمل والتحاليل'}</span>
               <span className="w-4 h-4 rounded-full bg-emerald-100 dark:bg-white/20 text-emerald-800 dark:text-white text-[10px] flex items-center justify-center font-bold">
                 {labOrders.length}
               </span>
@@ -1230,7 +1231,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                   : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
               }`}
             >
-              <span>الأشعة والتصوير</span>
+              <span>{language === 'en' ? 'Radiology & Imaging' : 'الأشعة والتصوير'}</span>
               <span className="w-4 h-4 rounded-full bg-sky-100 dark:bg-white/20 text-sky-800 dark:text-white text-[10px] flex items-center justify-center font-bold">
                 {radiologyOrders.length}
               </span>
@@ -1247,7 +1248,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                 : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
             }`}
           >
-            <span>التشخيص</span>
+            <span>{language === 'en' ? 'Diagnosis' : 'التشخيص'}</span>
             <span className="w-4 h-4 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-800 text-[10px] flex items-center justify-center font-bold">
               {patientDiagnoses.length}
             </span>
@@ -1263,7 +1264,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                 : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
             }`}
           >
-            <span>الأدوية والروشتة</span>
+            <span>{language === 'en' ? 'Medications & Rx' : 'الأدوية والروشتة'}</span>
             <span className="w-4 h-4 rounded-full bg-teal-100 dark:bg-teal-900/40 text-teal-800 text-[10px] flex items-center justify-center font-bold">
               {activePrescription.length}
             </span>
@@ -1279,7 +1280,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                 : 'text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5'
             }`}
           >
-            المتابعة والنظام الغذائي
+            {language === 'en' ? 'Follow-up & Guidance' : 'المتابعة والنظام الغذائي'}
           </button>
         </div>
       </div>
@@ -1293,7 +1294,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb] text-lg">medical_information</span>
                 <span className="text-xs font-bold text-slate-900 dark:text-[#dde2f5]">
-                  الشكوى والأعراض والأمراض المزمنة (Intake & Chronic Conditions)
+                  {language === 'en' ? 'Intake & Chronic Conditions' : 'الشكوى والأعراض والأمراض المزمنة'}
                 </span>
               </div>
               <button
@@ -1302,7 +1303,11 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                 className="flex items-center gap-1 px-3 py-1 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs font-bold transition-all cursor-pointer shadow-xs"
               >
                 <span className="material-symbols-outlined text-sm">edit</span>
-                <span>{isEditingIntakeCard ? 'إغلاق التعديل' : 'تعديل الشكوى والأمراض'}</span>
+                <span>
+                  {isEditingIntakeCard
+                    ? (language === 'en' ? 'Close Edit' : 'إغلاق التعديل')
+                    : (language === 'en' ? 'Edit Complaints & Chronic' : 'تعديل الشكوى والأمراض')}
+                </span>
               </button>
             </div>
 
@@ -1312,20 +1317,23 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                 {/* Symptoms & Complaint */}
                 <div className="space-y-1.5">
                   <span className="font-bold text-slate-700 dark:text-[#859394] block text-[11px]">
-                    الشكوى والأعراض المقدمة:
+                    {language === 'en' ? 'Presented Complaints & Symptoms:' : 'الشكوى والأعراض المقدمة:'}
                   </span>
                   <div className="flex flex-wrap gap-1.5">
                     {complaint ? (
                       complaint.split('•').map((item, idx) => (
                         <span
                           key={idx}
-                          className="px-2.5 py-1 rounded-lg bg-teal-100/70 dark:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#45dee7] font-bold text-[11px] border border-[#00c2cb]/30"
+                          data-no-translate="true"
+                          className="px-2.5 py-1 rounded-lg bg-teal-100/70 dark:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#45dee7] font-bold text-[11px] border border-[#00c2cb]/30 no-translate clinical-data"
                         >
                           {item.trim()}
                         </span>
                       ))
                     ) : (
-                      <span className="text-slate-400 italic text-[11px]">لا توجد أعراض مسجلة</span>
+                      <span className="text-slate-400 italic text-[11px]">
+                        {language === 'en' ? 'No symptoms recorded' : 'لا توجد أعراض مسجلة'}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -1333,20 +1341,23 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                 {/* Chronic Diseases */}
                 <div className="space-y-1.5">
                   <span className="font-bold text-slate-700 dark:text-[#859394] block text-[11px]">
-                    الأمراض المزمنة للمريض:
+                    {language === 'en' ? "Patient's Chronic Conditions:" : 'الأمراض المزمنة للمريض:'}
                   </span>
                   <div className="flex flex-wrap gap-1.5">
                     {patientChronicConditions.length > 0 ? (
                       patientChronicConditions.map((cond) => (
                         <span
                           key={cond}
-                          className="px-2.5 py-1 rounded-lg bg-rose-100/70 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 font-bold text-[11px] border border-rose-300 dark:border-rose-900/40"
+                          data-no-translate="true"
+                          className="px-2.5 py-1 rounded-lg bg-rose-100/70 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 font-bold text-[11px] border border-rose-300 dark:border-rose-900/40 no-translate clinical-data"
                         >
                           {cond}
                         </span>
                       ))
                     ) : (
-                      <span className="text-slate-400 italic text-[11px]">لا توجد أمراض مزمنة مسجلة</span>
+                      <span className="text-slate-400 italic text-[11px]">
+                        {language === 'en' ? 'No chronic conditions recorded' : 'لا توجد أمراض مزمنة مسجلة'}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -1594,10 +1605,14 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
               <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb] text-xl shrink-0">bookmark</span>
               <div>
                 <span className="text-xs font-bold text-slate-900 dark:text-[#dde2f5] block">
-                  استدعاء سريع من قوالب الروشتة والأدلة الطبية (Quick Template & Clinical Guides):
+                  {language === 'en'
+                    ? 'Quick Prescription Templates & Clinical Protocols:'
+                    : 'استدعاء سريع من قوالب الروشتة والأدلة الطبية:'}
                 </span>
                 <p className="text-[11px] text-slate-500 dark:text-[#859394]">
-                  اختر قالباً محفوظاً أو استدعِ بروتوكولاً إكلينيكياً معتمداً لتعبئة الروشتة فوراً
+                  {language === 'en'
+                    ? 'Select a saved template or protocol to auto-fill prescription'
+                    : 'اختر قالباً محفوظاً أو استدعِ بروتوكولاً إكلينيكياً معتمداً لتعبئة الروشتة فوراً'}
                 </p>
               </div>
             </div>
@@ -1608,10 +1623,12 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                 onChange={(e) => handleApplyRecurringTemplate(e.target.value)}
                 className="w-full sm:w-64 bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/10 font-bold focus:outline-none focus:ring-1 focus:ring-[#00c2cb] cursor-pointer"
               >
-                <option value="">-- اختر قالب روشتة متكررة لاستدعائه --</option>
+                <option value="">
+                  {language === 'en' ? '-- Select a recurring template --' : '-- اختر قالب روشتة متكررة لاستدعائه --'}
+                </option>
                 {recurringTemplates.map((tmpl) => (
                   <option key={tmpl.id} value={tmpl.id}>
-                    📋 {tmpl.title} ({tmpl.prescription?.length || 0} أدوية)
+                    📋 {tmpl.title} ({tmpl.prescription?.length || 0} {language === 'en' ? 'drugs' : 'أدوية'})
                   </option>
                 ))}
               </select>
@@ -1620,10 +1637,10 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                 type="button"
                 onClick={() => setShowClinicalGuidesPicker(true)}
                 className="px-3 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs whitespace-nowrap"
-                title="استدعاء مباشر من الأدلة والبروتوكولات الطبية القياسية"
+                title={language === 'en' ? 'Quick access to standard clinical protocols' : 'استدعاء مباشر من الأدلة والبروتوكولات الطبية القياسية'}
               >
                 <span className="material-symbols-outlined text-base">menu_book</span>
-                <span>الأدلة الطبية</span>
+                <span>{language === 'en' ? 'Clinical Guides' : 'الأدلة الطبية'}</span>
               </button>
             </div>
           </div>
@@ -2272,12 +2289,12 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
               </div>
             )}
             <div className="flex items-center gap-1">
-              <span className="font-bold text-slate-600">السن:</span>
-              <span className="font-bold text-slate-900">{patient ? `${patient.age} سنة` : '-'}</span>
+              <span className="font-bold text-slate-600">{language === 'en' ? 'Age:' : 'السن:'}</span>
+              <span className="font-bold text-slate-900">{patient ? (language === 'en' ? `${patient.age} yrs` : `${patient.age} سنة`) : '-'}</span>
             </div>
             <div className="flex items-center gap-1">
-              <span className="font-bold text-slate-600">التاريخ:</span>
-              <span className="font-mono text-slate-900">{new Date().toLocaleDateString('ar-EG')}</span>
+              <span className="font-bold text-slate-600">{language === 'en' ? 'Date:' : 'التاريخ:'}</span>
+              <span className="font-mono text-slate-900">{formatAppDate(new Date(), undefined, language)}</span>
             </div>
           </div>
 
@@ -2500,17 +2517,17 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                     </div>
                     {patient?.fileNumber && (
                       <div className="flex items-center gap-1">
-                        <span className="font-bold text-slate-600">رقم الملف:</span>
+                        <span className="font-bold text-slate-600">{language === 'en' ? 'File #:' : 'رقم الملف:'}</span>
                         <span className="font-bold text-slate-900">#{patient.fileNumber}</span>
                       </div>
                     )}
                     <div className="flex items-center gap-1">
-                      <span className="font-bold text-slate-600">السن:</span>
-                      <span className="font-bold text-slate-900">{patient ? `${patient.age} سنة` : '-'}</span>
+                      <span className="font-bold text-slate-600">{language === 'en' ? 'Age:' : 'السن:'}</span>
+                      <span className="font-bold text-slate-900">{patient ? (language === 'en' ? `${patient.age} yrs` : `${patient.age} سنة`) : '-'}</span>
                     </div>
                     <div className="flex items-center gap-1">
-                      <span className="font-bold text-slate-600">التاريخ:</span>
-                      <span className="font-mono text-slate-900">{new Date().toLocaleDateString('ar-EG')}</span>
+                      <span className="font-bold text-slate-600">{language === 'en' ? 'Date:' : 'التاريخ:'}</span>
+                      <span className="font-mono text-slate-900">{formatAppDate(new Date(), undefined, language)}</span>
                     </div>
                   </div>
 

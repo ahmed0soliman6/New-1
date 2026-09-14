@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { QueueItem, PatientListItem, ScreenType } from '../../types';
+import { useLanguage } from '../../i18n/LanguageContext';
+import { formatAppTime } from '../../utils/numberUtils';
 
 interface PatientIntakeScreenProps {
   onAddPatientToQueue: (item: QueueItem) => void;
@@ -47,6 +49,7 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
   initialData = null,
   onClearInitialData,
 }) => {
+  const { language, isRTL, t } = useLanguage();
   const [mode, setMode] = useState<'new' | 'existing'>('new');
   // Form fields start CLEAN for new patients
   const [name, setName] = useState('');
@@ -264,7 +267,7 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
       age: Number(age) || 0,
       gender: gender || '',
       visitType: selectedVisitType.name,
-      arrivalTime: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+      arrivalTime: formatAppTime(new Date(), language),
       elapsedMinutes: 1,
       paidAmount: selectedVisitType.fee,
       paymentMethod: payMethod,
