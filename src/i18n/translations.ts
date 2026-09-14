@@ -47,6 +47,7 @@ export const translations: TranslationDictionary = {
   'nav.dashboard': { ar: 'لوحة التحكم', en: 'Dashboard' },
   'nav.newVisit': { ar: 'تسجيل زيارة جديدة', en: 'Patient Intake' },
   'nav.waitingQueue': { ar: 'المرضى في الانتظار', en: 'Waiting Queue' },
+  'nav.queue': { ar: 'طابور الانتظار', en: 'Waiting Queue' },
   'nav.clinicalExam': { ar: 'الكشف الطبي للغرفة', en: 'Clinical Exam' },
   'nav.upcomingFollowups': { ar: 'المتابعة القادمة والمواعيد', en: 'Appointments & Follow-ups' },
   'nav.patientRecords': { ar: 'ملفات المرضى (EMR)', en: 'Patient Records (EMR)' },

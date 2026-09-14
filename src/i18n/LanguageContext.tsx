@@ -15,10 +15,10 @@ interface LanguageContextType {
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
 // Cache for node original text values
-const originalTextMap = new WeakMap<Node, string>();
-const originalPlaceholderMap = new WeakMap<Element, string>();
-const originalTitleMap = new WeakMap<Element, string>();
-const originalAriaLabelMap = new WeakMap<Element, string>();
+let originalTextMap = new WeakMap<Node, string>();
+let originalPlaceholderMap = new WeakMap<Element, string>();
+let originalTitleMap = new WeakMap<Element, string>();
+let originalAriaLabelMap = new WeakMap<Element, string>();
 
 export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [language, setLanguageState] = useState<Language>(() => {
@@ -100,6 +100,13 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
       }
     };
 
+    if (language === 'ar') {
+      originalTextMap = new WeakMap<Node, string>();
+      originalPlaceholderMap = new WeakMap<Element, string>();
+      originalTitleMap = new WeakMap<Element, string>();
+      originalAriaLabelMap = new WeakMap<Element, string>();
+    }
+
     const translateElementAttributes = (el: Element) => {
       if (
         el.closest('#printable-prescription-pad') ||
@@ -123,11 +130,11 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
         const ph = el.placeholder;
         if (ph && ph.trim()) {
           if (language === 'en') {
-            if (!originalPlaceholderMap.has(el)) {
-              originalPlaceholderMap.set(el, ph);
-            }
             const translated = translateArabicToEnglish(ph.trim());
             if (translated !== ph.trim()) {
+              if (!originalPlaceholderMap.has(el)) {
+                originalPlaceholderMap.set(el, ph);
+              }
               safeModify(() => {
                 el.placeholder = translated;
               });
@@ -149,11 +156,11 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
       if (el instanceof HTMLElement) {
         if (el.title && el.title.trim()) {
           if (language === 'en') {
-            if (!originalTitleMap.has(el)) {
-              originalTitleMap.set(el, el.title);
-            }
             const translated = translateArabicToEnglish(el.title.trim());
             if (translated !== el.title.trim()) {
+              if (!originalTitleMap.has(el)) {
+                originalTitleMap.set(el, el.title);
+              }
               safeModify(() => {
                 el.title = translated;
               });
@@ -174,11 +181,11 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
         const ariaLabel = el.getAttribute('aria-label');
         if (ariaLabel && ariaLabel.trim()) {
           if (language === 'en') {
-            if (!originalAriaLabelMap.has(el)) {
-              originalAriaLabelMap.set(el, ariaLabel);
-            }
             const translated = translateArabicToEnglish(ariaLabel.trim());
             if (translated !== ariaLabel.trim()) {
+              if (!originalAriaLabelMap.has(el)) {
+                originalAriaLabelMap.set(el, ariaLabel);
+              }
               safeModify(() => {
                 el.setAttribute('aria-label', translated);
               });
@@ -236,18 +243,15 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
         if (!trimmed) return;
 
         if (language === 'en') {
-          // Store original Arabic source if not yet stored
-          const original = originalTextMap.get(node) ?? raw;
-          if (!originalTextMap.has(node)) {
-            originalTextMap.set(node, raw);
-          }
-
           // Check if there's an Arabic translation from the original source
-          const origTrimmed = original.trim();
-          const translated = translateArabicToEnglish(origTrimmed);
-          if (translated !== origTrimmed) {
-            const leadingWs = original.match(/^\s*/)?.[0] || '';
-            const trailingWs = original.match(/\s*$/)?.[0] || '';
+          const translated = translateArabicToEnglish(trimmed);
+          if (translated !== trimmed) {
+            // Store original Arabic source if not yet stored
+            if (!originalTextMap.has(node)) {
+              originalTextMap.set(node, raw);
+            }
+            const leadingWs = raw.match(/^\s*/)?.[0] || '';
+            const trailingWs = raw.match(/\s*$/)?.[0] || '';
             const finalValue = leadingWs + translated + trailingWs;
             if (node.nodeValue !== finalValue) {
               safeModify(() => {
