@@ -14,8 +14,7 @@ export type ScreenType =
   | 'prescription-pad'
   | 'booking-landing'
   | 'system-settings'
-  | 'settings'
-  | 'internal-chat';
+  | 'settings';
 
 export interface PatientListItem {
   id: string;

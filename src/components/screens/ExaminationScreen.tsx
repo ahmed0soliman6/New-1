@@ -237,12 +237,8 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
   // Dynamic Patient Diagnoses - starts empty
   const [patientDiagnoses, setPatientDiagnoses] = useState<PatientDiagnosis[]>([]);
 
-  // Follow-up
-  const [followupDate, setFollowupDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 14);
-    return d.toISOString().split('T')[0];
-  });
+  // Follow-up: initially empty so doctor decides whether and when to schedule
+  const [followupDate, setFollowupDate] = useState('');
   const [lifestyleAdvice, setLifestyleAdvice] = useState('');
 
   const [showSuccessModal, setShowSuccessModal] = useState(false);
