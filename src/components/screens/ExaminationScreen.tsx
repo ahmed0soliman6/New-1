@@ -24,6 +24,7 @@ import { DiagnosisCard, PatientDiagnosis } from '../examination/DiagnosisCard';
 import { MedicationsCard } from '../examination/MedicationsCard';
 import { FollowupCard } from '../examination/FollowupCard';
 import { PreviousVisitCard } from '../examination/PreviousVisitCard';
+import { PatientDetailFullScreen } from './PatientDetailFullScreen';
 import { recordExamToClinicalMemory, getSmartClinicalSuggestions } from '../../utils/clinicalRecommender';
 import {
   Visit,
@@ -132,6 +133,9 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
 
   // Navigation tabs / quick section jump
   const [activeTab, setActiveTab] = useState<'all' | 'vitals' | 'symptoms' | 'lab' | 'rad' | 'diag' | 'rx' | 'followup'>('all');
+
+  // Medical Dossier (Full EMR) view toggle
+  const [showMedicalDossier, setShowMedicalDossier] = useState(false);
 
   // Display toggles from settings (Vitals, Labs, Radiology)
   const [displaySettings, setDisplaySettings] = useState<ExamDisplaySettings>(loadExamDisplaySettings);
@@ -910,10 +914,16 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
               <div className="min-w-0 flex-1 space-y-2">
                 {!isEditingPatientInfo ? (
                   <div className="space-y-1.5">
-                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                       <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-[#dde2f5] break-words max-w-full">
                         {editablePatientName}
                       </h1>
+                      {editablePatientPhone && (
+                        <div className="text-xs text-slate-700 dark:text-[#dde2f5] flex items-center gap-1.5 bg-slate-100 dark:bg-white/10 px-2.5 py-1 rounded-lg font-mono font-bold border border-slate-200/60 dark:border-white/5">
+                          <span className="material-symbols-outlined text-xs text-teal-600 dark:text-[#00c2cb] shrink-0">call</span>
+                          <span dir="ltr">{editablePatientPhone}</span>
+                        </div>
+                      )}
                       <span className="px-2.5 py-0.5 rounded-full bg-teal-100 dark:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#45dee7] text-[11px] font-bold whitespace-nowrap">
                         رقم الملف: #{patient.fileNumber || 1}
                       </span>
@@ -1080,19 +1090,12 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                   </div>
                 )}
 
-                {/* Badges: Allergies & Chronic Diseases */}
+                {/* Badges: Allergies */}
                 <div className="flex flex-wrap items-center gap-2 pt-1">
                   {patient.allergies && patient.allergies.length > 0 && (
                     <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/40 text-rose-700 dark:text-rose-400 text-[11px] font-bold">
                       <span className="material-symbols-outlined text-sm shrink-0">warning</span>
                       <span className="leading-snug">حساسية: {patient.allergies.join('، ')}</span>
-                    </div>
-                  )}
-
-                  {editablePatientPhone && (
-                    <div className="text-[11px] text-slate-500 dark:text-[#859394] flex items-center gap-1 bg-slate-100 dark:bg-white/5 px-2.5 py-1 rounded-lg">
-                      <span className="material-symbols-outlined text-xs text-teal-600 shrink-0">call</span>
-                      <span className="font-mono">{editablePatientPhone}</span>
                     </div>
                   )}
                 </div>
@@ -1104,13 +1107,10 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  if (onSelectPatient && patient) {
-                    onSelectPatient(patient);
-                  }
-                  onNavigate('patients');
+                  setShowMedicalDossier(true);
                 }}
-                className="w-full md:w-auto px-3 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
-                title="فتح وتحميل الملف الطبي الشامل للمريض (PDF)"
+                className="w-full md:w-auto px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs active:scale-95"
+                title="فتح وتحميل وتصفح الملف الطبي الشامل للمريض (PDF)"
               >
                 <span className="material-symbols-outlined text-sm shrink-0">folder_shared</span>
                 <span className="whitespace-nowrap truncate">الملف الطبي الشامل</span>
@@ -2669,6 +2669,53 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                 <span className="material-symbols-outlined text-sm font-bold">print</span>
                 <span>طباعة الروشتة الآن</span>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Comprehensive Medical Dossier Modal (الملف الطبي الشامل للمريض) */}
+      {showMedicalDossier && patient && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/80 backdrop-blur-xs flex flex-col p-2 sm:p-4 md:p-6 animate-in fade-in">
+          <div className="w-full max-w-7xl mx-auto bg-white dark:bg-[#111A2E] rounded-3xl shadow-2xl border border-slate-200 dark:border-white/10 overflow-hidden flex flex-col my-auto max-h-[96vh]">
+            <div className="flex items-center justify-between px-5 py-3.5 bg-gradient-to-r from-purple-700 to-indigo-700 text-white shrink-0 shadow-md">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center font-bold">
+                  <span className="material-symbols-outlined text-xl">folder_shared</span>
+                </div>
+                <div>
+                  <h2 className="font-black text-sm sm:text-base flex items-center gap-2">
+                    <span>الملف الطبي الشامل للمريض</span>
+                    <span className="bg-white/20 text-white text-xs font-mono px-2 py-0.5 rounded-md">
+                      #{patient.fileNumber || 1}
+                    </span>
+                  </h2>
+                  <p className="text-xs text-purple-100 font-medium">{editablePatientName || patient.name}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMedicalDossier(false)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs font-bold transition-all cursor-pointer active:scale-95"
+              >
+                <span className="material-symbols-outlined text-sm">close</span>
+                <span>إغلاق وعودة للكشف</span>
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50 dark:bg-[#080e1b]">
+              <PatientDetailFullScreen
+                patient={patient}
+                onBack={() => setShowMedicalDossier(false)}
+                onSelectPatientForExam={() => setShowMedicalDossier(false)}
+                onNavigate={(screen) => {
+                  setShowMedicalDossier(false);
+                  onNavigate(screen);
+                }}
+                visits={visits}
+                prescriptions={prescriptions}
+                labOrders={allLabOrders}
+                radiologyOrders={allRadiologyOrders}
+              />
             </div>
           </div>
         </div>

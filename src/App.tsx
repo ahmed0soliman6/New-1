@@ -335,7 +335,8 @@ function ClinicApp() {
     }
   }, [allowedScreens, activeScreen, canAccess]);
 
-  const handleNavigate = (screen: ScreenType) => {
+  const handleNavigate = (rawScreen: ScreenType | string) => {
+    const screen = (rawScreen === 'patients' ? 'patient-records' : rawScreen) as ScreenType;
     if (!canAccess(screen)) {
       console.warn(`[Permissions] Navigation to '${screen}' blocked by user permissions.`);
       const firstPermitted =
@@ -2739,10 +2740,11 @@ function ClinicApp() {
                 />
               )}
 
-              {activeScreen === 'patient-records' && (
+              {(activeScreen === 'patient-records' || (activeScreen as string) === 'patients') && (
                 <PatientListItemsScreen
                   patients={patients}
                   patientsCanonical={patientsCanonical}
+                  selectedPatientId={activeExamPatient?.id}
                   onNavigate={handleNavigate}
                   onSelectPatientForExam={(p) => setActiveExamPatient(p)}
                   onDeletePatient={handleDeletePatient}

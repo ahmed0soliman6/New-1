@@ -44,6 +44,7 @@ export interface PatientListItemsScreenProps {
   labOrders?: LabOrder[];
   radiologyOrders?: RadiologyOrder[];
   followUps?: FollowUp[];
+  selectedPatientId?: string;
 }
 
 export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
@@ -53,6 +54,7 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
   onSelectPatientForExam,
   onDeletePatient,
   onUpdatePatient,
+  selectedPatientId,
   visits = [],
   invoices = [],
   prescriptions = [],
@@ -62,7 +64,7 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
 }) => {
   const { canAccess } = usePermissions();
   const { language, isRTL, t } = useLanguage();
-  const [viewingPatientId, setViewingPatientId] = useState<string | null>(null);
+  const [viewingPatientId, setViewingPatientId] = useState<string | null>(selectedPatientId || null);
   const [search, setSearch] = useState('');
   const [patientToDelete, setPatientToDelete] = useState<PatientListItem | null>(null);
 

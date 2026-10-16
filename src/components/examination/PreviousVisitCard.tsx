@@ -143,8 +143,12 @@ export const PreviousVisitCard: React.FC<PreviousVisitCardProps> = ({
       id="previous-visit-card"
       className="w-full rounded-2xl bg-gradient-to-br from-amber-50/40 via-white to-teal-50/30 dark:from-[#0d1829] dark:via-[#111A2E] dark:to-[#0f1d31] border-2 border-teal-500/30 dark:border-[#00c2cb]/30 shadow-sm transition-all overflow-hidden"
     >
-      {/* Header bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-4 sm:px-5 sm:py-3.5 bg-teal-500/10 dark:bg-[#00c2cb]/10 border-b border-teal-500/20 dark:border-[#00c2cb]/20">
+      {/* Header bar - Clickable anywhere to toggle expand/collapse */}
+      <div
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="flex flex-wrap items-center justify-between gap-3 p-4 sm:px-5 sm:py-3.5 bg-teal-500/10 dark:bg-[#00c2cb]/10 border-b border-teal-500/20 dark:border-[#00c2cb]/20 cursor-pointer select-none hover:bg-teal-500/15 dark:hover:bg-[#00c2cb]/15 transition-colors"
+        title={isExpanded ? (language === 'en' ? 'Click to collapse' : 'اضغط للطي') : (language === 'en' ? 'Click to expand' : 'اضغط لعرض التفاصيل')}
+      >
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl bg-[#00c2cb]/20 text-[#008f97] dark:text-[#45dee7] flex items-center justify-center font-bold">
             <span className="material-symbols-outlined text-lg">history_edu</span>
@@ -171,7 +175,10 @@ export const PreviousVisitCard: React.FC<PreviousVisitCardProps> = ({
           {onCopyMedications && medicationsList.length > 0 && (
             <button
               type="button"
-              onClick={handleCopy}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCopy();
+              }}
               className="px-3 py-1 rounded-full bg-white dark:bg-[#080e1b] hover:bg-teal-50 dark:hover:bg-teal-950/40 text-[#008f97] dark:text-[#45dee7] border border-[#00c2cb]/40 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
               title={language === 'en' ? 'Copy medications from previous visit directly into current prescription' : 'نسخ أدوية الزيارة السابقة إلى الروشتة الحالية مباشرة'}
             >
@@ -180,16 +187,13 @@ export const PreviousVisitCard: React.FC<PreviousVisitCardProps> = ({
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="text-slate-500 hover:text-slate-900 dark:text-[#859394] dark:hover:text-white p-1 rounded-lg hover:bg-slate-200/50 dark:hover:bg-white/5 transition-colors cursor-pointer"
-            title={isExpanded ? (language === 'en' ? 'Collapse' : 'طي البطاقة') : (language === 'en' ? 'Expand' : 'عرض التفاصيل')}
+          <div
+            className="text-slate-500 hover:text-slate-900 dark:text-[#859394] dark:hover:text-white p-1 rounded-lg hover:bg-slate-200/50 dark:hover:bg-white/10 transition-colors"
           >
             <span className="material-symbols-outlined text-base">
               {isExpanded ? 'expand_less' : 'expand_more'}
             </span>
-          </button>
+          </div>
         </div>
       </div>
 

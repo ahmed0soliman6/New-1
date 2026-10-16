@@ -79,12 +79,29 @@ function getMergedVisitTypesAndServices(): { id: string; name: string; fee: numb
   return Array.from(map.values());
 }
 
+export interface ConfirmedBookingDetails {
+  id: string;
+  patientName: string;
+  phone: string;
+  medicalCode: string;
+  date: string;
+  timeSlot: string;
+  branch: string;
+  visitType: string;
+  expectedFee: number;
+  notes?: string;
+  whatsappUrl: string;
+  whatsappText: string;
+  clinicPhone: string;
+}
+
 export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
   onAddAppointment,
   onNavigateToAppointments,
   isEmbed = false,
 }) => {
   const { language, isRTL, t } = useLanguage();
+  const [confirmedBooking, setConfirmedBooking] = useState<ConfirmedBookingDetails | null>(null);
   const [doctorProfile, setDoctorProfile] = useState<PrescriptionDoctorInfo>(() => getPrescriptionDoctorInfo());
   const [branches, setBranches] = useState<ClinicBranchItem[]>(() => getClinicBranches());
   const [visitTypes, setVisitTypes] = useState<{ id: string; name: string; fee: number }[]>(() => getMergedVisitTypesAndServices());
@@ -489,9 +506,34 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
       console.warn('Firestore booking write failure:', e);
     }
 
-    window.open(url, '_blank');
-    setToastMessage('تم إعداد طلب الحجز وفتح الواتساب لإرساله للعيادة وتسجيله بالنظام بنجاح ✓');
+    const confirmedData: ConfirmedBookingDetails = {
+      id: newApp.id,
+      patientName: newApp.patientName,
+      phone: newApp.phone,
+      medicalCode: newApp.medicalCode || `EG-${Math.floor(100 + Math.random() * 900)}`,
+      timeSlot: selectedTimeSlot,
+      date: scheduledDate,
+      branch: activeBranch?.name || 'الفرع الرئيسي',
+      visitType: visitType,
+      expectedFee,
+      notes: notes.trim(),
+      whatsappUrl: url,
+      whatsappText: text,
+      clinicPhone: doctorInfo.phone,
+    };
+
+    setConfirmedBooking(confirmedData);
+    setToastMessage('تم تسجيل طلب الحجز المباشر بنجاح! ✓');
     setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  // Reset booking form to make another appointment
+  const handleResetBooking = () => {
+    setConfirmedBooking(null);
+    setPatientName('');
+    setPhone('');
+    setNotes('');
+    setSelectedTimeSlot('');
   };
 
   // Copy structured text
@@ -511,6 +553,182 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
   };
 
   const bookingPageUrl = typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}#booking` : 'https://solimedical.com';
+
+  // Dedicated Confirmation Page View (شاشة تأكيد الحجز المباشر مع زر الواتساب)
+  if (confirmedBooking) {
+    return (
+      <div className={`w-full max-w-4xl mx-auto ${isEmbed ? 'p-0' : 'p-4 sm:p-6 pb-24'} space-y-6 text-slate-800 dark:text-[#dde2f5] animate-in fade-in duration-300`}>
+        {/* Toast Notification */}
+        {toastMessage && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900 dark:bg-[#18233C] text-white border border-emerald-500 px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 animate-in fade-in duration-200">
+            <span className="material-symbols-outlined text-emerald-400 text-xl">check_circle</span>
+            <span className="text-xs font-bold">{toastMessage}</span>
+          </div>
+        )}
+
+        {/* Doctor Header */}
+        <div className="bg-gradient-to-r from-slate-950 via-[#0a1829] to-[#0f2438] text-white p-3.5 sm:p-4 rounded-2xl shadow-lg border border-white/10 relative overflow-hidden flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            {doctorInfo.logoUrl ? (
+              <img
+                src={doctorInfo.logoUrl}
+                alt="Clinic Logo"
+                className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl object-contain bg-white/5 p-1 border border-white/10 shadow-md shrink-0"
+              />
+            ) : null}
+            <div className="flex flex-col justify-center">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-sm sm:text-base font-black text-white">{doctorInfo.name}</h1>
+                <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-[#00c2cb]/15 text-[#45dee7] border border-[#00c2cb]/20">
+                  {doctorInfo.specialty}
+                </span>
+              </div>
+              {doctorInfo.credentials && (
+                <p className="text-[10px] text-slate-300 mt-0.5 max-w-md line-clamp-1">
+                  {doctorInfo.credentials}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-3 bg-white/5 border border-white/10 px-3.5 py-1.5 rounded-xl text-xs font-bold">
+            <span className="text-[10px] text-slate-400 font-bold">هاتف العيادة:</span>
+            <a href={`tel:${doctorInfo.phone}`} className="font-mono text-xs font-black text-[#45dee7] hover:underline" dir="ltr">
+              {doctorInfo.phone}
+            </a>
+          </div>
+        </div>
+
+        {/* Success Confirmation Card */}
+        <div className="bg-slate-900/90 dark:bg-[#111A2E] p-6 sm:p-8 rounded-3xl border border-emerald-500/40 dark:border-emerald-500/30 shadow-2xl backdrop-blur-md space-y-6">
+          {/* Main Success Notice Banner with WhatsApp Button Side-by-Side */}
+          <div className="p-5 sm:p-6 rounded-2xl bg-gradient-to-r from-emerald-950/70 via-slate-900/90 to-teal-950/70 border border-emerald-500/30 flex flex-col lg:flex-row items-center justify-between gap-5">
+            <div className="flex items-center gap-4 text-right w-full lg:w-auto">
+              <div className="w-14 h-14 rounded-2xl bg-emerald-500 text-slate-950 flex items-center justify-center font-black shrink-0 shadow-lg shadow-emerald-500/20">
+                <span className="material-symbols-outlined text-3xl">task_alt</span>
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-lg sm:text-xl font-black text-white">تم الحجز بنجاح ✓</h2>
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold font-mono">
+                    كود الحجز: #{confirmedBooking.medicalCode}
+                  </span>
+                </div>
+                <p className="text-xs sm:text-sm text-emerald-200/90 mt-1">
+                  تم تسجيل موعد الكشف بنجاح في جدول المواعيد، ويمكنك إرسال رسالة واتساب للعيادة لتأكيد إضافي للحجز.
+                </p>
+              </div>
+            </div>
+
+            {/* WhatsApp Button next to the notification for extra confirmation */}
+            <div className="w-full lg:w-auto shrink-0 flex items-center justify-center">
+              <a
+                href={confirmedBooking.whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full lg:w-auto px-6 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2.5 shadow-xl hover:shadow-emerald-500/30 transition-all cursor-pointer active:scale-95 whitespace-nowrap"
+                title="إرسال رسالة إلى واتساب العيادة لتأكيد الحجز"
+              >
+                <span className="material-symbols-outlined text-xl">chat</span>
+                <span>تأكيد الحجز عبر واتساب العيادة 💬</span>
+              </a>
+            </div>
+          </div>
+
+          {/* Details Summary Card */}
+          <div className="bg-slate-950/60 dark:bg-[#080e1b]/60 rounded-2xl p-5 border border-slate-800 dark:border-white/5 space-y-4">
+            <h3 className="text-xs font-bold text-slate-400 flex items-center gap-2 border-b border-slate-800 pb-3">
+              <span className="material-symbols-outlined text-base text-[#00c2cb]">receipt_long</span>
+              <span>تفاصيل الموعد المسجل</span>
+            </h3>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
+              <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800">
+                <span className="text-[11px] text-slate-400 block mb-1">اسم المريض:</span>
+                <span className="font-bold text-white text-sm">{confirmedBooking.patientName}</span>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800">
+                <span className="text-[11px] text-slate-400 block mb-1">رقم الهاتف:</span>
+                <span className="font-bold text-white text-sm font-mono" dir="ltr">{confirmedBooking.phone}</span>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800">
+                <span className="text-[11px] text-slate-400 block mb-1">الفرع المختار:</span>
+                <span className="font-bold text-[#45dee7] text-sm">{confirmedBooking.branch}</span>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800">
+                <span className="text-[11px] text-slate-400 block mb-1">تاريخ الكشف:</span>
+                <span className="font-bold text-white text-sm font-mono">{confirmedBooking.date}</span>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800">
+                <span className="text-[11px] text-slate-400 block mb-1">وقت الموعد:</span>
+                <span className="font-bold text-emerald-400 text-sm font-mono">{confirmedBooking.timeSlot}</span>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800">
+                <span className="text-[11px] text-slate-400 block mb-1">نوع الكشف / الرسوم:</span>
+                <span className="font-bold text-white text-sm">{confirmedBooking.visitType} ({confirmedBooking.expectedFee} ج.م)</span>
+              </div>
+            </div>
+
+            {confirmedBooking.notes && (
+              <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 text-xs">
+                <span className="text-[11px] text-slate-400 block mb-1">ملاحظات إضافية:</span>
+                <span className="text-slate-300 font-medium">{confirmedBooking.notes}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Footer Navigation & Actions */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-800">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(confirmedBooking.whatsappText);
+                  setCopiedText(true);
+                  setToastMessage('تم نسخ تفاصيل الحجز بنجاح!');
+                  setTimeout(() => {
+                    setCopiedText(false);
+                    setToastMessage(null);
+                  }, 3000);
+                }}
+                className="w-full sm:w-auto px-4 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer border border-slate-700"
+              >
+                <span className="material-symbols-outlined text-base">{copiedText ? 'check' : 'content_copy'}</span>
+                <span>{copiedText ? 'تم النسخ ✓' : 'نسخ بيانات الحجز'}</span>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+              <button
+                type="button"
+                onClick={handleResetBooking}
+                className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer border border-slate-600 hover:border-[#00c2cb]"
+              >
+                <span className="material-symbols-outlined text-base">add_circle</span>
+                <span>حجز موعد آخر</span>
+              </button>
+
+              {onNavigateToAppointments && (
+                <button
+                  type="button"
+                  onClick={onNavigateToAppointments}
+                  className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md"
+                >
+                  <span className="material-symbols-outlined text-base">calendar_month</span>
+                  <span>الانتقال لجدول المواعيد</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`w-full max-w-4xl mx-auto ${isEmbed ? 'p-0' : 'p-4 sm:p-6 pb-24'} space-y-6 text-slate-800 dark:text-[#dde2f5]`}>
@@ -843,8 +1061,8 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
               type="submit"
               className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-sm flex items-center justify-center gap-2.5 shadow-xl transition-all cursor-pointer active:scale-95"
             >
-              <span className="material-symbols-outlined text-xl">chat</span>
-              <span>إرسال طلب الحجز عبر واتساب 💬</span>
+              <span className="material-symbols-outlined text-xl">event_available</span>
+              <span>إرسال طلب حجز مباشر</span>
             </button>
 
             <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
