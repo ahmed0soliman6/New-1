@@ -200,6 +200,29 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
     );
   });
 
+  const handleQuickAdd = () => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) return;
+    const matched = combinedCatalog.find(
+      (c) => c.name.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (matched) {
+      handleAddFromCatalog(matched, 'REQUEST');
+    } else {
+      const newOrder: RadiologyOrderItem = {
+        id: `rad-ord-${Date.now()}`,
+        name: trimmed,
+        category: 'أشعة وفحوصات عامة',
+        status: 'REQUEST',
+        orderedAt: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+        notes: '',
+      };
+      onChangeOrders([...radiologyOrders, newOrder]);
+      setSearchQuery('');
+      setOnlineResults([]);
+    }
+  };
+
   return (
     <div className="bg-white dark:bg-[#111A2E] p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm space-y-4">
       {/* Header */}
@@ -225,103 +248,79 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowPicker(!showPicker)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-50 dark:bg-sky-900/30 hover:bg-sky-100 text-sky-700 dark:text-[#38BDF8] text-xs font-bold transition-all cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-base">lists</span>
-            <span>{language === 'en' ? '+ Pick from Catalog' : '+ اختيار من دليلي'}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] text-xs font-bold transition-all cursor-pointer shadow-xs"
-          >
-            <span className="material-symbols-outlined text-base">add</span>
-            <span>{language === 'en' ? '+ Add New Scan' : '+ إضافة نوع جديد'}</span>
-          </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {!showPicker ? (
+            <button
+              type="button"
+              onClick={() => setShowPicker(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-50 dark:bg-sky-900/30 hover:bg-sky-100 text-sky-700 dark:text-[#38BDF8] text-xs font-bold transition-all cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-base">lists</span>
+              <span>{language === 'en' ? '+ Pick from Catalog' : '+ اختيار من دليلي'}</span>
+            </button>
+          ) : (
+            <div className="flex items-center gap-1.5 bg-sky-50 dark:bg-sky-950/40 p-1 rounded-xl border border-sky-300 dark:border-sky-800/60 shadow-xs animate-in fade-in">
+              <span className="material-symbols-outlined text-sky-600 dark:text-sky-400 text-sm mr-1">radiology</span>
+              <select
+                value=""
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (!val) return;
+                  const selected = combinedCatalog.find((c) => c.id === val);
+                  if (selected) {
+                    handleAddFromCatalog(selected, 'REQUEST');
+                  }
+                }}
+                className="bg-transparent text-slate-900 dark:text-[#dde2f5] text-xs py-1 px-2 font-bold focus:outline-none cursor-pointer max-w-[220px] sm:max-w-[280px]"
+                autoFocus
+              >
+                <option value="" className="text-slate-700 dark:text-slate-300 bg-white dark:bg-[#111A2E]">
+                  {language === 'en' ? '-- Select scan from catalog --' : '-- اختر فحصاً من دليلي --'}
+                </option>
+                {combinedCatalog.map((item) => {
+                  const isAdded = radiologyOrders.some((o) => o.name === item.name);
+                  return (
+                    <option key={item.id} value={item.id} disabled={isAdded} className="text-slate-800 dark:text-slate-200 bg-white dark:bg-[#111A2E]">
+                      {isAdded ? '✓ [مطلوب] ' : '+ '} {item.name} {item.category ? `(${item.category})` : ''}
+                    </option>
+                  );
+                })}
+              </select>
+              <button
+                type="button"
+                onClick={() => setShowPicker(false)}
+                className="w-6 h-6 flex items-center justify-center rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs font-bold cursor-pointer"
+                title={language === 'en' ? 'Close' : 'إغلاق'}
+              >
+                ✕
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Smart Clinical Memory Suggestions Bar for Radiology */}
-      {frequentSuggestions.length > 0 && (
-        <div className="p-3 bg-sky-500/10 dark:bg-sky-950/20 rounded-xl border border-sky-500/20 space-y-2">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-sky-700 dark:text-sky-300">
-            <span className="material-symbols-outlined text-sm">psychology</span>
-            <span>
-              {language === 'en'
-                ? 'Frequent radiology suggestions for this diagnosis (1-click add):'
-                : 'مقترحات الأشعة والفحوصات المتكررة (إضافة بنقرة واحدة):'}
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {frequentSuggestions.map((s, idx) => {
-              const isAdded = radiologyOrders.some((r) => r.name === s.type || r.type === s.type);
-              return (
-                <button
-                  key={idx}
-                  type="button"
-                  disabled={isAdded}
-                  onClick={() => {
-                    if (!isAdded) {
-                      onChangeOrders([
-                        ...radiologyOrders,
-                        {
-                          id: `rad-sug-${Date.now()}-${idx}`,
-                          name: s.type,
-                          type: s.type,
-                          category: 'فحوصات متكررة',
-                          status: 'REQUEST',
-                          orderedAt: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
-                        },
-                      ]);
-                    }
-                  }}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
-                    isAdded
-                      ? 'bg-sky-200 dark:bg-sky-900/60 text-sky-800 dark:text-sky-300 opacity-60 cursor-default'
-                      : 'bg-white dark:bg-[#111A2E] hover:bg-sky-50 dark:hover:bg-sky-900/40 text-slate-800 dark:text-[#dde2f5] border border-sky-200 dark:border-sky-800/40 shadow-xs'
-                  }`}
-                >
-                  <span>{isAdded ? '✓' : '+'}</span>
-                  <span>{s.type}</span>
-                  {s.count && s.count > 1 && (
-                    <span className="text-[10px] text-sky-600 font-mono">({s.count}×)</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* TOP PROMINENT SEARCH BAR (أعلى بطاقة الأشعة والتصوير الطبي) */}
-      <div className="p-4 bg-sky-50/40 dark:bg-[#080e1b]/80 rounded-2xl border-2 border-sky-500/40 space-y-3 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-sky-600 dark:text-sky-400 text-xl">manage_search</span>
-            <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-[#dde2f5]">
-              البحث الشامل في فحوصات الأشعة والاختصارات والتقارير المباشرة
-            </h4>
-          </div>
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-sky-100 dark:bg-sky-950/50 text-sky-800 dark:text-sky-300 flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>يدعم الاختصارات (CXR, US, CT, MRI, KUB, Echo, Mammogram)</span>
-          </span>
-        </div>
-
+      {/* TOP SEARCH BAR (أعلى بطاقة الأشعة والتصوير الطبي) */}
+      <div className="p-3 bg-sky-50/40 dark:bg-[#080e1b]/80 rounded-2xl border border-sky-500/30 space-y-3 shadow-xs">
         <div className="relative">
           <input
             type="text"
-            placeholder="ابحث بالاسم أو الاختصار الطبي (CXR, US, CT Brain, Lumbar MRI, Echo, سونار, رنين, مقطعية)..."
+            placeholder={
+              language === 'en'
+                ? 'Search by scan name, abbreviation (CXR, US, CT, MRI, Echo) or type scan and click Add...'
+                : 'ابحث بالاسم أو الاختصار (CXR, US, CT, MRI, KUB, Echo) أو اكتب اسم الفحص واضغط إضافة...'
+            }
             value={searchQuery}
             onChange={(e) => handleSearchChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleQuickAdd();
+              }
+            }}
             className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-sm p-3.5 pr-11 pl-28 rounded-xl border border-slate-200 dark:border-white/10 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 font-bold transition-all"
           />
           <span className="material-symbols-outlined absolute right-3.5 top-3.5 text-sky-600 dark:text-sky-400 text-xl">
-            search
+            radiology
           </span>
 
           <div className="absolute left-2 top-2 flex items-center gap-1">
@@ -339,11 +338,11 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
             )}
             <button
               type="button"
-              onClick={() => handleSearchChange(searchQuery || 'CXR')}
+              onClick={handleQuickAdd}
               className="px-2.5 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-[11px] flex items-center gap-1 shadow-xs cursor-pointer"
             >
-              <span className="material-symbols-outlined text-sm">language</span>
-              <span>بحث أونلاين</span>
+              <span className="material-symbols-outlined text-sm">add</span>
+              <span>{language === 'en' ? 'Add' : 'إضافة'}</span>
             </button>
           </div>
         </div>
@@ -435,55 +434,6 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
         )}
       </div>
 
-      {/* Catalog quick picker popover */}
-      {showPicker && (
-        <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">
-              اختر فحصاً من دليل الأشعة السريع:
-            </span>
-            <input
-              type="text"
-              placeholder="بحث في الأشعة..."
-              value={searchFilter}
-              onChange={(e) => setSearchFilter(e.target.value)}
-              className="text-xs bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 w-48 focus:outline-none"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
-            {filteredCatalog.map((catItem) => {
-              const isAlreadyOrdered = radiologyOrders.some((o) => o.name === catItem.name);
-              return (
-                <button
-                  key={catItem.id}
-                  type="button"
-                  disabled={isAlreadyOrdered}
-                  onClick={() => handleAddFromCatalog(catItem)}
-                  className={`p-2 rounded-xl text-right text-xs border transition-all flex items-start justify-between cursor-pointer ${
-                    isAlreadyOrdered
-                      ? 'bg-slate-200/50 dark:bg-white/5 border-transparent text-slate-400 cursor-not-allowed'
-                      : 'bg-white dark:bg-[#111A2E] hover:border-sky-400 border-slate-200 dark:border-white/5 text-slate-800 dark:text-[#dde2f5]'
-                  }`}
-                >
-                  <div className="space-y-0.5">
-                    <div className="font-bold flex items-center gap-1">
-                      {catItem.isFavorite && <span className="text-amber-500 text-[10px]">⭐</span>}
-                      <span>{catItem.name}</span>
-                    </div>
-                    <span className="text-[10px] text-slate-500 dark:text-[#859394] block">{catItem.category}</span>
-                  </div>
-                  {isAlreadyOrdered ? (
-                    <span className="text-[10px] text-emerald-600 font-bold">مضاف ✓</span>
-                  ) : (
-                    <span className="material-symbols-outlined text-sky-600 text-sm">add</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {/* Active Radiology Orders List */}
       {radiologyOrders.length === 0 ? (

@@ -226,6 +226,30 @@ export const LabCard: React.FC<LabCardProps> = ({
     );
   });
 
+  const handleQuickAdd = () => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) return;
+    const matched = combinedCatalog.find(
+      (c) => c.name.toLowerCase() === trimmed.toLowerCase() || (c.code && c.code.toLowerCase() === trimmed.toLowerCase())
+    );
+    if (matched) {
+      handleAddFromCatalog(matched, 'REQUEST');
+    } else {
+      const newOrder: LabOrderItem = {
+        id: `lab-ord-${Date.now()}`,
+        testName: trimmed,
+        category: 'تحاليل إضافية',
+        status: 'REQUEST',
+        orderedAt: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+        sampleType: 'دم',
+        isAbnormal: false,
+      };
+      onChangeOrders([...labOrders, newOrder]);
+      setSearchQuery('');
+      setOnlineResults([]);
+    }
+  };
+
   return (
     <div className="bg-white dark:bg-[#111A2E] p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm space-y-4">
       {/* Header */}
@@ -251,103 +275,74 @@ export const LabCard: React.FC<LabCardProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowPicker(!showPicker)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 text-emerald-700 dark:text-[#10B981] text-xs font-bold transition-all cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-base">lists</span>
-            <span>{language === 'en' ? '+ Pick from Catalog' : '+ اختيار من دليلي'}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all cursor-pointer shadow-xs"
-          >
-            <span className="material-symbols-outlined text-base">add</span>
-            <span>{language === 'en' ? '+ Add New Test' : '+ إضافة تحليل جديد'}</span>
-          </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {!showPicker ? (
+            <button
+              type="button"
+              onClick={() => setShowPicker(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 text-emerald-700 dark:text-[#10B981] text-xs font-bold transition-all cursor-pointer border border-emerald-200 dark:border-emerald-800/40"
+            >
+              <span className="material-symbols-outlined text-base">lists</span>
+              <span>{language === 'en' ? '+ Pick from Catalog' : '+ اختيار من دليلي'}</span>
+            </button>
+          ) : (
+            <div className="flex items-center gap-1.5 animate-in fade-in">
+              <select
+                autoFocus
+                value=""
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (!val) return;
+                  const selected = combinedCatalog.find((c) => c.id === val);
+                  if (selected) {
+                    handleAddFromCatalog(selected, 'REQUEST');
+                  }
+                  setShowPicker(false);
+                }}
+                className="bg-white dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs font-bold py-1.5 px-3 rounded-xl border-2 border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer min-w-[210px] max-w-[320px] shadow-sm"
+              >
+                <option value="">{language === 'en' ? '-- Select from Lab Catalog --' : '-- اضغط لاختيار تحليل من دليلي --'}</option>
+                {combinedCatalog.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name} {item.code ? `(${item.code})` : ''} {item.category ? `• ${item.category}` : ''}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setShowPicker(false)}
+                className="w-7 h-7 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-rose-100 dark:bg-white/10 dark:hover:bg-rose-950/40 text-slate-500 hover:text-rose-600 text-xs font-bold transition-colors cursor-pointer"
+                title={language === 'en' ? 'Close' : 'إغلاق'}
+              >
+                ✕
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Smart Clinical Memory Suggestions Bar for Labs */}
-      {frequentSuggestions.length > 0 && (
-        <div className="p-3 bg-emerald-500/10 dark:bg-emerald-950/20 rounded-xl border border-emerald-500/20 space-y-2">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-400">
-            <span className="material-symbols-outlined text-sm">psychology</span>
-            <span>
-              {language === 'en'
-                ? 'Frequent lab test suggestions for this diagnosis (1-click add):'
-                : 'مقترحات التحاليل المتكررة لهذا التشخيص (إضافة بنقرة واحدة):'}
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {frequentSuggestions.map((s, idx) => {
-              const isAdded = labOrders.some((l) => l.testName === s.testName || l.name === s.testName);
-              return (
-                <button
-                  key={idx}
-                  type="button"
-                  disabled={isAdded}
-                  onClick={() => {
-                    if (!isAdded) {
-                      onChangeOrders([
-                        ...labOrders,
-                        {
-                          id: `lab-sug-${Date.now()}-${idx}`,
-                          testName: s.testName,
-                          name: s.testName,
-                          category: 'تحاليل متكررة',
-                          status: 'REQUEST',
-                          orderedAt: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
-                        },
-                      ]);
-                    }
-                  }}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
-                    isAdded
-                      ? 'bg-emerald-200 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 opacity-60 cursor-default'
-                      : 'bg-white dark:bg-[#111A2E] hover:bg-emerald-50 dark:hover:bg-emerald-900/40 text-slate-800 dark:text-[#dde2f5] border border-emerald-200 dark:border-emerald-800/40 shadow-xs'
-                  }`}
-                >
-                  <span>{isAdded ? '✓' : '+'}</span>
-                  <span>{s.testName}</span>
-                  {s.count && s.count > 1 && (
-                    <span className="text-[10px] text-emerald-600 font-mono">({s.count}×)</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* TOP PROMINENT SEARCH BAR (أعلى بطاقة المعمل والتحاليل) */}
-      <div className="p-4 bg-emerald-50/40 dark:bg-[#080e1b]/80 rounded-2xl border-2 border-emerald-500/40 space-y-3 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-emerald-600 dark:text-emerald-400 text-xl">manage_search</span>
-            <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-[#dde2f5]">
-              البحث الشامل في التحاليل الطبية والاختصارات والنتائج المباشرة
-            </h4>
-          </div>
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>يدعم الاختصارات (CBC, HbA1c, LFTs, KFTs, TSH, ESR, CRP)</span>
-          </span>
-        </div>
-
+      {/* TOP SEARCH BAR (أعلى بطاقة المعمل والتحاليل) */}
+      <div className="p-3 bg-emerald-50/40 dark:bg-[#080e1b]/80 rounded-2xl border border-emerald-500/30 space-y-3 shadow-xs">
         <div className="relative">
           <input
             type="text"
-            placeholder="ابحث بالاسم أو الاختصار الطبي (CBC, HbA1c, LFTs, KFTs, TSH, وظائف كلى, سكر تراكمي)..."
+            placeholder={
+              language === 'en'
+                ? 'Type test name (CBC, HbA1c, LFTs, KFTs) or search, then click Add...'
+                : 'اكتب اسم التحليل أو الاختصار (CBC, HbA1c, LFTs, KFTs, وظائف كلى...) واضغط إضافة...'
+            }
             value={searchQuery}
             onChange={(e) => handleSearchChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleQuickAdd();
+              }
+            }}
             className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-sm p-3.5 pr-11 pl-28 rounded-xl border border-slate-200 dark:border-white/10 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-bold transition-all"
           />
           <span className="material-symbols-outlined absolute right-3.5 top-3.5 text-emerald-600 dark:text-emerald-400 text-xl">
-            search
+            science
           </span>
 
           <div className="absolute left-2 top-2 flex items-center gap-1">
@@ -365,11 +360,12 @@ export const LabCard: React.FC<LabCardProps> = ({
             )}
             <button
               type="button"
-              onClick={() => handleSearchChange(searchQuery || 'CBC')}
-              className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] flex items-center gap-1 shadow-xs cursor-pointer"
+              onClick={handleQuickAdd}
+              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1 shadow-xs cursor-pointer transition-colors"
+              title={language === 'en' ? 'Add entered test' : 'إضافة التحليل المكتوب'}
             >
-              <span className="material-symbols-outlined text-sm">language</span>
-              <span>بحث أونلاين</span>
+              <span className="material-symbols-outlined text-sm">add</span>
+              <span>{language === 'en' ? 'Add' : 'إضافة'}</span>
             </button>
           </div>
         </div>
@@ -468,58 +464,6 @@ export const LabCard: React.FC<LabCardProps> = ({
         )}
       </div>
 
-      {/* Catalog quick picker popover */}
-      {showPicker && (
-        <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">
-              اختر تحليلاً من دليل المعمل والتحاليل:
-            </span>
-            <input
-              type="text"
-              placeholder="بحث في التحاليل..."
-              value={searchFilter}
-              onChange={(e) => setSearchFilter(e.target.value)}
-              className="text-xs bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 w-48 focus:outline-none"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-52 overflow-y-auto pr-1">
-            {filteredCatalog.map((catItem) => {
-              const isAlreadyOrdered = labOrders.some((o) => o.testName === catItem.name);
-              return (
-                <button
-                  key={catItem.id}
-                  type="button"
-                  disabled={isAlreadyOrdered}
-                  onClick={() => handleAddFromCatalog(catItem)}
-                  className={`p-2 rounded-xl text-right text-xs border transition-all flex items-start justify-between cursor-pointer ${
-                    isAlreadyOrdered
-                      ? 'bg-slate-200/50 dark:bg-white/5 border-transparent text-slate-400 cursor-not-allowed'
-                      : 'bg-white dark:bg-[#111A2E] hover:border-emerald-400 border-slate-200 dark:border-white/5 text-slate-800 dark:text-[#dde2f5]'
-                  }`}
-                >
-                  <div className="space-y-0.5">
-                    <div className="font-bold flex items-center gap-1">
-                      {catItem.isFavorite && <span className="text-amber-500 text-[10px]">⭐</span>}
-                      <span>{catItem.name}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-[10px] text-slate-500 dark:text-[#859394]">
-                      <span>{catItem.category}</span>
-                      {catItem.fastingRequired && <span className="text-amber-600 font-bold">• صائم</span>}
-                    </div>
-                  </div>
-                  {isAlreadyOrdered ? (
-                    <span className="text-[10px] text-emerald-600 font-bold">مضاف ✓</span>
-                  ) : (
-                    <span className="material-symbols-outlined text-emerald-600 text-sm">add</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {/* Active Lab Orders & Results List */}
       {labOrders.length === 0 ? (

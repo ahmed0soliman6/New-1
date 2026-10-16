@@ -213,6 +213,30 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({
     );
   });
 
+  const handleQuickAdd = () => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) return;
+    const matched = combinedCatalog.find(
+      (c) =>
+        c.nameAr.toLowerCase() === trimmed.toLowerCase() ||
+        (c.nameEn && c.nameEn.toLowerCase() === trimmed.toLowerCase()) ||
+        (c.code && c.code.toLowerCase() === trimmed.toLowerCase())
+    );
+    if (matched) {
+      handleAddFromCatalog(matched);
+    } else {
+      const isFirst = diagnoses.length === 0;
+      const newDiag: PatientDiagnosis = {
+        id: `diag-sel-${Date.now()}`,
+        nameAr: trimmed,
+        isPrimary: isFirst,
+      };
+      onChangeDiagnoses([...diagnoses, newDiag]);
+      setSearchQuery('');
+      setOnlineResults([]);
+    }
+  };
+
   return (
     <div className="bg-white dark:bg-[#111A2E] p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm space-y-4">
       {/* Header */}
@@ -238,111 +262,79 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowPicker(!showPicker)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 text-amber-700 dark:text-amber-400 text-xs font-bold transition-all cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-base">lists</span>
-            <span>{language === 'en' ? '+ Diagnosis Catalog' : '+ دليل التشخيصات'}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-900 text-xs font-bold transition-all cursor-pointer shadow-xs"
-          >
-            <span className="material-symbols-outlined text-base">add</span>
-            <span>{language === 'en' ? '+ Add Unlisted Diagnosis' : '+ إضافة تشخيص غير مدرج'}</span>
-          </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {!showPicker ? (
+            <button
+              type="button"
+              onClick={() => setShowPicker(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 text-amber-700 dark:text-amber-400 text-xs font-bold transition-all cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-base">lists</span>
+              <span>{language === 'en' ? '+ Diagnosis Catalog' : '+ اختيار من دليلي'}</span>
+            </button>
+          ) : (
+            <div className="flex items-center gap-1.5 bg-amber-50 dark:bg-amber-950/40 p-1 rounded-xl border border-amber-300 dark:border-amber-800/60 shadow-xs animate-in fade-in">
+              <span className="material-symbols-outlined text-amber-600 dark:text-amber-400 text-sm mr-1">clinical_notes</span>
+              <select
+                value=""
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (!val) return;
+                  const selected = combinedCatalog.find((c) => c.id === val);
+                  if (selected) {
+                    handleAddFromCatalog(selected);
+                  }
+                }}
+                className="bg-transparent text-slate-900 dark:text-[#dde2f5] text-xs py-1 px-2 font-bold focus:outline-none cursor-pointer max-w-[220px] sm:max-w-[280px]"
+                autoFocus
+              >
+                <option value="" className="text-slate-700 dark:text-slate-300 bg-white dark:bg-[#111A2E]">
+                  {language === 'en' ? '-- Select diagnosis from catalog --' : '-- اختر تشخيصاً من دليلي --'}
+                </option>
+                {combinedCatalog.map((item) => {
+                  const isAdded = diagnoses.some((d) => d.nameAr === item.nameAr);
+                  return (
+                    <option key={item.id} value={item.id} disabled={isAdded} className="text-slate-800 dark:text-slate-200 bg-white dark:bg-[#111A2E]">
+                      {isAdded ? '✓ [مضاف] ' : '+ '} {item.nameAr} {item.code ? `[${item.code}]` : ''}
+                    </option>
+                  );
+                })}
+              </select>
+              <button
+                type="button"
+                onClick={() => setShowPicker(false)}
+                className="w-6 h-6 flex items-center justify-center rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs font-bold cursor-pointer"
+                title={language === 'en' ? 'Close' : 'إغلاق'}
+              >
+                ✕
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Smart Clinical Memory Suggestions Bar */}
-      {frequentSuggestions.length > 0 && (
-        <div className="p-3 bg-amber-500/10 dark:bg-amber-950/20 rounded-xl border border-amber-500/20 space-y-2">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-amber-700 dark:text-amber-400">
-            <span className="material-symbols-outlined text-sm">psychology</span>
-            <span>
-              {language === 'en'
-                ? 'Clinical memory suggestions & frequent diagnoses (1-click add):'
-                : 'مقترحات الذاكرة والتشخيصات المتكررة (إضافة بنقرة واحدة):'}
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {frequentSuggestions.map((s, idx) => {
-              const isAdded = diagnoses.some((d) => d.nameAr === s.name || d.nameEn === s.name);
-              return (
-                <button
-                  key={idx}
-                  type="button"
-                  disabled={isAdded}
-                  onClick={() => {
-                    if (!isAdded) {
-                      onChangeDiagnoses([
-                        ...diagnoses,
-                        {
-                          id: `diag-sug-${Date.now()}-${idx}`,
-                          nameAr: s.name,
-                          nameEn: s.name,
-                          isPrimary: diagnoses.length === 0,
-                        },
-                      ]);
-                    }
-                  }}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
-                    isAdded
-                      ? 'bg-amber-200 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 opacity-60 cursor-default'
-                      : 'bg-white dark:bg-[#111A2E] hover:bg-amber-50 dark:hover:bg-amber-900/40 text-slate-800 dark:text-[#dde2f5] border border-amber-200 dark:border-amber-800/40 shadow-xs'
-                  }`}
-                >
-                  <span>{isAdded ? '✓' : '+'}</span>
-                  <span>{s.name}</span>
-                  {s.count && s.count > 1 && (
-                    <span className="text-[10px] text-amber-600 font-mono">({s.count}×)</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* TOP PROMINENT SEARCH BAR (أعلى بطاقة التشخيص الطبي) */}
-      <div className="p-4 bg-amber-50/40 dark:bg-[#080e1b]/80 rounded-2xl border-2 border-amber-500/40 space-y-3 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-amber-500 text-xl">manage_search</span>
-            <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-[#dde2f5]">
-              {language === 'en'
-                ? 'Comprehensive Search in Clinical Diagnoses, ICD-10 & Abbreviations'
-                : 'البحث الشامل في التشخيصات الطبية وأكواد ICD-10 والاختصارات'}
-            </h4>
-          </div>
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>
-              {language === 'en'
-                ? 'Supports abbreviations (HTN, DM, GERD, UTI, URTI, IBS, COPD)'
-                : 'يدعم الاختصارات (HTN, DM, GERD, UTI, URTI, IBS, COPD)'}
-            </span>
-          </span>
-        </div>
-
+      {/* TOP SEARCH BAR (أعلى بطاقة التشخيص الطبي) */}
+      <div className="p-3 bg-amber-50/40 dark:bg-[#080e1b]/80 rounded-2xl border border-amber-500/30 space-y-3 shadow-xs">
         <div className="relative">
           <input
             type="text"
             placeholder={
               language === 'en'
-                ? 'Search by English/Arabic name, code or medical abbreviation (e.g. HTN, DM, GERD)...'
-                : 'ابحث بالاسم العربي/الإنجليزي أو الكود أو الاختصار الطبي (مثال: HTN, DM, GERD, القولون, I10)...'
+                ? 'Search by name, code or abbreviation (HTN, DM, GERD, UTI) or type diagnosis and click Add...'
+                : 'ابحث بالاسم العربي/الإنجليزي أو الكود أو الاختصار (HTN, DM, GERD) أو اكتب تشخيصاً جديداً واضغط إضافة...'
             }
             value={searchQuery}
             onChange={(e) => handleSearchChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleQuickAdd();
+              }
+            }}
             className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-sm p-3.5 pr-11 pl-28 rounded-xl border border-slate-200 dark:border-white/10 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20 font-bold transition-all"
           />
           <span className="material-symbols-outlined absolute right-3.5 top-3.5 text-amber-500 text-xl">
-            search
+            clinical_notes
           </span>
 
           <div className="absolute left-2 top-2 flex items-center gap-1">
@@ -360,11 +352,11 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({
             )}
             <button
               type="button"
-              onClick={() => handleSearchChange(searchQuery || 'HTN')}
+              onClick={handleQuickAdd}
               className="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] flex items-center gap-1 shadow-xs cursor-pointer"
             >
-              <span className="material-symbols-outlined text-sm">language</span>
-              <span>{language === 'en' ? 'Online Search' : 'بحث أونلاين'}</span>
+              <span className="material-symbols-outlined text-sm">add</span>
+              <span>{language === 'en' ? 'Add' : 'إضافة'}</span>
             </button>
           </div>
         </div>
@@ -458,88 +450,6 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({
         )}
       </div>
 
-      {/* 1-Click Favorites Strip */}
-      <div className="space-y-1.5">
-        <span className="text-[11px] font-bold text-slate-500 dark:text-[#859394] block">
-          ⭐ التشخيصات المفضلة والأكثر تكراراً (انقر للإضافة الفورية):
-        </span>
-        <div className="flex flex-wrap gap-2">
-          {favoriteDiagnoses.map((diag) => {
-            const isAlreadyAdded = diagnoses.some((d) => d.nameAr === diag.nameAr);
-            return (
-              <button
-                key={diag.id}
-                type="button"
-                onClick={() => handleAddFromCatalog(diag)}
-                disabled={isAlreadyAdded}
-                className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 border cursor-pointer ${
-                  isAlreadyAdded
-                    ? 'bg-amber-100/80 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700/50'
-                    : 'bg-slate-50 dark:bg-[#080e1b] hover:border-amber-400 text-slate-700 dark:text-[#bbc9ca] border-slate-200 dark:border-white/5'
-                }`}
-              >
-                {isAlreadyAdded && <span className="text-emerald-600 font-bold">✓</span>}
-                <span className="font-mono text-[10px] text-slate-400">{diag.code}</span>
-                <span>{diag.nameAr}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Catalog Search & Picker Popover */}
-      {showPicker && (
-        <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">
-              ابحث في دليل التشخيصات السريرية:
-            </span>
-            <input
-              type="text"
-              placeholder="بحث بالاسم أو الكود ICD-10..."
-              value={searchFilter}
-              onChange={(e) => setSearchFilter(e.target.value)}
-              className="text-xs bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 w-56 focus:outline-none"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
-            {filteredCatalog.map((item) => {
-              const isAlreadyAdded = diagnoses.some((d) => d.nameAr === item.nameAr);
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  disabled={isAlreadyAdded}
-                  onClick={() => handleAddFromCatalog(item)}
-                  className={`p-2 rounded-xl text-right text-xs border transition-all flex items-start justify-between cursor-pointer ${
-                    isAlreadyAdded
-                      ? 'bg-slate-200/50 dark:bg-white/5 border-transparent text-slate-400 cursor-not-allowed'
-                      : 'bg-white dark:bg-[#111A2E] hover:border-amber-400 border-slate-200 dark:border-white/5 text-slate-800 dark:text-[#dde2f5]'
-                  }`}
-                >
-                  <div className="space-y-0.5">
-                    <div className="font-bold flex items-center gap-1">
-                      <span className="font-mono text-[10px] bg-slate-100 dark:bg-white/10 px-1 py-0.5 rounded text-amber-600">
-                        {item.code}
-                      </span>
-                      <span>{item.nameAr}</span>
-                    </div>
-                    <span className="text-[10px] text-slate-400 block font-mono" dir="ltr">
-                      {item.nameEn}
-                    </span>
-                  </div>
-                  {isAlreadyAdded ? (
-                    <span className="text-[10px] text-emerald-600 font-bold">مضاف ✓</span>
-                  ) : (
-                    <span className="material-symbols-outlined text-amber-600 text-sm">add</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {/* Selected Diagnoses List */}
       {diagnoses.length === 0 ? (

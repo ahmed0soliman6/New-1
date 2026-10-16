@@ -128,49 +128,6 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
         </div>
       </div>
 
-      {/* Smart Clinical Memory Suggestions Bar for Instructions */}
-      {frequentSuggestions.length > 0 && (
-        <div className="p-3 bg-indigo-500/10 dark:bg-indigo-950/20 rounded-xl border border-indigo-500/20 space-y-2">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300">
-            <span className="material-symbols-outlined text-sm">psychology</span>
-            <span>
-              {language === 'en'
-                ? 'Frequent advice & instructions suggestions (1-click add):'
-                : 'مقترحات الإرشادات والتعليمات المتكررة (إضافة بنقرة واحدة):'}
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-1.5" data-no-translate="true">
-            {frequentSuggestions.map((s, idx) => {
-              const isAdded = lifestyleAdvice.includes(s.text);
-              return (
-                <button
-                  key={idx}
-                  type="button"
-                  disabled={isAdded}
-                  onClick={() => {
-                    if (!isAdded) {
-                      const updated = lifestyleAdvice ? `${lifestyleAdvice}\n• ${s.text}` : `• ${s.text}`;
-                      onChangeLifestyleAdvice(updated);
-                    }
-                  }}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer no-translate clinical-data ${
-                    isAdded
-                      ? 'bg-indigo-200 dark:bg-indigo-900/60 text-indigo-800 dark:text-indigo-300 opacity-60 cursor-default'
-                      : 'bg-white dark:bg-[#111A2E] hover:bg-indigo-50 dark:hover:bg-indigo-900/40 text-slate-800 dark:text-[#dde2f5] border border-indigo-200 dark:border-indigo-800/40 shadow-xs'
-                  }`}
-                  data-no-translate="true"
-                >
-                  <span>{isAdded ? '✓' : '+'}</span>
-                  <span>{s.text}</span>
-                  {s.count && s.count > 1 && (
-                    <span className="text-[10px] text-indigo-600 font-mono">({s.count}×)</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Follow-up date & quick buttons */}
@@ -282,14 +239,17 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
 
         {/* Dietary and lifestyle advice presets */}
         <div className="space-y-3">
-          <div className="space-y-1">
+          <div className="space-y-1.5 p-3.5 rounded-2xl bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800/40">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5] block">
-                {language === 'en'
-                  ? 'Approved Lifestyle & Diet Instructions (from Settings):'
-                  : 'اختر الإرشادات ونمط الحياة المعتمد (من الإعدادات):'}
+              <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5] flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-indigo-600 dark:text-indigo-400 text-sm">menu_book</span>
+                <span>
+                  {language === 'en'
+                    ? 'Approved Lifestyle & Diet Instructions (from Settings):'
+                    : 'اختر الإرشادات ونمط الحياة المعتمد (من الإعدادات):'}
+                </span>
               </label>
-              <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold">
+              <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-100 dark:bg-indigo-900/40 px-2 py-0.5 rounded-md">
                 {advicePresets.length} {language === 'en' ? 'available' : 'إرشاد متاح'}
               </span>
             </div>
@@ -298,7 +258,7 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
             <select
               value={selectedDropdownPreset}
               onChange={handleSelectFromDropdown}
-              className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-indigo-200 dark:border-indigo-900/40 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer font-bold"
+              className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-indigo-300 dark:border-indigo-800/50 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer font-bold transition-all shadow-xs"
             >
               <option value="">
                 {language === 'en'
