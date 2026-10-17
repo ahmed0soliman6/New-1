@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { CLINIC_INFO } from '../../data/previewClinicData';
 import { PatientListItem, ScreenType } from '../../types';
 import { usePermissions } from '../../context/AuthContext';
@@ -6,8 +6,10 @@ import { exportPatientMedicalDossierPdf } from '../../utils/exportPatientDossier
 import { toEnglishDigits, formatAppDate, formatAppTime } from '../../utils/numberUtils';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { printPrescriptionDocument, printVisitReportDocument } from '../../utils/printPrescription';
-import { getPrescriptionDoctorInfo } from '../../utils/prescriptionDoctor';
 import { findBranch } from '../../utils/clinicBranches';
+import { READ_OPT } from '../../config/readOpt';
+import { usePatientHistory, invalidatePatientHistory } from '../../services/history';
+import { getPrescriptionDoctorInfo } from '../../utils/prescriptionDoctor';
 import type {
   FollowUp,
   Invoice,
@@ -83,6 +85,25 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
 }) => {
   const { canAccess } = usePermissions();
   const { language, isRTL, t } = useLanguage();
+
+  // On-demand clinical history for this patient when READ_OPT is true
+  const hist = usePatientHistory(patient.id, READ_OPT);
+  const effVisits = READ_OPT ? hist.visits : visits;
+  const effInvoices = READ_OPT ? hist.invoices : invoices;
+  const effPrescriptions = READ_OPT ? hist.prescriptions : prescriptions;
+  const effLabOrders = READ_OPT ? hist.labOrders : labOrders;
+  const effRadOrders = READ_OPT ? hist.radiologyOrders : radiologyOrders;
+  const effFollowUps = READ_OPT ? hist.followUps : followUps;
+  const effPayments = READ_OPT ? hist.payments : [];
+
+  const calculatedTotalPaid = useMemo(() => {
+    if (READ_OPT) {
+      return effPayments
+        .filter((pm) => pm.status === 'PAID' || pm.amount > 0)
+        .reduce((sum, pm) => sum + (pm.amount || 0), 0);
+    }
+    return patient.totalPaid || 0;
+  }, [effPayments, patient.totalPaid]);
 
   // Tab state
   const [activeTab, setActiveTab] = useState<
@@ -175,6 +196,11 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
         });
       }
 
+      if (READ_OPT) {
+        invalidatePatientHistory(patient.id);
+        void hist.reload();
+      }
+
       setSaveSuccess(true);
       setIsEditing(false);
       setTimeout(() => setSaveSuccess(false), 4000);
@@ -215,24 +241,24 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
     setCustomChronicInput('');
   };
 
-  // Filter patient data
-  const pVisits = visits
+  // Filter patient data (Using on-demand eff* arrays)
+  const pVisits = effVisits
     .filter((v) => v.patientId === patient.id)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const pInvoices = invoices
+  const pInvoices = effInvoices
     .filter((i) => i.patientId === patient.id)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const pPrescriptions = prescriptions
+  const pPrescriptions = effPrescriptions
     .filter((pr) => pr.patientId === patient.id)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const pLabOrders = labOrders
+  const pLabOrders = effLabOrders
     .filter((l) => l.patientId === patient.id)
     .sort((a, b) => new Date(b.orderedAt).getTime() - new Date(a.orderedAt).getTime());
 
-  const pRadiologyOrders = radiologyOrders
+  const pRadiologyOrders = effRadOrders
     .filter((r) => r.patientId === patient.id)
     .sort((a, b) => new Date(b.orderedAt).getTime() - new Date(a.orderedAt).getTime());
 
@@ -308,6 +334,12 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
               <span className="bg-[#00c2cb]/15 text-[#008f97] dark:text-[#45dee7] font-mono text-xs px-2 py-0.5 rounded-md border border-[#00c2cb]/20">
                 ملف #{toEnglishDigits(patient.fileNumber || 1)}
               </span>
+              {READ_OPT && hist.loading && (
+                <span className="inline-flex items-center gap-1 text-[11px] text-teal-600 dark:text-[#00c2cb] font-normal animate-pulse">
+                  <span className="material-symbols-outlined text-xs animate-spin">progress_activity</span>
+                  <span>جاري جلب السجل بالطلب...</span>
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -456,7 +488,7 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
             <div className="bg-slate-50 dark:bg-[#080e1b] p-3 rounded-2xl border border-slate-200/70 dark:border-white/5 text-center">
               <span className="text-[10px] text-slate-400 dark:text-[#859394] block font-bold mb-0.5">إجمالي المدفوع</span>
               <strong className="text-base font-black text-emerald-600 dark:text-[#10B981] font-mono">
-                {patient.totalPaid || 0}
+                {calculatedTotalPaid}
               </strong>
               <span className="text-[9px] text-slate-400 block">ج.م بالعيادة</span>
             </div>
@@ -1108,7 +1140,7 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
                 const vRads = pRadiologyOrders.filter(
                   (r) => r.visitId === v.visitId || r.orderedAt?.startsWith(v.createdAt?.split('T')[0])
                 );
-                const vFollowUp = followUps.find(
+                const vFollowUp = effFollowUps.find(
                   (fu) => (fu.sourceVisitId === v.visitId || fu.patientId === patient.id) && fu.status !== 'CANCELLED'
                 );
 
@@ -1465,7 +1497,7 @@ ${pr.notes ? `📝 *إرشادات الطبيب:* ${pr.notes}\n\n` : ''}مع ت�
                               })),
                               diagnoses: diagnosesList,
                               lifestyleAdvice: pr.notes,
-                              followupDate: followUps.find((f) => f.patientId === (patient.id || patient.patientId))
+                              followupDate: effFollowUps.find((f) => f.patientId === (patient.id || patient.patientId))
                                 ?.scheduledDate,
                             });
                           }}

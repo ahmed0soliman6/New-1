@@ -30,12 +30,18 @@ import {
   formatAppTime,
 } from '../../utils/numberUtils';
 import { useLanguage } from '../../i18n/LanguageContext';
+import { READ_OPT } from '../../config/readOpt';
+import { useFinanceRange } from '../../services/financeRange';
+import { buildTransactions } from '../../utils/buildTransactions';
+import { todayKey, addDaysToKey } from '../../utils/dayKey';
+import type { Patient } from '../../types/database';
 
 interface FinanceScreenProps {
   transactions: TransactionRecord[];
   onAddTransaction: (tx: TransactionRecord) => void;
   onDeleteTransaction?: (txId: string) => void;
   patients?: PatientListItem[];
+  patientsCanonical?: Patient[];
 }
 
 type TimeframeOption = 'day' | 'week' | 'month' | 'year' | 'all';
@@ -45,9 +51,41 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
   onAddTransaction,
   onDeleteTransaction,
   patients = [],
+  patientsCanonical = [],
 }) => {
   const { assertPermission, userProfile } = usePermissions();
   const { language, isRTL, t } = useLanguage();
+
+  // On-demand financial range state (active only when READ_OPT is true)
+  const [optRangeMode, setOptRangeMode] = useState<'today' | '7days' | 'month' | 'custom'>('today');
+  const [customFrom, setCustomFrom] = useState(todayKey());
+  const [customTo, setCustomTo] = useState(todayKey());
+
+  const { fromKey, toKey } = useMemo(() => {
+    const t = todayKey();
+    if (optRangeMode === 'today') return { fromKey: t, toKey: t };
+    if (optRangeMode === '7days') return { fromKey: addDaysToKey(t, -6), toKey: t };
+    if (optRangeMode === 'month') return { fromKey: `${t.slice(0, 7)}-01`, toKey: t };
+    return { fromKey: customFrom || t, toKey: customTo || t };
+  }, [optRangeMode, customFrom, customTo]);
+
+  const {
+    payments: rangePayments,
+    invoices: rangeInvoices,
+    loading: rangeLoading,
+    reload: reloadFinanceRange,
+  } = useFinanceRange(fromKey, toKey, READ_OPT && optRangeMode !== 'today');
+
+  const rangeTransactions = useMemo(() => {
+    if (!READ_OPT || optRangeMode === 'today') return [];
+    return buildTransactions({
+      payments: rangePayments,
+      invoices: rangeInvoices,
+      patients: patientsCanonical || [],
+    });
+  }, [rangePayments, rangeInvoices, patientsCanonical, optRangeMode]);
+
+  const effectiveTransactions = READ_OPT && optRangeMode !== 'today' ? rangeTransactions : transactions;
 
   // Dynamic Medical Services & Expense Categories loaded from Settings
   const [medicalServices, setMedicalServices] = useState<MedicalServiceItem[]>(loadMedicalServices);
@@ -214,7 +252,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
 
   // Live System Inflow Transactions (sorted strictly newest first)
   const allInflowRecords = useMemo(() => {
-    return [...transactions]
+    return [...effectiveTransactions]
       .filter((t) => t.type !== 'out')
       .sort((a, b) => {
         const timeA = getRecordTimestamp(a);
@@ -222,7 +260,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
         if (timeB !== timeA) return timeB - timeA;
         return (b.id || '').localeCompare(a.id || '');
       });
-  }, [transactions]);
+  }, [effectiveTransactions]);
 
   // Live System Expenses (sorted strictly newest first)
   const sortedExpenses = useMemo(() => {
@@ -285,7 +323,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
   // 6 Metric Values Calculations (Dynamically calculated directly from live system transactions & expenses)
   const metrics = useMemo(() => {
     let totalInflowAll = 0;
-    transactions
+    effectiveTransactions
       .filter((t) => t.type !== 'out')
       .forEach((t) => {
         totalInflowAll += (t.paidAmount ?? t.amount ?? t.totalAmount ?? 0);
@@ -295,7 +333,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
     expenses.forEach((exp) => {
       totalOutflowAll += (exp.amount || 0);
     });
-    transactions
+    effectiveTransactions
       .filter((t) => t.type === 'out')
       .forEach((tx) => {
         totalOutflowAll += (tx.amount || 0);
@@ -321,7 +359,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
       periodOutflow += (exp.amount || 0);
     });
 
-    transactions
+    effectiveTransactions
       .filter((t) => t.type === 'out')
       .forEach((tx) => {
         const parts = extractDateParts(tx.date);
@@ -457,6 +495,9 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
       };
 
       onAddTransaction(newTx);
+      if (READ_OPT && optRangeMode !== 'today') {
+        setTimeout(() => reloadFinanceRange(), 300);
+      }
       setShowInvoiceModal(false);
       setInvPatientName('');
       setInvDiscount(0);
@@ -576,6 +617,107 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
           </PermissionGate>
         </div>
       </div>
+
+      {/* On-Demand Financial Range Selector (عند تفعيل READ_OPT) */}
+      {READ_OPT && (
+        <div className="bg-white dark:bg-[#111A2E] p-3.5 sm:px-4 rounded-2xl border border-teal-500/30 dark:border-[#00c2cb]/30 shadow-xs flex flex-wrap items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold text-slate-700 dark:text-[#dde2f5] flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-base text-[#008f97] dark:text-[#00c2cb]">date_range</span>
+              <span>نطاق استعلام المالية:</span>
+            </span>
+
+            <div className="flex flex-wrap items-center gap-1 bg-slate-100 dark:bg-[#18233C] p-1 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setOptRangeMode('today')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  optRangeMode === 'today'
+                    ? 'bg-[#00c2cb] text-slate-950 shadow-xs'
+                    : 'text-slate-600 dark:text-[#bbc9ca] hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                اليوم
+              </button>
+              <button
+                type="button"
+                onClick={() => setOptRangeMode('7days')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  optRangeMode === '7days'
+                    ? 'bg-[#00c2cb] text-slate-950 shadow-xs'
+                    : 'text-slate-600 dark:text-[#bbc9ca] hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                آخر 7 أيام
+              </button>
+              <button
+                type="button"
+                onClick={() => setOptRangeMode('month')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  optRangeMode === 'month'
+                    ? 'bg-[#00c2cb] text-slate-950 shadow-xs'
+                    : 'text-slate-600 dark:text-[#bbc9ca] hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                هذا الشهر
+              </button>
+              <button
+                type="button"
+                onClick={() => setOptRangeMode('custom')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  optRangeMode === 'custom'
+                    ? 'bg-[#00c2cb] text-slate-950 shadow-xs'
+                    : 'text-slate-600 dark:text-[#bbc9ca] hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                اختيار تواريخ
+              </button>
+            </div>
+
+            {optRangeMode === 'custom' && (
+              <div className="flex items-center gap-1.5 text-xs">
+                <input
+                  type="date"
+                  value={customFrom}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                  className="px-2 py-1 rounded-lg border border-slate-300 dark:border-white/10 bg-white dark:bg-[#080e1b] text-slate-800 dark:text-white text-xs"
+                />
+                <span className="text-slate-400">إلى</span>
+                <input
+                  type="date"
+                  value={customTo}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                  className="px-2 py-1 rounded-lg border border-slate-300 dark:border-white/10 bg-white dark:bg-[#080e1b] text-slate-800 dark:text-white text-xs"
+                />
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => reloadFinanceRange()}
+              disabled={rangeLoading}
+              className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-[#18233C] dark:hover:bg-[#242a38] text-slate-700 dark:text-[#dde2f5] transition-all cursor-pointer"
+              title="تحديث البيانات"
+            >
+              <span className={`material-symbols-outlined text-base ${rangeLoading ? 'animate-spin text-[#00c2cb]' : ''}`}>
+                refresh
+              </span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs">
+            {rangeLoading && (
+              <span className="text-amber-500 font-bold flex items-center gap-1 animate-pulse">
+                <span className="material-symbols-outlined text-sm">hourglass_top</span>
+                <span>جارٍ جلب السجلات...</span>
+              </span>
+            )}
+            <span className="px-2.5 py-1 rounded-lg bg-teal-50 dark:bg-[#00c2cb]/10 text-[#008f97] dark:text-[#00c2cb] font-mono text-[11px] font-bold border border-teal-200 dark:border-[#00c2cb]/20">
+              يعرض بيانات من {fromKey} إلى {toKey}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* 6 TOP STATISTICAL FINANCIAL CARDS (بطاقات المؤشرات المالية) */}
@@ -1578,6 +1720,9 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
                     onDeleteTransaction(txToDelete.id);
                     setToast(`تم حذف الفاتورة بنجاح`);
                     setTimeout(() => setToast(null), 3000);
+                    if (READ_OPT && optRangeMode !== 'today') {
+                      setTimeout(() => reloadFinanceRange(), 300);
+                    }
                     setTxToDelete(null);
                   }
                 }}

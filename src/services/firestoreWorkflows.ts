@@ -20,6 +20,7 @@ import type {
   OrderStatus,
   Visit,
 } from '../types/database';
+import { toDayKey, todayKey } from '../utils/dayKey';
 
 const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 const now = () => new Date().toISOString();
@@ -76,7 +77,7 @@ export async function checkInAppointmentTransaction(params: {
   receptionistData: Visit['receptionistData'];
 }): Promise<{ appointment: Appointment; visit: Visit }> {
   return runTransaction(params.db, async (tx) => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayKey();
     const counterRef = doc(params.db, 'counters', `queue_${today}`);
     const appointmentRef = doc(params.db, 'appointments', params.appointmentId);
 
@@ -120,6 +121,7 @@ export async function checkInAppointmentTransaction(params: {
       updatedAt: timestamp,
       createdBy: params.receivedBy,
       doctorId: '',
+      dayKey: today,
     };
 
     const invoiceRef = doc(params.db, 'invoices', invoiceId);
@@ -142,6 +144,7 @@ export async function checkInAppointmentTransaction(params: {
       status: 'PAID',
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
+      dayKey: today,
     });
     tx.set(paymentRef, {
       paymentId,
@@ -155,8 +158,9 @@ export async function checkInAppointmentTransaction(params: {
       receiptNumber,
       paidAt: serverTimestamp(),
       receivedBy: params.receivedBy,
+      dayKey: today,
     });
-    tx.set(visitRef, { ...visit, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    tx.set(visitRef, { ...visit, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), dayKey: today });
 
     return { appointment: { ...appointment, status: 'ARRIVED', updatedAt: timestamp }, visit };
   });
@@ -174,7 +178,7 @@ export async function registerWalkInTransaction(params: {
   receptionistData: Visit['receptionistData'];
 }): Promise<Visit> {
   return runTransaction(params.db, async (tx) => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayKey();
     const counterRef = doc(params.db, 'counters', `queue_${today}`);
     const counterSnap = await tx.get(counterRef);
 
@@ -206,6 +210,7 @@ export async function registerWalkInTransaction(params: {
       status: 'PAID',
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
+      dayKey: today,
     });
     tx.set(doc(params.db, 'payments', paymentId), {
       paymentId,
@@ -219,6 +224,7 @@ export async function registerWalkInTransaction(params: {
       receiptNumber: id('REC'),
       paidAt: serverTimestamp(),
       receivedBy: params.receivedBy,
+      dayKey: today,
     });
 
     const visit: Visit = {
@@ -239,8 +245,9 @@ export async function registerWalkInTransaction(params: {
       updatedAt: timestamp,
       createdBy: params.receivedBy,
       doctorId: '',
+      dayKey: today,
     };
-    tx.set(doc(params.db, 'visits', visitId), { ...visit, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    tx.set(doc(params.db, 'visits', visitId), { ...visit, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), dayKey: today });
     return visit;
   });
 }
@@ -289,6 +296,10 @@ export async function completeVisitTransaction(params: {
     const snap = await tx.get(visitRef);
     if (!snap.exists()) return;
     const visitData = snap.data() as Visit;
+    const patientRef = doc(params.db, 'patients', visitData.patientId);
+    const patientSnap = await tx.get(patientRef); // Read before any write
+    const alreadyCompleted = visitData.status === 'COMPLETED';
+    const day = todayKey();
 
     tx.update(visitRef, {
       status: 'COMPLETED',
@@ -298,6 +309,17 @@ export async function completeVisitTransaction(params: {
       completedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
+
+    if (patientSnap.exists()) {
+      const prev = patientSnap.data() as { visitsCount?: number };
+      tx.update(patientRef, {
+        hasClinicalFile: true,
+        visitsCount: alreadyCompleted ? (prev.visitsCount ?? 1) : (Number(prev.visitsCount) || 0) + 1,
+        lastVisitAt: serverTimestamp(),
+        lastDiagnosis: params.clinicalData?.diagnosis?.[0] ?? '',
+        updatedAt: serverTimestamp(),
+      });
+    }
 
     // Save Prescription document in prescriptions collection atomically
     if (params.prescriptionItems && params.prescriptionItems.length > 0) {
@@ -313,6 +335,7 @@ export async function completeVisitTransaction(params: {
         notes: params.prescriptionNotes || '',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
+        dayKey: day,
       });
     }
 
@@ -333,6 +356,7 @@ export async function completeVisitTransaction(params: {
           notes: lab.notes || '',
           orderedAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
+          dayKey: day,
         });
       }
     }
@@ -355,6 +379,7 @@ export async function completeVisitTransaction(params: {
           notes: rad.notes || '',
           orderedAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
+          dayKey: day,
         });
       }
     }
@@ -376,6 +401,7 @@ export async function completeVisitTransaction(params: {
         notes: params.followUp.notes || '',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
+        dayKey: day,
       });
     }
   });
@@ -404,6 +430,9 @@ export async function createAppointmentTransaction(params: {
     const sanitizedAppointment = removeUndefined(params.appointment);
     if (!sanitizedAppointment.patientId && params.patient?.patientId) {
       sanitizedAppointment.patientId = params.patient.patientId;
+    }
+    if (!sanitizedAppointment.dayKey) {
+      sanitizedAppointment.dayKey = toDayKey(sanitizedAppointment.scheduledDate || new Date());
     }
     tx.set(appointmentRef, {
       ...sanitizedAppointment,

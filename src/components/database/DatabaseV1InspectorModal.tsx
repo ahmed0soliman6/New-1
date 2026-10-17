@@ -22,6 +22,7 @@ import {
   DoctorSettings,
   SystemSettings,
 } from '../../types/database';
+import { READ_OPT } from '../../config/readOpt';
 
 interface DatabaseInspectorModalProps {
   isOpen: boolean;
@@ -325,9 +326,16 @@ export const DatabaseInspectorModal: React.FC<DatabaseInspectorModalProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               {/* Left Column: List of Collections */}
               <div className="md:col-span-1 bg-[#111a2e] border border-white/10 rounded-2xl p-3 space-y-1 max-h-[600px] overflow-y-auto">
-                <span className="text-xs font-bold text-[#859394] px-2 py-1 block">
-                  مجموعات Firestore ({collectionsList.length})
-                </span>
+                <div className="px-2 py-1">
+                  <span className="text-xs font-bold text-[#859394] block">
+                    مجموعات Firestore ({collectionsList.length})
+                  </span>
+                  {READ_OPT && (
+                    <span className="text-[10px] text-teal-400 block mt-0.5 font-sans leading-tight">
+                      العدد = نطاق التشغيل الحالي لا كل التاريخ
+                    </span>
+                  )}
+                </div>
                 {collectionsList.map((col) => {
                   const isSelected = selectedCollection === col.id;
                   return (

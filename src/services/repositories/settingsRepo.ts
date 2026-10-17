@@ -12,6 +12,7 @@ import type {
 } from '../../types/database';
 import { FirestoreCollections, SettingsDocs } from '../firebase/collections';
 import { handleFirestoreError, normalize, OperationType } from './common';
+import { meterDoc } from '../readMeter';
 
 export interface ClinicStatusState {
   status: 'available' | 'break';
@@ -28,6 +29,7 @@ export const subscribeToDoctorSettings = (
   return onSnapshot(
     doc(db, FirestoreCollections.SETTINGS, SettingsDocs.DOCTOR_SETTINGS),
     (snap) => {
+      meterDoc('settings/doctorSettings', snap);
       if (snap.exists()) {
         next(normalize(snap.data()) as DoctorSettings);
       } else {
@@ -48,6 +50,7 @@ export const subscribeToVisitTypes = (
   return onSnapshot(
     doc(db, FirestoreCollections.SETTINGS, SettingsDocs.VISIT_TYPES),
     (snap) => {
+      meterDoc('settings/visitTypes', snap);
       if (snap.exists()) {
         const data = snap.data();
         next(((data.items || data.types || []) as { id: string; name: string; fee: number }[]));
@@ -69,6 +72,7 @@ export const subscribeToPrinterSettings = <T = Record<string, unknown>>(
   return onSnapshot(
     doc(db, FirestoreCollections.SETTINGS, SettingsDocs.PRINTER_SETTINGS),
     (snap) => {
+      meterDoc('settings/printerSettings', snap);
       if (snap.exists()) {
         next(normalize(snap.data()) as T);
       } else {
@@ -89,6 +93,7 @@ export const subscribeToLifestylePresets = (
   return onSnapshot(
     doc(db, FirestoreCollections.SETTINGS, SettingsDocs.LIFESTYLE_PRESETS),
     (snap) => {
+      meterDoc('settings/lifestylePresets', snap);
       if (snap.exists()) {
         const data = snap.data();
         next((data.items as string[]) || []);
@@ -110,6 +115,7 @@ export const subscribeToAlertSettings = (
   return onSnapshot(
     doc(db, FirestoreCollections.SETTINGS, SettingsDocs.ALERT_SETTINGS),
     (snap) => {
+      meterDoc('settings/alertSettings', snap);
       if (snap.exists()) {
         next(normalize(snap.data()));
       } else {
@@ -130,6 +136,7 @@ export const subscribeToClinicStatus = (
   return onSnapshot(
     doc(db, FirestoreCollections.SETTINGS, SettingsDocs.CLINIC_STATUS),
     (snap) => {
+      meterDoc('settings/clinicStatus', snap);
       if (snap.exists()) {
         next(snap.data() as ClinicStatusState);
       } else {
@@ -168,6 +175,7 @@ export const subscribeToRecurringTemplates = (
   return onSnapshot(
     doc(db, FirestoreCollections.SETTINGS, SettingsDocs.RECURRING_TEMPLATES),
     (snap) => {
+      meterDoc('settings/recurringTemplates', snap);
       if (snap.exists()) {
         const data = snap.data();
         next((data.items as any[]) || []);
@@ -189,6 +197,7 @@ export const subscribeToDoctorProfile = (
   return onSnapshot(
     doc(db, FirestoreCollections.SETTINGS, SettingsDocs.DOCTOR_PROFILE),
     (snap) => {
+      meterDoc('settings/doctorProfile', snap);
       if (snap.exists()) {
         next(normalize(snap.data()) as DoctorProfile);
       } else {
@@ -209,6 +218,7 @@ export const subscribeToSystemSettings = (
   return onSnapshot(
     doc(db, FirestoreCollections.SETTINGS, SettingsDocs.SYSTEM_SETTINGS),
     (snap) => {
+      meterDoc('settings/systemSettings', snap);
       if (snap.exists()) {
         next(normalize(snap.data()) as SystemSettings);
       } else {
@@ -229,6 +239,7 @@ export const subscribeToPrescriptionSettings = <T = Record<string, unknown>>(
   return onSnapshot(
     doc(db, FirestoreCollections.SETTINGS, SettingsDocs.PRESCRIPTION_SETTINGS),
     (snap) => {
+      meterDoc('settings/prescriptionSettings', snap);
       if (snap.exists()) {
         next(normalize(snap.data()) as T);
       } else {
@@ -249,6 +260,7 @@ export const subscribeToLatestAlert = <T = Record<string, unknown>>(
   return onSnapshot(
     doc(db, FirestoreCollections.SETTINGS, SettingsDocs.LATEST_ALERT),
     (snap) => {
+      meterDoc('settings/latestAlert', snap);
       if (snap.exists()) {
         next(normalize(snap.data()) as T);
       } else {

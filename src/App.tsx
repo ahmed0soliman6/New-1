@@ -88,7 +88,7 @@ import { ClinicalReportsScreen } from './components/screens/ClinicalReportsScree
 import { BookingLandingScreen } from './components/screens/BookingLandingScreen';
 import { NewAppointmentModal } from './components/modals/NewAppointmentModal';
 import { db } from './services/firebase';
-import { doc, deleteDoc, setDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
+import { doc, deleteDoc, setDoc, collection, getDocs, writeBatch, query, limit, where, type QueryConstraint } from 'firebase/firestore';
 import { logoutAccount } from './services/auth';
 import { AuthScreen } from './components/AuthScreen';
 import { AuthProvider, useAuth, usePermissions } from './context/AuthContext';
@@ -139,6 +139,11 @@ import { safeStorage, StorageKeys } from './services/storage';
 import { setCachedRecurringTemplates } from './utils/recurringTemplatesManager';
 import { toEnglishDigits, formatAppDate, formatAppTime } from './utils/numberUtils';
 import { findBranch } from './utils/clinicBranches';
+import { toDayKey, todayKey, addDaysToKey } from './utils/dayKey';
+import { buildTransactions } from './utils/buildTransactions';
+import { READ_OPT, HOT_DAYS, APPT_PAST_DAYS } from './config/readOpt';
+import { subscribeMerged } from './services/repositories/windowed';
+import { invalidatePatientHistory } from './services/history';
 
 // Merged full initial reference catalogs combining database.ts and previewMedicalCatalogs.ts
 const INITIAL_RADIOLOGY_FULL: RadiologyType[] = (() => {
@@ -591,7 +596,7 @@ function ClinicApp() {
           return;
         }
 
-        const querySnapshot = await getDocs(collection(db, 'medications'));
+        const querySnapshot = await getDocs(query(collection(db, 'medications'), limit(1)));
         if (querySnapshot.empty) {
           console.log('Firestore catalogs empty on first setup. Seeding reference catalogs...');
           const batch = writeBatch(db);
@@ -626,6 +631,21 @@ function ClinicApp() {
     checkAndSeed();
   }, [db]);
 
+  // Real-time Firestore-driven notifications refs & windowed listener readiness
+  const previousVisitsMapRef = useRef<Map<string, Visit['status']>>(new Map());
+  const isInitialVisitsLoadRef = useRef(true);
+  const [visitsReady, setVisitsReady] = useState(false);
+  const [dayStamp, setDayStamp] = useState(todayKey());
+
+  useEffect(() => {
+    if (!READ_OPT) return;
+    const t = setInterval(() => {
+      const k = todayKey();
+      setDayStamp((prev) => (prev === k ? prev : k));
+    }, 60_000);
+    return () => clearInterval(t);
+  }, []);
+
   // Firestore Realtime Subscriptions (Firestore -> onSnapshot -> Canonical State)
   const [syncRetryCounter, setSyncRetryCounter] = useState(0);
 
@@ -636,6 +656,12 @@ function ClinicApp() {
     }
     setSyncStatus('syncing');
     let hasLoadedAny = false;
+
+    if (READ_OPT) {
+      setVisitsReady(false);
+      isInitialVisitsLoadRef.current = true;
+      previousVisitsMapRef.current.clear();
+    }
 
     const onDataSuccess = () => {
       hasLoadedAny = true;
@@ -651,16 +677,52 @@ function ClinicApp() {
       }
     };
 
+    const hotStart = addDaysToKey(dayStamp, -(HOT_DAYS - 1));
+    const apptStart = addDaysToKey(dayStamp, -APPT_PAST_DAYS);
+
+    const win = <T extends Record<string, any>>(
+      name: string,
+      queries: QueryConstraint[][],
+      apply: (items: T[]) => void
+    ) => subscribeMerged<T>(db, name, queries, (items) => { onDataSuccess(); apply(items); }, onError);
+
+    const operational = READ_OPT
+      ? [
+          // المرضى: كاملة عمدًا للحفاظ على تسلسل أرقام الملفات والبحث الفوري
+          subscribeToPatients(db, (items) => { onDataSuccess(); setPatientsCanonical(items); }, onError),
+
+          win<Appointment>('appointments',
+            [[where('scheduledDate', '>=', apptStart)], [where('status', '==', 'SCHEDULED')]],
+            setAppointmentsCanonical),
+
+          win<Visit>('visits',
+            [[where('dayKey', '>=', hotStart)], [where('status', 'in', ['WAITING', 'IN_PROGRESS'])]],
+            (items) => { setVisitsCanonical(items); setVisitsReady(true); }),
+
+          win<Invoice>('invoices',
+            [[where('dayKey', '>=', hotStart)], [where('status', 'in', ['UNPAID', 'PARTIALLY_PAID'])]],
+            setInvoicesCanonical),
+
+          win<Payment>('payments', [[where('dayKey', '>=', hotStart)]], setPaymentsCanonical),
+          win<Prescription>('prescriptions', [[where('dayKey', '>=', hotStart)]], setPrescriptionsCanonical),
+          win<FollowUp>('followUps', [[where('status', 'in', ['UPCOMING', 'TODAY', 'OVERDUE'])]], setFollowUpsCanonical),
+          win<LabOrder>('labOrders', [[where('dayKey', '>=', hotStart)]], setLabOrdersCanonical),
+          win<RadiologyOrder>('radiologyOrders', [[where('dayKey', '>=', hotStart)]], setRadiologyOrdersCanonical),
+        ]
+      : [
+          subscribeToPatients(db, (items) => { onDataSuccess(); setPatientsCanonical(items); }, onError),
+          subscribeToAppointments(db, (items) => { onDataSuccess(); setAppointmentsCanonical(items); }, onError),
+          subscribeToVisits(db, (items) => { onDataSuccess(); setVisitsCanonical(items); }, onError),
+          subscribeToInvoices(db, (items) => { onDataSuccess(); setInvoicesCanonical(items); }, onError),
+          subscribeToPayments(db, (items) => { onDataSuccess(); setPaymentsCanonical(items); }, onError),
+          subscribeToPrescriptions(db, (items) => { onDataSuccess(); setPrescriptionsCanonical(items); }, onError),
+          subscribeToFollowUps(db, (items) => { onDataSuccess(); setFollowUpsCanonical(items); }, onError),
+          subscribeToLabOrders(db, (items) => { onDataSuccess(); setLabOrdersCanonical(items); }, onError),
+          subscribeToRadiologyOrders(db, (items) => { onDataSuccess(); setRadiologyOrdersCanonical(items); }, onError),
+        ];
+
     const unsubscribers = [
-      subscribeToPatients(db, (items) => { onDataSuccess(); setPatientsCanonical(items); }, onError),
-      subscribeToAppointments(db, (items) => { onDataSuccess(); setAppointmentsCanonical(items); }, onError),
-      subscribeToVisits(db, (items) => { onDataSuccess(); setVisitsCanonical(items); }, onError),
-      subscribeToInvoices(db, (items) => { onDataSuccess(); setInvoicesCanonical(items); }, onError),
-      subscribeToPayments(db, (items) => { onDataSuccess(); setPaymentsCanonical(items); }, onError),
-      subscribeToPrescriptions(db, (items) => { onDataSuccess(); setPrescriptionsCanonical(items); }, onError),
-      subscribeToFollowUps(db, (items) => { onDataSuccess(); setFollowUpsCanonical(items); }, onError),
-      subscribeToLabOrders(db, (items) => { onDataSuccess(); setLabOrdersCanonical(items); }, onError),
-      subscribeToRadiologyOrders(db, (items) => { onDataSuccess(); setRadiologyOrdersCanonical(items); }, onError),
+      ...operational,
       subscribeToMedications(db, (items) => { onDataSuccess(); if (items) setMedicationsCanonical(items); }, onError),
       subscribeToLabTests(db, (items) => { onDataSuccess(); if (items) setLabTestsCanonical(items); }, onError),
       subscribeToRadiologyTypes(db, (items) => { onDataSuccess(); if (items) setRadiologyTypesCanonical(items); }, onError),
@@ -700,7 +762,7 @@ function ClinicApp() {
       }, onError),
     ];
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
-  }, [syncRetryCounter]);
+  }, [syncRetryCounter, READ_OPT ? dayStamp : 'static']);
 
   // Database Architecture Inspector Modal
   const [isDatabaseInspectorOpen, setIsDatabaseInspectorOpen] = useState(false);
@@ -709,6 +771,45 @@ function ClinicApp() {
   // DERIVED STATE (Canonical State -> Derived State -> UI)
   // =========================================================================
   const patients: PatientListItem[] = useMemo(() => {
+    if (READ_OPT) {
+      return [...patientsCanonical]
+        .filter((p) => p.hasClinicalFile)
+        .sort((a, b) => {
+          const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          if (tB !== tA) return tB - tA;
+          return (Number(b.fileNumber) || 0) - (Number(a.fileNumber) || 0);
+        })
+        .map((p) => {
+          const birthYear = p.dateOfBirth ? new Date(p.dateOfBirth).getFullYear() : undefined;
+          const created = p.createdAt ? new Date(p.createdAt) : new Date();
+          const last = p.lastVisitAt ? new Date(p.lastVisitAt) : undefined;
+          return {
+            id: p.patientId,
+            medicalCode: p.medicalCode || `EG-${p.fileNumber || p.patientId.slice(0, 5)}`,
+            fileNumber: p.fileNumber || 1,
+            name: p.fullName,
+            age: birthYear ? Math.max(1, new Date().getFullYear() - birthYear) : 0,
+            gender: p.gender === 'female' ? 'female' : 'male',
+            phone: p.phone || '',
+            governorate: p.governorate || 'القاهرة',
+            address: p.address || p.governorate || '',
+            allergies: p.allergies || [],
+            chronicConditions: p.chronicDiseases || [],
+            bloodType: p.bloodType || 'غير محدد',
+            bloodGroup: p.bloodType || 'غير محدد',
+            emergencyContact: p.emergencyContact,
+            lastVisitDate: last ? formatAppDate(last) : undefined,
+            lastVisitTime: last ? formatAppTime(last) : undefined,
+            registrationDate: formatAppDate(created),
+            registrationTime: formatAppTime(created),
+            visitsCount: p.visitsCount || 1,
+            totalPaid: 0, // يُحسب عند فتح تفاصيل المريض فقط
+            lastDiagnosis: p.lastDiagnosis || 'كشف عيادة باطنة',
+          };
+        });
+    }
+
     // Clinic Workflow Rule: A patient ONLY appears in Patient Files ("ملفات المرضى")
     // after having their clinical examination completed and their prescription saved!
     // (Prescription saved in prescriptionsCanonical OR Visit marked as COMPLETED)
@@ -846,80 +947,10 @@ function ClinicApp() {
     });
   }, [appointmentsCanonical, patientsCanonical, visitTypesList]);
 
-  const transactions: TransactionRecord[] = useMemo(() => {
-    const list: (TransactionRecord & { rawTimestamp: string })[] = [];
-    const seenPaymentIds = new Set<string>();
-
-    paymentsCanonical.forEach((p) => {
-      seenPaymentIds.add(p.paymentId);
-      const pat = patientsCanonical.find((pt) => pt.patientId === p.patientId);
-      const inv = invoicesCanonical.find((i) => i.invoiceId === p.invoiceId);
-      const serviceName = inv?.items?.[0]?.nameAr || inv?.items?.[0]?.description || 'كشف واستشارة طبية';
-      const totalAmount = inv?.total || p.amount;
-      const discountAmount = inv?.discount || 0;
-      const paidAmount = p.amount;
-      const rawIso = p.paidAt || p.createdAt || new Date().toISOString();
-
-      list.push({
-        id: p.paymentId,
-        receiptNo: p.receiptNumber || `REC-${p.paymentId.slice(-5)}`,
-        receiptNumber: p.receiptNumber || `REC-${p.paymentId.slice(-5)}`,
-        patientName: pat?.fullName || 'مريض مسجل',
-        serviceName,
-        description: serviceName,
-        totalAmount,
-        discountAmount,
-        paidAmount,
-        amount: paidAmount,
-        type: 'in',
-        paymentMethod: (p.method === 'CARD' ? 'فيزا / كارت' : 'نقدي'),
-        method: (p.method === 'CARD' ? 'فيزا / كارت' : 'نقدي'),
-        status: (inv?.status === 'PAID' || paidAmount >= totalAmount) ? 'مدفوعة' : 'غير مدفوعة',
-        time: formatAppTime(rawIso),
-        date: rawIso.includes('T') ? rawIso.split('T')[0] : rawIso,
-        rawTimestamp: rawIso,
-        category: 'كشوفات وخدمات طبية',
-      });
-    });
-
-    // Also include any unpaid invoices that don't have a payment entry yet
-    invoicesCanonical.forEach((inv) => {
-      const hasPayment = paymentsCanonical.some((p) => p.invoiceId === inv.invoiceId);
-      if (!hasPayment) {
-        const pat = patientsCanonical.find((pt) => pt.patientId === inv.patientId);
-        const serviceName = inv.items?.[0]?.nameAr || inv.items?.[0]?.description || 'كشف واستشارة طبية';
-        const rawIso = inv.createdAt || new Date().toISOString();
-        list.push({
-          id: inv.invoiceId,
-          receiptNo: `INV-${inv.invoiceId.slice(-5)}`,
-          receiptNumber: `INV-${inv.invoiceId.slice(-5)}`,
-          patientName: pat?.fullName || 'مريض مسجل',
-          serviceName,
-          description: serviceName,
-          totalAmount: inv.total,
-          discountAmount: inv.discount || 0,
-          paidAmount: inv.paidAmount || 0,
-          amount: inv.paidAmount || inv.total,
-          type: 'in',
-          paymentMethod: 'نقدي',
-          method: 'نقدي',
-          status: inv.status === 'PAID' ? 'مدفوعة' : 'غير مدفوعة',
-          time: formatAppTime(rawIso),
-          date: rawIso.includes('T') ? rawIso.split('T')[0] : rawIso,
-          rawTimestamp: rawIso,
-          category: 'فواتير كشوفات',
-        });
-      }
-    });
-
-    // Exact ISO timestamp descending sort: newest at the top
-    return list.sort((a, b) => {
-      const timeA = new Date(a.rawTimestamp).getTime();
-      const timeB = new Date(b.rawTimestamp).getTime();
-      if (!isNaN(timeB) && !isNaN(timeA) && timeB !== timeA) return timeB - timeA;
-      return (b.id || '').localeCompare(a.id || '');
-    });
-  }, [paymentsCanonical, invoicesCanonical, patientsCanonical]);
+  const transactions: TransactionRecord[] = useMemo(
+    () => buildTransactions({ payments: paymentsCanonical, invoices: invoicesCanonical, patients: patientsCanonical }),
+    [paymentsCanonical, invoicesCanonical, patientsCanonical]
+  );
 
   // Catalogs derived
   const presetChronicConditions = useMemo(() => {
@@ -1207,12 +1238,11 @@ function ClinicApp() {
   }, [db]);
 
   // Real-time Firestore-driven notifications based on Visit status transitions (new_visit / call / finish)
-  const previousVisitsMapRef = useRef<Map<string, Visit['status']>>(new Map());
-  const isInitialVisitsLoadRef = useRef(true);
-
   useEffect(() => {
+    const firstLoadDone = READ_OPT ? visitsReady : visitsCanonical.length > 0;
+
     if (isInitialVisitsLoadRef.current) {
-      if (visitsCanonical.length > 0) {
+      if (firstLoadDone) {
         visitsCanonical.forEach((v) => {
           previousVisitsMapRef.current.set(v.visitId, v.status);
         });
@@ -1292,7 +1322,7 @@ function ClinicApp() {
 
       previousVisitsMapRef.current.set(v.visitId, v.status);
     });
-  }, [visitsCanonical, patientsCanonical]);
+  }, [visitsCanonical, patientsCanonical, visitsReady]);
 
   // Real-time synchronization of alerts across tabs (BroadcastChannel) and devices/accounts (Firestore)
   const lastReceivedAlertIdRef = useRef<string>('');
@@ -1458,11 +1488,15 @@ function ClinicApp() {
         phone: patient.phone,
         fileNumber: patient.fileNumber,
         medicalCode: patient.medicalCode || `EG-${patient.fileNumber || 101}`,
-        lastVisitDate: lastVisit?.createdAt?.split('T')[0] || fu.createdAt?.split('T')[0] || '',
+        lastVisitDate: READ_OPT
+          ? (patient.lastVisitAt?.split('T')[0] || fu.createdAt?.split('T')[0] || '')
+          : (lastVisit?.createdAt?.split('T')[0] || fu.createdAt?.split('T')[0] || ''),
         dueDate: fu.scheduledDate,
         daysRemaining: diffDays,
         isFreeEligible: fu.isFree || false,
-        diagnosis: lastVisit?.clinicalData?.diagnosis?.[0] || 'متابعة استشارة',
+        diagnosis: READ_OPT
+          ? (patient.lastDiagnosis || 'متابعة استشارة')
+          : (lastVisit?.clinicalData?.diagnosis?.[0] || 'متابعة استشارة'),
         notes: fu.notes || 'متابعة حددها الطبيب',
       });
     });
@@ -1923,7 +1957,38 @@ function ClinicApp() {
         // 1. Delete visit document
         await deleteDoc(doc(db, 'visits', targetVisit.visitId));
 
-        // 2. Delete linked invoice(s)
+        if (READ_OPT) {
+          const vid = targetVisit.visitId;
+          const pid = targetVisit.patientId;
+
+          // 2/3: الفواتير والمدفوعات المرتبطة بالزيارة (بالاستعلام المباشر من الخادم، لا بالنافذة)
+          const [invSnap, paySnap] = await Promise.all([
+            getDocs(query(collection(db, 'invoices'), where('visitId', '==', vid))),
+            getDocs(query(collection(db, 'payments'), where('visitId', '==', vid))),
+          ]);
+          for (const d of invSnap.docs) await deleteDoc(d.ref).catch(() => {});
+          for (const d of paySnap.docs) await deleteDoc(d.ref).catch(() => {});
+
+          // 4: لا تحذف ملف المريض إلا بعد التأكد من الخادم، ومع أي شك لا تحذف
+          try {
+            const patientDoc = patientsCanonical.find((p) => p.patientId === pid);
+            if (!patientDoc?.hasClinicalFile) {
+              const [vSnap, aSnap] = await Promise.all([
+                getDocs(query(collection(db, 'visits'), where('patientId', '==', pid), limit(2))),
+                getDocs(query(collection(db, 'appointments'), where('patientId', '==', pid), limit(1))),
+              ]);
+              const otherVisits = vSnap.docs.filter((d) => d.id !== vid);
+              if (otherVisits.length === 0 && aSnap.empty) {
+                await deleteDoc(doc(db, 'patients', pid)).catch(() => {});
+              }
+            }
+          } catch (e) {
+            console.warn('تخطي حذف المريض بسبب فشل التحقق:', e); // الفشل = لا حذف
+          }
+          return;
+        }
+
+        // 2. Delete linked invoice(s) (المنطق القديم عند تعطيل READ_OPT)
         const matchingInvoices = invoicesCanonical.filter(
           (inv) => inv.visitId === targetVisit.visitId || (inv.patientId === targetVisit.patientId && inv.createdAt === targetVisit.createdAt)
         );
@@ -2048,6 +2113,7 @@ function ClinicApp() {
       status: (newTx.status === 'مدفوعة' || paidAmount >= finalTotal) ? 'PAID' : 'UNPAID',
       createdAt: txDateIso,
       updatedAt: txDateIso,
+      dayKey: toDayKey(txDateIso),
     };
 
     const newPayment: Payment = {
@@ -2062,6 +2128,7 @@ function ClinicApp() {
       receiptNumber: newTx.receiptNo || `REC-${Math.floor(10000 + Math.random() * 90000)}`,
       paidAt: txDateIso,
       receivedBy: 'doc-1',
+      dayKey: toDayKey(txDateIso),
     };
 
     if (db) {
@@ -2479,6 +2546,7 @@ function ClinicApp() {
       } catch (error) {
         console.warn('Firestore sync notice:', error);
       }
+      invalidatePatientHistory(activeWaiting?.patientId || activeExamPatient?.id);
     }
 
     // Play chime & show alert notification
@@ -2764,6 +2832,7 @@ function ClinicApp() {
                   onAddTransaction={handleAddTransaction}
                   onDeleteTransaction={handleDeleteTransaction}
                   patients={patients}
+                  patientsCanonical={patientsCanonical}
                 />
               )}
 

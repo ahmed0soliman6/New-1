@@ -9,6 +9,7 @@ import {
 import { INITIAL_SERVICES } from '../data/database';
 import { toEnglishDigits } from '../utils/numberUtils';
 import { useLanguage } from '../i18n/LanguageContext';
+import { READ_OPT } from '../config/readOpt';
 
 export interface GlobalSearchBarProps {
   patients: PatientListItem[];
@@ -683,11 +684,16 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
                     searchResults.billing.length > 0 && (
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <span className="material-symbols-outlined text-emerald-500 text-lg">payments</span>
                             <h4 className="text-xs font-black text-slate-900 dark:text-white">
                               الفواتير وسجلات الدفع المطابقة ({searchResults.billing.length})
                             </h4>
+                            {READ_OPT && (
+                              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal">
+                                (معاملات اليوم والأمس — الفترات السابقة بشاشة المالية)
+                              </span>
+                            )}
                           </div>
                         </div>
 

@@ -4,6 +4,7 @@ import { usePermissions } from '../../context/AuthContext';
 import { PatientDetailFullScreen } from './PatientDetailFullScreen';
 import { toEnglishDigits, formatAppDate } from '../../utils/numberUtils';
 import { useLanguage } from '../../i18n/LanguageContext';
+import { READ_OPT } from '../../config/readOpt';
 import type {
   FollowUp,
   Invoice,
@@ -178,8 +179,8 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
           </div>
         ) : (
           filteredPatients.map((p) => {
-            const completedVisits = visits.filter((v) => v.patientId === p.id && v.status === 'COMPLETED');
-            const pVisitsCount = completedVisits.length > 0 ? completedVisits.length : p.visitsCount || 1;
+            const completedVisits = READ_OPT ? [] : visits.filter((v) => v.patientId === p.id && v.status === 'COMPLETED');
+            const pVisitsCount = READ_OPT ? (p.visitsCount || 1) : (completedVisits.length > 0 ? completedVisits.length : p.visitsCount || 1);
             const pPrescriptionsCount = prescriptions.filter((pr) => pr.patientId === p.id).length;
 
             return (
@@ -243,6 +244,10 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
                         <span>•</span>
                         <span className="text-purple-600 dark:text-[#d0bcff]">
                           {toEnglishDigits(pPrescriptionsCount)} {language === 'en' ? 'Prescriptions' : 'روشتات'}
+                        </span>
+                        <span>•</span>
+                        <span className="text-emerald-600 dark:text-[#10B981] font-semibold">
+                          {READ_OPT ? '—' : `${toEnglishDigits(p.totalPaid || 0)} ج.م`}
                         </span>
                       </div>
 

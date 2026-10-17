@@ -25,6 +25,8 @@ import { MedicationsCard } from '../examination/MedicationsCard';
 import { FollowupCard } from '../examination/FollowupCard';
 import { PreviousVisitCard } from '../examination/PreviousVisitCard';
 import { PatientDetailFullScreen } from './PatientDetailFullScreen';
+import { READ_OPT } from '../../config/readOpt';
+import { usePatientHistory, invalidatePatientHistory } from '../../services/history';
 import { recordExamToClinicalMemory, getSmartClinicalSuggestions } from '../../utils/clinicalRecommender';
 import {
   Visit,
@@ -130,6 +132,13 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
   currentVisitId,
 }) => {
   const { isRTL, language } = useLanguage();
+
+  // On-demand clinical history for current patient when READ_OPT is true
+  const hist = usePatientHistory(patient?.id, READ_OPT);
+  const effVisits = READ_OPT ? hist.visits : visits;
+  const effPrescriptions = READ_OPT ? hist.prescriptions : prescriptions;
+  const effLabOrders = READ_OPT ? hist.labOrders : allLabOrders;
+  const effRadOrders = READ_OPT ? hist.radiologyOrders : allRadiologyOrders;
 
   // Navigation tabs / quick section jump
   const [activeTab, setActiveTab] = useState<'all' | 'vitals' | 'symptoms' | 'lab' | 'rad' | 'diag' | 'rx' | 'followup'>('all');
@@ -330,7 +339,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
       };
     }
 
-    const patientVisits = (visits || []).filter((v) => v.patientId === patient.id);
+    const patientVisits = (effVisits || []).filter((v) => v.patientId === patient.id);
 
     // Past visits: COMPLETED visits, or visits with different ID than currentVisitId and not in-progress/waiting
     const pastVisits = patientVisits
@@ -349,7 +358,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
     let registeredRx: Prescription | null = null;
 
     for (const v of pastVisits) {
-      const rx = (prescriptions || []).find((p) => p.visitId === v.visitId);
+      const rx = (effPrescriptions || []).find((p) => p.visitId === v.visitId);
       if (rx && rx.items && rx.items.length > 0) {
         latestVisitWithRx = v;
         registeredRx = rx;
@@ -369,8 +378,8 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
       };
     }
 
-    const labs = (allLabOrders || []).filter((l) => l.visitId === latestVisitWithRx!.visitId);
-    const rads = (allRadiologyOrders || []).filter((r) => r.visitId === latestVisitWithRx!.visitId);
+    const labs = (effLabOrders || []).filter((l) => l.visitId === latestVisitWithRx!.visitId);
+    const rads = (effRadOrders || []).filter((r) => r.visitId === latestVisitWithRx!.visitId);
 
     const totalCount = Math.max(1, pastVisits.length > 0 ? pastVisits.length : patient.visitsCount || 1);
 
@@ -382,7 +391,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
       previousRadiologyOrders: rads,
       totalVisitsCount: totalCount,
     };
-  }, [patient, visits, prescriptions, allLabOrders, allRadiologyOrders, currentVisitId]);
+  }, [patient, effVisits, effPrescriptions, effLabOrders, effRadOrders, currentVisitId]);
 
   // Recurring Prescription Templates State
   const [recurringTemplates, setRecurringTemplates] = useState<RecurringRxTemplate[]>(loadRecurringTemplates);
@@ -488,13 +497,13 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
   // Derive smart clinical suggestions based on patient complaint, diagnosis & history
   const smartSuggestions = React.useMemo(() => {
     return getSmartClinicalSuggestions(
-      visits || [],
-      prescriptions || [],
-      allLabOrders || [],
-      allRadiologyOrders || [],
+      effVisits || [],
+      effPrescriptions || [],
+      effLabOrders || [],
+      effRadOrders || [],
       patientDiagnoses || []
     );
-  }, [visits, prescriptions, allLabOrders, allRadiologyOrders, patientDiagnoses]);
+  }, [effVisits, effPrescriptions, effLabOrders, effRadOrders, patientDiagnoses]);
 
   // Add custom or preset chronic condition
   const handleToggleChronicCondition = (condition: string) => {
@@ -705,6 +714,9 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
         diagnoses: patientDiagnoses,
         lifestyleAdvice,
       });
+      if (patient?.id) {
+        invalidatePatientHistory(patient.id);
+      }
       onFinishExam({
         prescriptionItems: activePrescription,
         labOrders,
@@ -2711,10 +2723,10 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                   setShowMedicalDossier(false);
                   onNavigate(screen);
                 }}
-                visits={visits}
-                prescriptions={prescriptions}
-                labOrders={allLabOrders}
-                radiologyOrders={allRadiologyOrders}
+                visits={effVisits}
+                prescriptions={effPrescriptions}
+                labOrders={effLabOrders}
+                radiologyOrders={effRadOrders}
               />
             </div>
           </div>

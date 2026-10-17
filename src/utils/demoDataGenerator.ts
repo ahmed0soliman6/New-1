@@ -1,5 +1,6 @@
 import { doc, setDoc, deleteDoc, collection, getDocs, writeBatch, type Firestore } from 'firebase/firestore';
 import { saveClinicExpenses, DEFAULT_CLINIC_EXPENSES, loadClinicExpenses } from './financeManager';
+import { toDayKey } from './dayKey';
 import type {
   Patient,
   Appointment,
@@ -162,6 +163,7 @@ export async function generateOneYearDemoData(db: Firestore | null): Promise<voi
         updatedAt: dateStr,
         createdBy: 'secretary',
         doctorId: 'admin',
+        dayKey: toDayKey(dateStr),
       });
 
       // Invoice
@@ -185,6 +187,7 @@ export async function generateOneYearDemoData(db: Firestore | null): Promise<voi
         status: 'PAID',
         createdAt: dateStr,
         updatedAt: dateStr,
+        dayKey: toDayKey(dateStr),
       });
 
       // Payment
@@ -200,6 +203,7 @@ export async function generateOneYearDemoData(db: Firestore | null): Promise<voi
         receiptNumber: `REC-${m}-${v}-${1000 + v}`,
         paidAt: dateStr,
         receivedBy: 'secretary',
+        dayKey: toDayKey(dateStr),
       });
     }
 

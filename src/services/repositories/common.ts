@@ -4,9 +4,13 @@ import {
   onSnapshot,
   setDoc,
   deleteDoc,
+  query,
+  type QueryConstraint,
+  type QuerySnapshot,
   type Firestore,
   type Unsubscribe,
 } from 'firebase/firestore';
+import { meterQuery } from '../readMeter';
 import { auth } from '../firebase';
 import { FirestoreCollections, SettingsDocs, type FirestoreCollectionName, type SettingsDocId } from '../firebase/collections';
 
@@ -75,30 +79,39 @@ export const ID_FIELD_MAP: Record<string, string> = {
   [FirestoreCollections.CHRONIC_DISEASES]: 'diseaseId',
 };
 
+export function mapDocs<T>(name: string, snapshot: QuerySnapshot): T[] {
+  const idField = ID_FIELD_MAP[name] || 'id';
+  return snapshot.docs.map((item) => {
+    const data = item.data();
+    return normalize({ ...data, [idField]: data[idField] || item.id }) as T;
+  });
+}
+
+export function subscribeQuery<T>(
+  db: Firestore,
+  name: FirestoreCollectionName | string,
+  constraints: QueryConstraint[],
+  next: (items: T[]) => void,
+  error: (reason: Error) => void,
+  label?: string
+): Unsubscribe {
+  return onSnapshot(
+    query(collection(db, name), ...constraints),
+    (snapshot) => {
+      meterQuery(label ?? name, snapshot);
+      next(mapDocs<T>(name, snapshot));
+    },
+    (reason) => error(handleFirestoreError(reason, OperationType.LIST, name))
+  );
+}
+
 export function subscribeCollection<T>(
   db: Firestore,
   name: FirestoreCollectionName | string,
   next: (items: T[]) => void,
   error: (reason: Error) => void
 ): Unsubscribe {
-  const idField = ID_FIELD_MAP[name] || 'id';
-  return onSnapshot(
-    collection(db, name),
-    (snapshot) => {
-      const items = snapshot.docs.map((item) => {
-        const data = item.data();
-        return normalize({
-          ...data,
-          [idField]: data[idField] || item.id,
-        }) as T;
-      });
-      next(items);
-    },
-    (reason) => {
-      const formattedError = handleFirestoreError(reason, OperationType.LIST, name);
-      error(formattedError);
-    }
-  );
+  return subscribeQuery<T>(db, name, [], next, error);
 }
 
 export async function saveCatalogItem<T extends Record<string, unknown>>(

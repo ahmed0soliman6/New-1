@@ -11,6 +11,7 @@ import { UserManagementPanel } from '../settings/UserManagementPanel';
 import { RecurringTemplatesManager } from '../settings/RecurringTemplatesManager';
 import { ChangePasswordCard } from '../settings/ChangePasswordCard';
 import { ClinicBranchesPanel } from '../settings/ClinicBranchesPanel';
+import { MaintenanceCard } from '../settings/MaintenanceCard';
 import { APP_VERSION } from '../../constants/version';
 import { usePermissions } from '../../context/AuthContext';
 import { PermissionGate } from '../auth/PermissionGate';
@@ -153,6 +154,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const { language, setLanguage, t, isRTL } = useLanguage();
   const isAdmin = role === 'admin';
   const canDeleteSettings = isAdmin || canDelete('system-settings') || canPerform('system-settings', 'delete');
+  const canRunMaintenance = isAdmin || role === 'doctor' || canDeleteSettings;
   const [activeSettingsSection, setActiveSettingsSection] = useState<
     'general' | 'catalogs' | 'users'
   >('general');
@@ -1844,6 +1846,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                         </button>
                       </div>
                     </>
+                  )}
+
+                  {/* Block 4: Maintenance & Backfill Tools (ترحيل المفاتيح الزمنية dayKey ومؤشرات المرضى) */}
+                  {canRunMaintenance && (
+                    <div className="pt-2">
+                      <MaintenanceCard />
+                    </div>
                   )}
 
                 </div>

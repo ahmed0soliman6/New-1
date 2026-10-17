@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ScreenType, AppointmentListItem, QueueItem, TransactionRecord, PatientListItem } from '../../types';
-import { Visit } from '../../types/database';
+import { Visit, Patient } from '../../types/database';
 import { FollowUpItem } from './AppointmentsScreen';
 import { usePermissions } from '../../context/AuthContext';
 import { usePrescriptionDoctor } from '../../utils/prescriptionDoctor';
@@ -9,6 +9,11 @@ import { loadMedicalServices, MedicalServiceItem } from '../../utils/financeMana
 import { ClinicAlertPayload } from '../../utils/alertManager';
 import { toEnglishDigits } from '../../utils/numberUtils';
 import { useLanguage } from '../../i18n/LanguageContext';
+import { READ_OPT } from '../../config/readOpt';
+import { fetchVisitCounts } from '../../services/rangeStats';
+import { useFinanceRange } from '../../services/financeRange';
+import { buildTransactions } from '../../utils/buildTransactions';
+import { todayKey, addDaysToKey } from '../../utils/dayKey';
 
 interface DashboardScreenProps {
   onNavigate: (screen: ScreenType) => void;
@@ -25,6 +30,7 @@ interface DashboardScreenProps {
   onSelectPatient?: (patient: PatientListItem | null) => void;
   onStartIntakeFromAppointment?: (appointment: AppointmentListItem) => void;
   patients?: PatientListItem[];
+  patientsCanonical?: Patient[];
   onAddTransaction?: (tx: TransactionRecord) => void;
 }
 
@@ -43,6 +49,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   onSelectPatient,
   onStartIntakeFromAppointment,
   patients = [],
+  patientsCanonical = [],
   onAddTransaction,
 }) => {
   const { canAccess } = usePermissions();
@@ -50,6 +57,59 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   const { language, isRTL, t } = useLanguage();
 
   const [dashboardTimeframe, setDashboardTimeframe] = useState<'today' | 'week' | 'month' | 'all'>('today');
+
+  // On-demand range stats for Dashboard when READ_OPT is active and timeframe is not today
+  const [remoteVisitStats, setRemoteVisitStats] = useState<{ total: number; completed: number } | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+
+  const { rangeFromKey, rangeToKey } = useMemo(() => {
+    const t = todayKey();
+    if (dashboardTimeframe === 'week') {
+      return { rangeFromKey: addDaysToKey(t, -6), rangeToKey: t };
+    }
+    if (dashboardTimeframe === 'month') {
+      return { rangeFromKey: addDaysToKey(t, -29), rangeToKey: t };
+    }
+    // 'all'
+    return { rangeFromKey: '', rangeToKey: '' };
+  }, [dashboardTimeframe]);
+
+  useEffect(() => {
+    if (!READ_OPT || dashboardTimeframe === 'today') {
+      setRemoteVisitStats(null);
+      return;
+    }
+    let cancelled = false;
+    setStatsLoading(true);
+    fetchVisitCounts(rangeFromKey || undefined, rangeToKey || undefined)
+      .then((counts) => {
+        if (!cancelled) setRemoteVisitStats(counts);
+      })
+      .catch((err) => {
+        console.warn('Dashboard fetchVisitCounts notice:', err);
+      })
+      .finally(() => {
+        if (!cancelled) setStatsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dashboardTimeframe, rangeFromKey, rangeToKey]);
+
+  const { payments: rangePayments, invoices: rangeInvoices } = useFinanceRange(
+    rangeFromKey || '2000-01-01',
+    rangeToKey || todayKey(),
+    READ_OPT && dashboardTimeframe !== 'today'
+  );
+
+  const rangeTransactions = useMemo(() => {
+    if (!READ_OPT || dashboardTimeframe === 'today') return [];
+    return buildTransactions({
+      payments: rangePayments,
+      invoices: rangeInvoices,
+      patients: (patientsCanonical as Patient[]) || [],
+    });
+  }, [rangePayments, rangeInvoices, patientsCanonical, dashboardTimeframe]);
   const [activeMainTab, setActiveMainTab] = useState<'appointments' | 'followups'>('appointments');
   const [appointmentFilter, setAppointmentFilter] = useState<'all' | 'scheduled' | 'arrived' | 'cancelled'>('all');
   const [selectedPayMethod, setSelectedPayMethod] = useState<'cash' | 'card' | 'instapay'>('cash');
@@ -348,6 +408,49 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
   // REAL SYSTEM METRICS (100% SOURCED FROM CANONICAL ARRAYS)
   // =========================================================================
   const liveStats = useMemo(() => {
+    const labelMap = {
+      today: 'اليوم',
+      week: 'هذا الأسبوع',
+      month: 'هذا الشهر',
+      all: 'الإجمالي العام',
+    };
+
+    // If READ_OPT is active and timeframe is not 'today', override counts & revenue with on-demand data
+    if (READ_OPT && dashboardTimeframe !== 'today' && remoteVisitStats) {
+      const periodAppointments = appointments.filter((a) => {
+        if (a.date && !isInTimeframe(a.date)) return false;
+        return true;
+      });
+      const scheduledOnlyCount = periodAppointments.filter(
+        (a) => a.status === 'مجدول' || a.status === 'بانتظار التأكيد'
+      ).length;
+
+      const periodTransactions = rangeTransactions.filter((t) => t.type !== 'out');
+      const totalRevenue = periodTransactions.reduce(
+        (sum, t) => sum + (t.paidAmount ?? t.amount ?? 0),
+        0
+      );
+
+      const avgWaitMinutes =
+        queue.length > 0
+          ? Math.round(
+              queue.reduce((sum, q) => sum + (q.elapsedMinutes || 1), 0) / queue.length
+            )
+          : 0;
+
+      return {
+        periodLabel: labelMap[dashboardTimeframe],
+        actualVisitsCount: remoteVisitStats.total,
+        scheduledOnlyCount,
+        completedVisitsCount: remoteVisitStats.completed,
+        totalFollowUpsCount: followUps.length,
+        liveWaitingCount: queue.length,
+        avgWaitMinutes,
+        revenueFormatted: totalRevenue.toLocaleString('en-US'),
+        totalRevenue,
+      };
+    }
+
     // 1. Actual registered visits in this period
     const periodVisits = visits.filter((v) => isInTimeframe(v.createdAt));
     const actualVisitsCount = periodVisits.length;
@@ -387,13 +490,6 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
     // 6. Upcoming follow-ups
     const totalFollowUpsCount = followUps.length;
 
-    const labelMap = {
-      today: 'اليوم',
-      week: 'هذا الأسبوع',
-      month: 'هذا الشهر',
-      all: 'الإجمالي العام',
-    };
-
     return {
       periodLabel: labelMap[dashboardTimeframe],
       actualVisitsCount,
@@ -405,7 +501,16 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
       revenueFormatted: totalRevenue.toLocaleString('en-US'),
       totalRevenue,
     };
-  }, [visits, appointments, transactions, queue, followUps, dashboardTimeframe]);
+  }, [
+    visits,
+    appointments,
+    transactions,
+    queue,
+    followUps,
+    dashboardTimeframe,
+    remoteVisitStats,
+    rangeTransactions,
+  ]);
 
   // =========================================================================
   // APPOINTMENTS FILTERING & INTERACTION
@@ -702,6 +807,12 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
           <span className="text-[11px] text-teal-700 dark:text-[#45dee7] font-bold bg-teal-50 dark:bg-[#00c2cb]/15 px-2 py-0.5 rounded-md">
             {liveStats.periodLabel}
           </span>
+          {statsLoading && (
+            <span className="inline-flex items-center gap-1 text-[11px] text-teal-600 dark:text-[#00c2cb] font-semibold animate-pulse">
+              <span className="material-symbols-outlined text-xs animate-spin">progress_activity</span>
+              <span>جاري التحميل...</span>
+            </span>
+          )}
         </div>
 
         <div className="flex items-center bg-slate-100 dark:bg-[#111A2E] p-1 rounded-xl border border-slate-200 dark:border-white/5 overflow-x-auto">

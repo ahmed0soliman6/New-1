@@ -105,6 +105,12 @@ export interface Patient {
     phone: string;
     relation: string;
   };
+
+  // Clinical Aggregate Summary Fields (المؤشرات المجمعة)
+  hasClinicalFile?: boolean;
+  visitsCount?: number;
+  lastVisitAt?: string;
+  lastDiagnosis?: string;
 }
 
 export type AppointmentStatus = 'SCHEDULED' | 'ARRIVED' | 'CANCELLED' | 'NO_SHOW';
@@ -177,6 +183,7 @@ export interface Visit {
   updatedAt: string;
   createdBy: string;
   doctorId: string;
+  dayKey?: string;
 }
 
 export type InvoiceStatus = 'UNPAID' | 'PARTIALLY_PAID' | 'PAID' | 'VOID';
@@ -204,6 +211,7 @@ export interface Invoice {
   status: InvoiceStatus;
   createdAt: string;
   updatedAt: string;
+  dayKey?: string;
 }
 
 export type PaymentMethod = 'CASH' | 'CARD' | 'TRANSFER' | 'OTHER';
@@ -221,6 +229,7 @@ export interface Payment {
   receiptNumber: string;
   paidAt: string;
   receivedBy: string;
+  dayKey?: string;
 }
 
 export interface ServiceItem {
@@ -253,6 +262,7 @@ export interface FollowUp {
   notes: string;
   createdAt: string;
   updatedAt: string;
+  dayKey?: string;
 }
 
 /**
@@ -280,6 +290,7 @@ export interface Prescription {
   notes: string;
   createdAt: string;
   updatedAt: string;
+  dayKey?: string;
 }
 
 export type MedicationSource = 'LOCAL' | 'EGYPTIAN_ARCHIVE' | 'CUSTOM';
@@ -324,6 +335,7 @@ export interface LabOrder {
   notes: string;
   orderedAt: string;
   updatedAt: string;
+  dayKey?: string;
 }
 
 export interface RadiologyType {
@@ -348,6 +360,7 @@ export interface RadiologyOrder {
   notes: string;
   orderedAt: string;
   updatedAt: string;
+  dayKey?: string;
 }
 
 export interface Diagnosis {

@@ -16,6 +16,7 @@ import { QrCodeImage } from '../QrCodeImage';
 import { safeStorage } from '../../services/storage';
 import { db } from '../../services/firebase';
 import { subscribeToPrescriptionSettings } from '../../services/repositories/settingsRepo';
+import { toDayKey } from '../../utils/dayKey';
 import { useLanguage } from '../../i18n/LanguageContext';
 
 interface BookingLandingScreenProps {
@@ -489,6 +490,7 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
                 status: 'SCHEDULED',
                 expectedFee: newApp.expectedFee,
                 notes: newApp.notes,
+                dayKey: toDayKey(newApp.date),
                 createdAt: timestamp,
                 updatedAt: timestamp,
                 createdBy: 'online_booking',
