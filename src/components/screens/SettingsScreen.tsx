@@ -12,6 +12,7 @@ import { RecurringTemplatesManager } from '../settings/RecurringTemplatesManager
 import { ChangePasswordCard } from '../settings/ChangePasswordCard';
 import { ClinicBranchesPanel } from '../settings/ClinicBranchesPanel';
 import { MaintenanceCard } from '../settings/MaintenanceCard';
+import { ReadOptCard } from '../settings/ReadOptCard';
 import { APP_VERSION } from '../../constants/version';
 import { usePermissions } from '../../context/AuthContext';
 import { PermissionGate } from '../auth/PermissionGate';
@@ -1848,9 +1849,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                     </>
                   )}
 
-                  {/* Block 4: Maintenance & Backfill Tools (ترحيل المفاتيح الزمنية dayKey ومؤشرات المرضى) */}
+                  {/* Block 4: Maintenance & Backfill Tools (ترحيل المفاتيح الزمنية dayKey ومؤشرات المرضى ووضع توفير القراءات) */}
                   {canRunMaintenance && (
-                    <div className="pt-2">
+                    <div className="pt-2 space-y-4">
+                      <ReadOptCard />
                       <MaintenanceCard />
                     </div>
                   )}

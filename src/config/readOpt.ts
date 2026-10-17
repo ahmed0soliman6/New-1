@@ -6,7 +6,8 @@ export const READ_OPT: boolean = (() => {
   } catch {
     /* تجاهل أي خطأ في الوصول للـ localStorage */
   }
-  return import.meta.env.VITE_READ_OPT === '1';
+  // الافتراضي: مفعّل، ويُطفأ فقط إذا ضُبط VITE_READ_OPT=0
+  return import.meta.env.VITE_READ_OPT !== '0';
 })();
 
 /** عدد الأيام الساخنة (اليوم + السابق). 2 = اليوم والأمس لتغطية ما بعد منتصف الليل */
