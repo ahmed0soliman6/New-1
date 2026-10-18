@@ -37,7 +37,7 @@ export const LabCard: React.FC<LabCardProps> = ({
   frequentSuggestions = [],
 }) => {
   const { language } = useLanguage();
-  const [showPicker, setShowPicker] = useState(false);
+  const [showPicker, setShowPicker] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -130,7 +130,6 @@ export const LabCard: React.FC<LabCardProps> = ({
       isAbnormal: false,
     };
     onChangeOrders([...labOrders, newOrder]);
-    setShowPicker(false);
     setSearchQuery('');
     setOnlineResults([]);
   };
@@ -297,7 +296,7 @@ export const LabCard: React.FC<LabCardProps> = ({
                   if (selected) {
                     handleAddFromCatalog(selected, 'REQUEST');
                   }
-                  setShowPicker(false);
+                  e.target.value = "";
                 }}
                 className="bg-white dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs font-bold py-1.5 px-3 rounded-xl border-2 border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer min-w-[210px] max-w-[320px] shadow-sm"
               >

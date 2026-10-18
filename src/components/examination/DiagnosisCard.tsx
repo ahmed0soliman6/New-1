@@ -54,7 +54,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({
   const { language } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFilter, setSearchFilter] = useState('');
-  const [showPicker, setShowPicker] = useState(false);
+  const [showPicker, setShowPicker] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [isSearchingOnline, setIsSearchingOnline] = useState(false);
   const [onlineResults, setOnlineResults] = useState<DiagnosisCatalogItem[]>([]);
@@ -146,7 +146,6 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({
       isPrimary: isFirst,
     };
     onChangeDiagnoses([...diagnoses, newDiag]);
-    setShowPicker(false);
     setSearchQuery('');
     setOnlineResults([]);
   };
@@ -284,7 +283,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({
                   if (selected) {
                     handleAddFromCatalog(selected);
                   }
-                  setShowPicker(false);
+                  e.target.value = "";
                 }}
                 className="bg-white dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs font-bold py-1.5 px-3 rounded-xl border-2 border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/30 cursor-pointer min-w-[210px] max-w-[320px] shadow-sm"
               >

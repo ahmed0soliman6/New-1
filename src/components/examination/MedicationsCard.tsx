@@ -54,7 +54,7 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
 }) => {
   const { language } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
-  const [showPicker, setShowPicker] = useState(false);
+  const [showPicker, setShowPicker] = useState(true);
   const [showAddCustomModal, setShowAddCustomModal] = useState(false);
   const [isSearchingOnline, setIsSearchingOnline] = useState(false);
   const [onlineResults, setOnlineResults] = useState<DrugCatalogItem[]>([]);
@@ -308,7 +308,7 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
                   if (selected) {
                     handleAddFromCatalog(selected);
                   }
-                  setShowPicker(false);
+                  e.target.value = "";
                 }}
                 className="bg-white dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs font-bold py-1.5 px-3 rounded-xl border-2 border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/30 cursor-pointer min-w-[210px] max-w-[320px] shadow-sm"
               >

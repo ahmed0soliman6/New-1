@@ -34,7 +34,7 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
   frequentSuggestions = [],
 }) => {
   const { language } = useLanguage();
-  const [showPicker, setShowPicker] = useState(false);
+  const [showPicker, setShowPicker] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
   const [newScanName, setNewScanName] = useState('');
@@ -116,7 +116,6 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
       notes: '',
     };
     onChangeOrders([...radiologyOrders, newOrder]);
-    setShowPicker(false);
     setSearchQuery('');
     setOnlineResults([]);
   };
@@ -270,7 +269,7 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
                   if (selected) {
                     handleAddFromCatalog(selected, 'REQUEST');
                   }
-                  setShowPicker(false);
+                  e.target.value = "";
                 }}
                 className="bg-white dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs font-bold py-1.5 px-3 rounded-xl border-2 border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/30 cursor-pointer min-w-[210px] max-w-[320px] shadow-sm"
               >
