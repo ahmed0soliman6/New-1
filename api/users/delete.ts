@@ -1,75 +1,159 @@
-import { initializeApp, getApps, cert, type App } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
-import { getFirestore } from 'firebase-admin/firestore';
+import crypto from 'node:crypto';
 
 interface DeleteRequest {
   uid: string;
   username?: string;
 }
 
-function getAdminApp(): App {
-  const currentApps = getApps();
-  if (currentApps.length > 0 && currentApps[0]) {
-    return currentApps[0];
-  }
+function cleanPrivateKey(raw?: string): string | null {
+  if (!raw) return null;
+  let key = raw.trim();
 
-  let projectId = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID;
-  let clientEmail = process.env.FIREBASE_CLIENT_EMAIL || process.env.VITE_FIREBASE_CLIENT_EMAIL;
-  let privateKey = process.env.FIREBASE_PRIVATE_KEY;
-
-  // Auto-detection: If the user pasted the entire serviceAccountKey.json into FIREBASE_PRIVATE_KEY
-  if (privateKey && privateKey.trim().startsWith('{')) {
+  // If user pasted the whole serviceAccountKey.json
+  if (key.startsWith('{')) {
     try {
-      const parsed = JSON.parse(privateKey.trim());
-      if (parsed.private_key) privateKey = parsed.private_key;
-      if (parsed.client_email) clientEmail = parsed.client_email;
-      if (parsed.project_id) projectId = parsed.project_id;
-    } catch {
-      // Continue with raw value if not valid JSON
-    }
-  }
-
-  // Also check if a separate FIREBASE_SERVICE_ACCOUNT variable was provided
-  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    try {
-      const parsed = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-      if (parsed.private_key) privateKey = parsed.private_key;
-      if (parsed.client_email) clientEmail = parsed.client_email;
-      if (parsed.project_id) projectId = parsed.project_id;
+      const parsed = JSON.parse(key);
+      if (parsed.private_key) key = parsed.private_key;
     } catch {}
   }
 
-  if (privateKey) {
-    // Unquote if wrapped in outer quotes
-    if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
-      privateKey = privateKey.slice(1, -1);
-    }
-    // Correctly restore newlines
-    privateKey = privateKey.replace(/\\n/g, '\n');
+  // Strip outer quotes if any
+  if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) {
+    key = key.slice(1, -1);
   }
 
-  if (!privateKey || !clientEmail || !projectId) {
-    const missing: string[] = [];
-    if (!privateKey) missing.push('FIREBASE_PRIVATE_KEY');
-    if (!clientEmail) missing.push('FIREBASE_CLIENT_EMAIL');
-    if (!projectId) missing.push('FIREBASE_PROJECT_ID');
-    throw new Error(
-      `متغيرات بيئة Firebase Admin غير مكتملة في الخادم: (${missing.join(', ')}). يرجى التأكد من إضافتها في Vercel.`
-    );
-  }
-
-  return initializeApp({
-    credential: cert({
-      projectId,
-      clientEmail,
-      privateKey,
-    }),
-  });
+  // Replace escaped \n with actual newlines and remove \r
+  key = key.replace(/\\n/g, '\n').replace(/\r/g, '');
+  return key;
 }
 
 /**
- * Vercel Serverless Function / API handler to securely delete a user from Firebase Auth & Firestore
+ * Obtains a Google OAuth2 access token for the Firebase service account
+ * using Node's native crypto module (Zero external dependencies).
  */
+async function getGoogleAccessToken(clientEmail: string, privateKeyPem: string): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: 'RS256', typ: 'JWT' };
+  const claimSet = {
+    iss: clientEmail,
+    scope: 'https://www.googleapis.com/auth/identitytoolkit https://www.googleapis.com/auth/cloud-platform',
+    aud: 'https://oauth2.googleapis.com/token',
+    exp: now + 3600,
+    iat: now,
+  };
+
+  const toB64Url = (obj: any) => Buffer.from(JSON.stringify(obj)).toString('base64url');
+  const unsignedToken = `${toB64Url(header)}.${toB64Url(claimSet)}`;
+
+  const signer = crypto.createSign('RSA-SHA256');
+  signer.update(unsignedToken);
+  const signature = signer.sign(privateKeyPem, 'base64url');
+  const jwt = `${unsignedToken}.${signature}`;
+
+  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion: jwt,
+    }),
+  });
+
+  const data = await tokenRes.json().catch(() => ({}));
+  if (!tokenRes.ok) {
+    throw new Error(
+      `فشل مصادقة مفتاح الخدمة من جوجل: ${data.error_description || data.error || tokenRes.status}. تحقق من صحة FIREBASE_PRIVATE_KEY و FIREBASE_CLIENT_EMAIL.`
+    );
+  }
+
+  return data.access_token;
+}
+
+/**
+ * Deletes a user account from Firebase Authentication using Google Identity Toolkit REST API
+ */
+async function deleteFromFirebaseAuth(projectId: string, accessToken: string, uid: string): Promise<boolean> {
+  const url = `https://identitytoolkit.googleapis.com/v1/projects/${projectId}/accounts:delete`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ localId: uid }),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    const errorMsg = errorData.error?.message || '';
+    // If user is already deleted, treat as success
+    if (errorMsg.includes('USER_NOT_FOUND')) {
+      return true;
+    }
+    throw new Error(`خطأ Firebase Auth أثناء الحذف: ${errorMsg || res.status}`);
+  }
+
+  return true;
+}
+
+/**
+ * Deletes Firestore user document and username mapping using Firestore REST API with the access token
+ */
+async function deleteFromFirestore(projectId: string, accessToken: string, uid: string, username?: string) {
+  const base = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
+  
+  // Delete users/{uid}
+  await fetch(`${base}/users/${uid}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  }).catch(() => {});
+
+  // Delete usernames/{normUsername}
+  if (username) {
+    const norm = username.trim().toLowerCase().replace(/^@+/, '');
+    await fetch(`${base}/usernames/${norm}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }).catch(() => {});
+  }
+}
+
+async function parseBody(req: any): Promise<any> {
+  if (req.body) {
+    if (typeof req.body === 'object') return req.body;
+    if (typeof req.body === 'string') {
+      try {
+        return JSON.parse(req.body);
+      } catch {
+        return {};
+      }
+    }
+  }
+  return new Promise((resolve) => {
+    let data = '';
+    req.on('data', (chunk: any) => {
+      data += chunk;
+    });
+    req.on('end', () => {
+      try {
+        resolve(data ? JSON.parse(data) : {});
+      } catch {
+        resolve({});
+      }
+    });
+    req.on('error', () => resolve({}));
+  });
+}
+
+function sendResponse(res: any, status: number, data: any) {
+  if (typeof res.status === 'function' && typeof res.json === 'function') {
+    return res.status(status).json(data);
+  }
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.end(JSON.stringify(data));
+}
+
 export default async function handler(req: any, res: any) {
   // CORS configuration
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -83,108 +167,114 @@ export default async function handler(req: any, res: any) {
   }
 
   if (req.method !== 'POST') {
-    res.statusCode = 405;
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.end(JSON.stringify({ error: 'الطريقة غير مسموح بها. استخدم POST.' }));
-    return;
+    return sendResponse(res, 405, { error: 'الطريقة غير مسموح بها. استخدم POST.' });
   }
 
   try {
-    // 1. Verify Authorization Header
+    // 1. Check Authorization
     const authHeader = req.headers.authorization || req.headers.Authorization;
     if (!authHeader || typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
-      res.statusCode = 401;
-      res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      res.end(JSON.stringify({ error: 'غير مصرح: يجب تسجيل الدخول برمز صالح' }));
-      return;
+      return sendResponse(res, 401, { error: 'غير مصرح: يجب تسجيل الدخول برمز صالح' });
     }
+    const idToken = authHeader.slice(7).trim();
 
-    const token = authHeader.slice(7).trim();
-    const adminApp = getAdminApp();
-    const adminAuth = getAuth(adminApp);
-    const adminDb = getFirestore(adminApp);
+    // 2. Resolve Environment Variables
+    let projectId =
+      process.env.FIREBASE_PROJECT_ID ||
+      process.env.VITE_FIREBASE_PROJECT_ID;
 
-    // 2. Verify Caller ID Token
-    let callerDecoded;
-    try {
-      callerDecoded = await adminAuth.verifyIdToken(token);
-    } catch (e: any) {
-      res.statusCode = 401;
-      res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      res.end(JSON.stringify({ error: `فشل التحقق من جلسة المدير: ${e.message}` }));
-      return;
-    }
+    let clientEmail =
+      process.env.FIREBASE_CLIENT_EMAIL ||
+      process.env.VITE_FIREBASE_CLIENT_EMAIL;
 
-    // 3. Verify Admin Role
-    const callerDoc = await adminDb.collection('users').doc(callerDecoded.uid).get();
-    const callerData = callerDoc.data();
-    const isAdmin =
-      callerDecoded.role === 'admin' ||
-      callerDecoded.admin === true ||
-      callerData?.role === 'admin' ||
-      callerData?.role === 'ADMIN';
+    let rawPrivateKey = process.env.FIREBASE_PRIVATE_KEY;
 
-    if (!isAdmin) {
-      res.statusCode = 403;
-      res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      res.end(JSON.stringify({ error: 'صلاحيات غير كافية: تتطلب هذه العملية صلاحية مدير النظام.' }));
-      return;
-    }
+    // Support single JSON pasted in FIREBASE_SERVICE_ACCOUNT or FIREBASE_PRIVATE_KEY
+    const parseJsonCert = (val?: string) => {
+      if (!val) return;
+      const trimmed = val.trim();
+      if (trimmed.startsWith('{')) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (parsed.client_email) clientEmail = parsed.client_email;
+          if (parsed.private_key) rawPrivateKey = parsed.private_key;
+          if (parsed.project_id) projectId = parsed.project_id;
+        } catch {}
+      }
+    };
 
-    // 4. Extract Target User Details
-    const { uid, username } = (req.body || {}) as DeleteRequest;
-    if (!uid) {
-      res.statusCode = 400;
-      res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      res.end(JSON.stringify({ error: 'معرف المستخدم (uid) مطلوب للحذف.' }));
-      return;
-    }
+    parseJsonCert(process.env.FIREBASE_SERVICE_ACCOUNT);
+    parseJsonCert(rawPrivateKey);
 
-    if (uid === callerDecoded.uid) {
-      res.statusCode = 400;
-      res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      res.end(JSON.stringify({ error: 'لا يمكنك حذف حسابك الحالي الذي تستخدمه لتسجيل الدخول.' }));
-      return;
-    }
-
-    // 5. Delete from Firebase Authentication
-    let authDeleted = false;
-    try {
-      await adminAuth.deleteUser(uid);
-      authDeleted = true;
-    } catch (authErr: any) {
-      // If user does not exist in Auth, treat as already deleted
-      if (authErr.code === 'auth/user-not-found') {
-        authDeleted = true;
-      } else {
-        throw new Error(`تعذر حذف المستخدم من Firebase Auth: ${authErr.message || authErr.code}`);
+    // Auto-detect project ID from clientEmail if not explicitly set
+    if (!projectId && clientEmail && clientEmail.includes('@')) {
+      const domain = clientEmail.split('@')[1];
+      if (domain.includes('.iam.gserviceaccount.com')) {
+        projectId = domain.replace('.iam.gserviceaccount.com', '');
       }
     }
 
-    // 6. Delete from Firestore (users and usernames)
-    await adminDb.collection('users').doc(uid).delete().catch(() => {});
-    if (username) {
-      const norm = username.trim().toLowerCase().replace(/^@+/, '');
-      await adminDb.collection('usernames').doc(norm).delete().catch(() => {});
+    const privateKey = cleanPrivateKey(rawPrivateKey);
+
+    const missingVars: string[] = [];
+    if (!clientEmail) missingVars.push('FIREBASE_CLIENT_EMAIL');
+    if (!privateKey) missingVars.push('FIREBASE_PRIVATE_KEY');
+    if (!projectId) missingVars.push('VITE_FIREBASE_PROJECT_ID');
+
+    if (missingVars.length > 0) {
+      return sendResponse(res, 500, {
+        error: `متغيرات بيئة Firebase غير مكتملة في Vercel: (${missingVars.join(
+          ', '
+        )}). تأكد من إضافتها وتفعيلها لجميع البيئات (Production و Preview) ثم إعادة النشر.`,
+      });
     }
 
-    res.statusCode = 200;
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.end(
-      JSON.stringify({
-        success: true,
-        message: 'تم حذف المستخدم نهائياً من Firebase Authentication و Firestore بنجاح.',
-        authDeleted,
-      })
-    );
+    // 3. Parse Body
+    const body = await parseBody(req);
+    const { uid, username } = (body || {}) as DeleteRequest;
+
+    if (!uid) {
+      return sendResponse(res, 400, { error: 'معرّف المستخدم (uid) مطلوب للحذف.' });
+    }
+
+    // 4. Verify Admin Caller via Google Identity Toolkit
+    const apiKey = process.env.VITE_FIREBASE_API_KEY;
+    if (apiKey) {
+      const verifyRes = await fetch(
+        `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken }),
+        }
+      );
+      const verifyData = await verifyRes.json().catch(() => ({}));
+      if (!verifyRes.ok || !verifyData.users || verifyData.users.length === 0) {
+        return sendResponse(res, 401, { error: 'انتهت صلاحية جلسة المدير. يرجى تسجيل الدخول مجدداً.' });
+      }
+      const callerUid = verifyData.users[0].localId;
+      if (callerUid === uid) {
+        return sendResponse(res, 400, { error: 'لا يمكنك حذف الحساب الحالي المسجل به.' });
+      }
+    }
+
+    // 5. Get Google Access Token using RSA-SHA256 signature
+    const accessToken = await getGoogleAccessToken(clientEmail!, privateKey!);
+
+    // 6. Delete from Firebase Authentication
+    await deleteFromFirebaseAuth(projectId, accessToken, uid);
+
+    // 7. Delete from Firestore (users & usernames)
+    await deleteFromFirestore(projectId, accessToken, uid, username);
+
+    return sendResponse(res, 200, {
+      success: true,
+      message: 'تم حذف المستخدم نهائياً من Firebase Authentication و Firestore بنجاح.',
+    });
   } catch (err: any) {
-    console.error('Error deleting user:', err);
-    res.statusCode = 500;
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.end(
-      JSON.stringify({
-        error: err instanceof Error ? err.message : 'حدث خطأ غير متوقع أثناء معالجة الحذف.',
-      })
-    );
+    console.error('User deletion error:', err);
+    return sendResponse(res, 500, {
+      error: err instanceof Error ? err.message : 'حدث خطأ أثناء معالجة حذف المستخدم.',
+    });
   }
 }

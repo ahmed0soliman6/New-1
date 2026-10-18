@@ -236,9 +236,38 @@ export async function deleteManagedUser(uid: string, username?: string): Promise
     body: JSON.stringify({ uid, username }),
   });
 
-  const resData = await response.json().catch(() => ({}));
+  let serverError = '';
+  try {
+    const rawText = await response.text();
+    try {
+      const parsed = JSON.parse(rawText);
+      serverError = parsed.error || parsed.message;
+    } catch {
+      serverError = rawText.length < 250 ? rawText : '';
+    }
+  } catch {}
+
   if (!response.ok) {
-    throw new Error(resData.error || `تعذر حذف المستخدم من Firebase Authentication (${response.status}).`);
+    const isConfigError =
+      response.status === 404 ||
+      serverError.includes('متغيرات بيئة') ||
+      serverError.includes('غير مكتملة') ||
+      serverError.includes('غير متوفرة');
+
+    if (isConfigError) {
+      await deleteDoc(doc(db, 'users', uid)).catch(() => undefined);
+      if (username) {
+        await deleteDoc(doc(db, 'usernames', normalizeUsername(username))).catch(() => undefined);
+      }
+      throw new Error(
+        `تم حذف المستخدم من سجلات العيادة بنجاح. لحذفه تلقائياً من صفحة Authentication أيضاً، أضف مفتاح الخدمة في Vercel.`
+      );
+    }
+
+    throw new Error(
+      serverError ||
+        `تعذر حذف المستخدم من Firebase Authentication (رمز ${response.status}).`
+    );
   }
 
   // 2. Also ensure local Firestore records are cleaned up (idempotent)
