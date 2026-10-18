@@ -750,7 +750,7 @@ export function executeAtomicArrival(params: {
       treatment: '',
     },
     vitalSigns: params.vitalSigns || {
-      bloodPressure: '120/80',
+      bloodPressure: null,
       pulse: null,
       temperature: null,
       weight: null,
@@ -865,7 +865,7 @@ export function executeAtomicWalkIn(params: {
       treatment: '',
     },
     vitalSigns: params.vitalSigns || {
-      bloodPressure: '120/80',
+      bloodPressure: null,
       pulse: null,
       temperature: null,
       weight: null,

@@ -291,15 +291,15 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
             <button
               type="button"
               onClick={() => setShowPicker(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-50 dark:bg-teal-900/30 hover:bg-teal-100 dark:hover:bg-teal-900/50 text-teal-700 dark:text-[#00c2cb] text-xs font-bold transition-all cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-50 dark:bg-teal-900/30 hover:bg-teal-100 dark:hover:bg-teal-900/50 text-teal-700 dark:text-[#00c2cb] text-xs font-bold transition-all cursor-pointer border border-teal-200 dark:border-teal-800/40 shadow-xs"
             >
               <span className="material-symbols-outlined text-base">lists</span>
               <span>{language === 'en' ? '+ Pick from Catalog' : '+ اختيار من دليلي'}</span>
             </button>
           ) : (
-            <div className="flex items-center gap-1.5 bg-teal-50 dark:bg-[#00c2cb]/10 p-1 rounded-xl border border-teal-300 dark:border-[#00c2cb]/40 shadow-xs animate-in fade-in">
-              <span className="material-symbols-outlined text-teal-600 dark:text-[#00c2cb] text-sm mr-1">medication</span>
+            <div className="flex items-center gap-1.5 animate-in fade-in">
               <select
+                autoFocus
                 value=""
                 onChange={(e) => {
                   const val = e.target.value;
@@ -308,17 +308,15 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
                   if (selected) {
                     handleAddFromCatalog(selected);
                   }
+                  setShowPicker(false);
                 }}
-                className="bg-transparent text-slate-900 dark:text-[#dde2f5] text-xs py-1 px-2 font-bold focus:outline-none cursor-pointer max-w-[220px] sm:max-w-[280px]"
-                autoFocus
+                className="bg-white dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs font-bold py-1.5 px-3 rounded-xl border-2 border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/30 cursor-pointer min-w-[210px] max-w-[320px] shadow-sm"
               >
-                <option value="" className="text-slate-700 dark:text-slate-300 bg-white dark:bg-[#111A2E]">
-                  {language === 'en' ? '-- Select medication from catalog --' : '-- اختر دواء من دليلي --'}
-                </option>
+                <option value="">{language === 'en' ? '-- Select medication from catalog --' : '-- اضغط لاختيار دواء من دليلي --'}</option>
                 {combinedDatabase.map((drug) => {
                   const isAdded = prescriptionItems.some((p) => p.drugName.includes(drug.brandName));
                   return (
-                    <option key={drug.id} value={drug.id} disabled={isAdded} className="text-slate-800 dark:text-slate-200 bg-white dark:bg-[#111A2E]">
+                    <option key={drug.id} value={drug.id} disabled={isAdded}>
                       {isAdded ? '✓ [مضاف] ' : '+ '} {drug.brandName} {drug.strength ? `(${drug.strength})` : ''}
                     </option>
                   );
@@ -327,7 +325,7 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
               <button
                 type="button"
                 onClick={() => setShowPicker(false)}
-                className="w-6 h-6 flex items-center justify-center rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs font-bold cursor-pointer"
+                className="w-7 h-7 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-rose-100 dark:bg-white/10 dark:hover:bg-rose-950/40 text-slate-500 hover:text-rose-600 text-xs font-bold transition-colors cursor-pointer"
                 title={language === 'en' ? 'Close' : 'إغلاق'}
               >
                 ✕

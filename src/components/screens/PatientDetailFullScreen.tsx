@@ -669,9 +669,9 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
                   </div>
 
                   <div className="p-2.5 bg-slate-50 dark:bg-[#080e1b] rounded-xl border border-slate-100 dark:border-white/5 col-span-2">
-                    <span className="text-[10px] text-slate-400 block mb-0.5">المحافظة والعنوان بالتفصيل:</span>
+                    <span className="text-[10px] text-slate-400 block mb-0.5">العنوان بالتفصيل:</span>
                     <strong className="text-slate-900 dark:text-white">
-                      {address || governorate || 'غير مسجل'}
+                      {address || 'غير مسجل'}
                     </strong>
                   </div>
                 </div>
@@ -894,22 +894,8 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
                     </select>
                   </div>
 
-                  {/* Governorate */}
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-700 dark:text-[#bbc9ca]">
-                      المحافظة / المنطقة
-                    </label>
-                    <input
-                      type="text"
-                      value={governorate}
-                      onChange={(e) => setGovernorate(e.target.value)}
-                      placeholder="القاهرة، الجيزة، الإسكندرية..."
-                      className="w-full bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
-                    />
-                  </div>
-
                   {/* Address */}
-                  <div className="space-y-1 sm:col-span-2 lg:col-span-1">
+                  <div className="space-y-1 sm:col-span-2">
                     <label className="text-xs font-bold text-slate-700 dark:text-[#bbc9ca]">
                       العنوان بالتفصيل
                     </label>
@@ -917,7 +903,7 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
                       type="text"
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}
-                      placeholder="الشارع، رقم العمارة، الشقة..."
+                      placeholder="الشارع، المنطقة، المدينة، رقم العمارة..."
                       className="w-full bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
                     />
                   </div>
@@ -1299,35 +1285,56 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
                       </div>
                     </div>
 
-                    {/* Vital Signs Grid if available */}
-                    {v.vitalSigns && (
-                      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 text-xs">
-                        <div className="p-2 bg-slate-50 dark:bg-[#080e1b] rounded-xl text-center border border-slate-100 dark:border-white/5">
-                          <span className="text-[10px] text-slate-400 block font-bold">ضغط الدم</span>
-                          <strong className="text-slate-900 dark:text-white font-mono">{v.vitalSigns.bloodPressure || '120/80'}</strong>
+                    {/* Vital Signs Grid - Always render vitals card */}
+                    {(() => {
+                      const vs = v.vitalSigns || {};
+                      const bp = (vs.bloodPressure || vs.bp || '').toString().trim();
+                      const pulse = (vs.pulse || '').toString().trim();
+                      const temp = (vs.temperature || vs.temp || '').toString().trim();
+                      const rbs = (vs.randomBloodSugar || vs.rbs || '').toString().trim();
+                      const spo2 = (vs.oxygenSaturation || vs.spo2 || '').toString().trim();
+                      const weight = (vs.weight || '').toString().trim();
+                      const height = (vs.height || '').toString().trim();
+
+                      return (
+                        <div className="p-3 rounded-2xl bg-white dark:bg-[#111A2E] border border-slate-200 dark:border-white/5 space-y-2">
+                          <div className="flex items-center gap-2 border-b border-slate-100 dark:border-white/5 pb-2">
+                            <span className="material-symbols-outlined text-sm text-[#008f97] dark:text-[#00c2cb]">monitoring</span>
+                            <span className="text-xs font-bold text-slate-900 dark:text-white">العلامات الحيوية والقياسات البدنية</span>
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 text-xs">
+                            <div className="p-2 bg-slate-50 dark:bg-[#080e1b] rounded-xl text-center border border-slate-100 dark:border-white/5">
+                              <span className="text-[10px] text-slate-400 block font-bold">ضغط الدم</span>
+                              <strong className="text-slate-900 dark:text-white font-mono">{bp || '--'}</strong>
+                            </div>
+                            <div className="p-2 bg-slate-50 dark:bg-[#080e1b] rounded-xl text-center border border-slate-100 dark:border-white/5">
+                              <span className="text-[10px] text-slate-400 block font-bold">النبض</span>
+                              <strong className="text-slate-900 dark:text-white font-mono">{pulse ? `${pulse} bpm` : '--'}</strong>
+                            </div>
+                            <div className="p-2 bg-slate-50 dark:bg-[#080e1b] rounded-xl text-center border border-slate-100 dark:border-white/5">
+                              <span className="text-[10px] text-slate-400 block font-bold">الحرارة</span>
+                              <strong className="text-slate-900 dark:text-white font-mono">{temp ? `${temp} °C` : '--'}</strong>
+                            </div>
+                            <div className="p-2 bg-slate-50 dark:bg-[#080e1b] rounded-xl text-center border border-slate-100 dark:border-white/5">
+                              <span className="text-[10px] text-slate-400 block font-bold">سكر عشوائي</span>
+                              <strong className="text-slate-900 dark:text-white font-mono">{rbs ? `${rbs} mg/dL` : '--'}</strong>
+                            </div>
+                            <div className="p-2 bg-slate-50 dark:bg-[#080e1b] rounded-xl text-center border border-slate-100 dark:border-white/5">
+                              <span className="text-[10px] text-slate-400 block font-bold">نسبة الأكسجين</span>
+                              <strong className="text-slate-900 dark:text-white font-mono">{spo2 ? `${spo2}%` : '--'}</strong>
+                            </div>
+                            <div className="p-2 bg-slate-50 dark:bg-[#080e1b] rounded-xl text-center border border-slate-100 dark:border-white/5">
+                              <span className="text-[10px] text-slate-400 block font-bold">الوزن</span>
+                              <strong className="text-slate-900 dark:text-white font-mono">{weight ? `${weight} كجم` : '--'}</strong>
+                            </div>
+                            <div className="p-2 bg-slate-50 dark:bg-[#080e1b] rounded-xl text-center border border-slate-100 dark:border-white/5">
+                              <span className="text-[10px] text-slate-400 block font-bold">الطول</span>
+                              <strong className="text-slate-900 dark:text-white font-mono">{height ? `${height} سم` : '--'}</strong>
+                            </div>
+                          </div>
                         </div>
-                        <div className="p-2 bg-slate-50 dark:bg-[#080e1b] rounded-xl text-center border border-slate-100 dark:border-white/5">
-                          <span className="text-[10px] text-slate-400 block font-bold">النبض</span>
-                          <strong className="text-slate-900 dark:text-white font-mono">{v.vitalSigns.pulse || 76} نبضة</strong>
-                        </div>
-                        <div className="p-2 bg-slate-50 dark:bg-[#080e1b] rounded-xl text-center border border-slate-100 dark:border-white/5">
-                          <span className="text-[10px] text-slate-400 block font-bold">الحرارة</span>
-                          <strong className="text-slate-900 dark:text-white font-mono">{v.vitalSigns.temperature || 37} °C</strong>
-                        </div>
-                        <div className="p-2 bg-slate-50 dark:bg-[#080e1b] rounded-xl text-center border border-slate-100 dark:border-white/5">
-                          <span className="text-[10px] text-slate-400 block font-bold">سكر عشوائي</span>
-                          <strong className="text-slate-900 dark:text-white font-mono">{v.vitalSigns.randomBloodSugar || 110} mg/dL</strong>
-                        </div>
-                        <div className="p-2 bg-slate-50 dark:bg-[#080e1b] rounded-xl text-center border border-slate-100 dark:border-white/5">
-                          <span className="text-[10px] text-slate-400 block font-bold">نسبة الأكسجين</span>
-                          <strong className="text-slate-900 dark:text-white font-mono">{v.vitalSigns.oxygenSaturation || 98}%</strong>
-                        </div>
-                        <div className="p-2 bg-slate-50 dark:bg-[#080e1b] rounded-xl text-center border border-slate-100 dark:border-white/5">
-                          <span className="text-[10px] text-slate-400 block font-bold">الوزن</span>
-                          <strong className="text-slate-900 dark:text-white font-mono">{v.vitalSigns.weight || 75} كجم</strong>
-                        </div>
-                      </div>
-                    )}
+                      );
+                    })()}
 
                     {/* Diagnosis & Findings */}
                     {v.clinicalData?.diagnosis && v.clinicalData.diagnosis.length > 0 && (

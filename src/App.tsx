@@ -792,7 +792,7 @@ function ClinicApp() {
             age: birthYear ? Math.max(1, new Date().getFullYear() - birthYear) : 0,
             gender: p.gender === 'female' ? 'female' : 'male',
             phone: p.phone || '',
-            governorate: p.governorate || 'القاهرة',
+            governorate: p.governorate || '',
             address: p.address || p.governorate || '',
             allergies: p.allergies || [],
             chronicConditions: p.chronicDiseases || [],
@@ -854,7 +854,7 @@ function ClinicApp() {
         age: calculatedAge,
         gender: p.gender === 'female' ? 'female' : 'male',
         phone: p.phone || '',
-        governorate: p.governorate || 'القاهرة',
+        governorate: p.governorate || '',
         address: p.address || p.governorate || '',
         allergies: p.allergies || [],
         chronicConditions: p.chronicDiseases || [],
@@ -2507,15 +2507,7 @@ function ClinicApp() {
         treatment: rxItems.map((p) => p.drugName).join(' + '),
       };
 
-      const vitalSigns = activeWaiting.vitalSigns || {
-        bloodPressure: '120/80',
-        pulse: 76,
-        temperature: 37,
-        weight: 80,
-        height: 175,
-        oxygenSaturation: 98,
-        randomBloodSugar: 110,
-      };
+      const vitalSigns = activeWaiting.vitalSigns || {};
 
       try {
         await completeVisitTransaction({

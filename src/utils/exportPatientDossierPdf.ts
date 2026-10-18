@@ -169,11 +169,28 @@ export async function exportPatientMedicalDossierPdf(data: MedicalRecordPdfData)
                   <span>${formatAppDate(v.createdAt)} — ${v.visitType === 'NEW' ? 'كشف جديد' : 'متابعة / استشارة'}</span>
                   <span style="color: #008f97;">${v.clinicalData?.chiefComplaint || v.receptionistData?.symptoms || 'كشف باطنة'}</span>
                 </div>
-                ${v.vitalSigns ? `
-                  <div style="font-size: 10.5px; color: #475569; background: #f8fafc; padding: 4px 8px; border-radius: 4px; margin-bottom: 4px;">
-                    العلامات الحيوية: ضغط: ${toEnglishDigits(v.vitalSigns.bloodPressure || '120/80')} | نبض: ${toEnglishDigits(v.vitalSigns.pulse || 76)} | حرارة: ${toEnglishDigits(v.vitalSigns.temperature || 37)}°C | سكر عشوائي: ${toEnglishDigits(v.vitalSigns.randomBloodSugar || 110)} mg/dL | وزن: ${toEnglishDigits(v.vitalSigns.weight || 75)} كجم
-                  </div>
-                ` : ''}
+                ${(() => {
+                  if (!v.vitalSigns) return '';
+                  const parts: string[] = [];
+                  const vs = v.vitalSigns as any;
+                  const bp = vs.bloodPressure || vs.bp;
+                  const pulse = vs.pulse;
+                  const temp = vs.temperature || vs.temp;
+                  const rbs = vs.randomBloodSugar || vs.rbs;
+                  const spo2 = vs.oxygenSaturation || vs.spo2;
+                  const weight = vs.weight;
+
+                  if (bp && String(bp).trim()) parts.push(`ضغط: ${toEnglishDigits(bp)}`);
+                  if (pulse && String(pulse).trim()) parts.push(`نبض: ${toEnglishDigits(pulse)}`);
+                  if (temp && String(temp).trim()) parts.push(`حرارة: ${toEnglishDigits(temp)}°C`);
+                  if (rbs && String(rbs).trim()) parts.push(`سكر عشوائي: ${toEnglishDigits(rbs)} mg/dL`);
+                  if (spo2 && String(spo2).trim()) parts.push(`أكسجين: ${toEnglishDigits(spo2)}%`);
+                  if (weight && String(weight).trim()) parts.push(`وزن: ${toEnglishDigits(weight)} كجم`);
+                  if (parts.length === 0) return '';
+                  return `<div style="font-size: 10.5px; color: #475569; background: #f8fafc; padding: 4px 8px; border-radius: 4px; margin-bottom: 4px;">
+                    العلامات الحيوية: ${parts.join(' | ')}
+                  </div>`;
+                })()}
                 ${v.clinicalData?.diagnosis && v.clinicalData.diagnosis.length > 0 ? `
                   <div style="color: #0f172a; margin-top: 2px;">
                     <strong>التشخيص:</strong> ${v.clinicalData.diagnosis.join('، ')}

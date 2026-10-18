@@ -633,38 +633,74 @@ export function printVisitReportDocument(data: PrintVisitReportData) {
   const treatment = visit.clinicalData?.treatment || '';
   const notes = visit.clinicalData?.notes || '';
 
-  const vitals = visit.vitalSigns;
-  const vitalsHtml = vitals
+  const vitals = visit.vitalSigns as any;
+  const recordedVitalsList: string[] = [];
+  if (vitals) {
+    const bp = vitals.bloodPressure || vitals.bp;
+    const pulse = vitals.pulse;
+    const temp = vitals.temperature || vitals.temp;
+    const rbs = vitals.randomBloodSugar || vitals.rbs;
+    const spo2 = vitals.oxygenSaturation || vitals.spo2;
+    const weight = vitals.weight;
+
+    if (bp && String(bp).trim()) {
+      recordedVitalsList.push(`
+        <div style="padding: 6px 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; text-align: center;">
+          <span style="font-size: 9px; color: #64748b; display: block; font-weight: bold;">ضغط الدم</span>
+          <strong style="font-size: 11px; color: #0f172a; font-family: monospace;">${toEnglishDigits(bp)}</strong>
+        </div>
+      `);
+    }
+    if (pulse && String(pulse).trim()) {
+      recordedVitalsList.push(`
+        <div style="padding: 6px 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; text-align: center;">
+          <span style="font-size: 9px; color: #64748b; display: block; font-weight: bold;">النبض</span>
+          <strong style="font-size: 11px; color: #0f172a; font-family: monospace;">${toEnglishDigits(pulse)} نبضة</strong>
+        </div>
+      `);
+    }
+    if (temp && String(temp).trim()) {
+      recordedVitalsList.push(`
+        <div style="padding: 6px 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; text-align: center;">
+          <span style="font-size: 9px; color: #64748b; display: block; font-weight: bold;">الحرارة</span>
+          <strong style="font-size: 11px; color: #0f172a; font-family: monospace;">${toEnglishDigits(temp)} °C</strong>
+        </div>
+      `);
+    }
+    if (rbs && String(rbs).trim()) {
+      recordedVitalsList.push(`
+        <div style="padding: 6px 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; text-align: center;">
+          <span style="font-size: 9px; color: #64748b; display: block; font-weight: bold;">سكر عشوائي</span>
+          <strong style="font-size: 11px; color: #0f172a; font-family: monospace;">${toEnglishDigits(rbs)} mg/dL</strong>
+        </div>
+      `);
+    }
+    if (spo2 && String(spo2).trim()) {
+      recordedVitalsList.push(`
+        <div style="padding: 6px 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; text-align: center;">
+          <span style="font-size: 9px; color: #64748b; display: block; font-weight: bold;">الأكسجين</span>
+          <strong style="font-size: 11px; color: #0f172a; font-family: monospace;">${toEnglishDigits(spo2)}%</strong>
+        </div>
+      `);
+    }
+    if (weight && String(weight).trim()) {
+      recordedVitalsList.push(`
+        <div style="padding: 6px 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; text-align: center;">
+          <span style="font-size: 9px; color: #64748b; display: block; font-weight: bold;">الوزن</span>
+          <strong style="font-size: 11px; color: #0f172a; font-family: monospace;">${toEnglishDigits(weight)} كجم</strong>
+        </div>
+      `);
+    }
+  }
+
+  const vitalsHtml = recordedVitalsList.length > 0
     ? `
     <div style="margin-top: 14px; margin-bottom: 14px;">
       <div style="font-size: 12px; font-weight: 700; color: #0f766e; margin-bottom: 6px; border-bottom: 1px solid #ccfbf1; padding-bottom: 3px;">
         🫀 العلامات الحيوية (Vital Signs)
       </div>
-      <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; text-align: center;">
-        <div style="padding: 6px 4px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;">
-          <span style="font-size: 9px; color: #64748b; display: block; font-weight: bold;">ضغط الدم</span>
-          <strong style="font-size: 11px; color: #0f172a; font-family: monospace;">${toEnglishDigits(vitals.bloodPressure || '120/80')}</strong>
-        </div>
-        <div style="padding: 6px 4px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;">
-          <span style="font-size: 9px; color: #64748b; display: block; font-weight: bold;">النبض</span>
-          <strong style="font-size: 11px; color: #0f172a; font-family: monospace;">${toEnglishDigits(vitals.pulse || 76)} نبضة</strong>
-        </div>
-        <div style="padding: 6px 4px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;">
-          <span style="font-size: 9px; color: #64748b; display: block; font-weight: bold;">الحرارة</span>
-          <strong style="font-size: 11px; color: #0f172a; font-family: monospace;">${toEnglishDigits(vitals.temperature || 37)} °C</strong>
-        </div>
-        <div style="padding: 6px 4px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;">
-          <span style="font-size: 9px; color: #64748b; display: block; font-weight: bold;">سكر عشوائي</span>
-          <strong style="font-size: 11px; color: #0f172a; font-family: monospace;">${toEnglishDigits(vitals.randomBloodSugar || 110)} mg/dL</strong>
-        </div>
-        <div style="padding: 6px 4px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;">
-          <span style="font-size: 9px; color: #64748b; display: block; font-weight: bold;">الأكسجين</span>
-          <strong style="font-size: 11px; color: #0f172a; font-family: monospace;">${toEnglishDigits(vitals.oxygenSaturation || 98)}%</strong>
-        </div>
-        <div style="padding: 6px 4px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;">
-          <span style="font-size: 9px; color: #64748b; display: block; font-weight: bold;">الوزن</span>
-          <strong style="font-size: 11px; color: #0f172a; font-family: monospace;">${toEnglishDigits(vitals.weight || 75)} كجم</strong>
-        </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+        ${recordedVitalsList.join('')}
       </div>
     </div>
   `

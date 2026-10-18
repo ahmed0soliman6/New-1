@@ -267,15 +267,15 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({
             <button
               type="button"
               onClick={() => setShowPicker(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 text-amber-700 dark:text-amber-400 text-xs font-bold transition-all cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 text-amber-700 dark:text-amber-400 text-xs font-bold transition-all cursor-pointer border border-amber-200 dark:border-amber-800/40 shadow-xs"
             >
               <span className="material-symbols-outlined text-base">lists</span>
               <span>{language === 'en' ? '+ Diagnosis Catalog' : '+ اختيار من دليلي'}</span>
             </button>
           ) : (
-            <div className="flex items-center gap-1.5 bg-amber-50 dark:bg-amber-950/40 p-1 rounded-xl border border-amber-300 dark:border-amber-800/60 shadow-xs animate-in fade-in">
-              <span className="material-symbols-outlined text-amber-600 dark:text-amber-400 text-sm mr-1">clinical_notes</span>
+            <div className="flex items-center gap-1.5 animate-in fade-in">
               <select
+                autoFocus
                 value=""
                 onChange={(e) => {
                   const val = e.target.value;
@@ -284,17 +284,15 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({
                   if (selected) {
                     handleAddFromCatalog(selected);
                   }
+                  setShowPicker(false);
                 }}
-                className="bg-transparent text-slate-900 dark:text-[#dde2f5] text-xs py-1 px-2 font-bold focus:outline-none cursor-pointer max-w-[220px] sm:max-w-[280px]"
-                autoFocus
+                className="bg-white dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs font-bold py-1.5 px-3 rounded-xl border-2 border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/30 cursor-pointer min-w-[210px] max-w-[320px] shadow-sm"
               >
-                <option value="" className="text-slate-700 dark:text-slate-300 bg-white dark:bg-[#111A2E]">
-                  {language === 'en' ? '-- Select diagnosis from catalog --' : '-- اختر تشخيصاً من دليلي --'}
-                </option>
+                <option value="">{language === 'en' ? '-- Select diagnosis from catalog --' : '-- اضغط لاختيار تشخيص من دليلي --'}</option>
                 {combinedCatalog.map((item) => {
                   const isAdded = diagnoses.some((d) => d.nameAr === item.nameAr);
                   return (
-                    <option key={item.id} value={item.id} disabled={isAdded} className="text-slate-800 dark:text-slate-200 bg-white dark:bg-[#111A2E]">
+                    <option key={item.id} value={item.id} disabled={isAdded}>
                       {isAdded ? '✓ [مضاف] ' : '+ '} {item.nameAr} {item.code ? `[${item.code}]` : ''}
                     </option>
                   );
@@ -303,7 +301,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({
               <button
                 type="button"
                 onClick={() => setShowPicker(false)}
-                className="w-6 h-6 flex items-center justify-center rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs font-bold cursor-pointer"
+                className="w-7 h-7 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-rose-100 dark:bg-white/10 dark:hover:bg-rose-950/40 text-slate-500 hover:text-rose-600 text-xs font-bold transition-colors cursor-pointer"
                 title={language === 'en' ? 'Close' : 'إغلاق'}
               >
                 ✕
