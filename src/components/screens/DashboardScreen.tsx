@@ -690,7 +690,6 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
             { id: 'today', label: 'اليوم' },
             { id: 'week', label: 'هذا الأسبوع' },
             { id: 'month', label: 'هذا الشهر' },
-            { id: 'all', label: 'الكل' },
           ].map((tab) => (
             <button
               key={tab.id}
