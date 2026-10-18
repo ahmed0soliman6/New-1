@@ -7,9 +7,46 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const getEnv = (key: string) => process.env[key] || env[key] || '';
 
+  const apiDevMiddleware = () => ({
+    name: 'api-dev-middleware',
+    configureServer(server: any) {
+      server.middlewares.use(async (req: any, res: any, next: any) => {
+        if (req.url?.startsWith('/api/users/delete')) {
+          try {
+            let rawBody = '';
+            req.on('data', (chunk: any) => {
+              rawBody += chunk;
+            });
+            req.on('end', async () => {
+              try {
+                req.body = rawBody ? JSON.parse(rawBody) : {};
+              } catch {
+                req.body = {};
+              }
+              try {
+                const { default: handler } = await import('./api/users/delete');
+                await handler(req, res);
+              } catch (handlerErr: any) {
+                res.statusCode = 500;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(JSON.stringify({ error: handlerErr.message }));
+              }
+            });
+          } catch (err: any) {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ error: err.message }));
+          }
+          return;
+        }
+        next();
+      });
+    },
+  });
+
   return {
     base: './',
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), apiDevMiddleware()],
     resolve: { alias: { '@': path.resolve(__dirname, '.') } },
     envPrefix: ['VITE_', 'FIREBASE_'],
     define: {

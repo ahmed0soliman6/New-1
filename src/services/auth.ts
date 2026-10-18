@@ -220,7 +220,29 @@ export async function deleteManagedUser(uid: string, username?: string): Promise
   if (auth.currentUser?.uid === uid) {
     throw new Error('لا يمكنك حذف الحساب المسجل به حالياً.');
   }
-  await deleteDoc(doc(db, 'users', uid));
+
+  // 1. Invoke Serverless Admin API to delete user from Firebase Authentication
+  const idToken = await auth.currentUser?.getIdToken(true);
+  if (!idToken) {
+    throw new Error('انتهت صلاحية جلسة تسجيل الدخول. يرجى تسجيل الدخول مجدداً.');
+  }
+
+  const response = await fetch('/api/users/delete', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${idToken}`,
+    },
+    body: JSON.stringify({ uid, username }),
+  });
+
+  const resData = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(resData.error || `تعذر حذف المستخدم من Firebase Authentication (${response.status}).`);
+  }
+
+  // 2. Also ensure local Firestore records are cleaned up (idempotent)
+  await deleteDoc(doc(db, 'users', uid)).catch(() => undefined);
   if (username) {
     await deleteDoc(doc(db, 'usernames', normalizeUsername(username))).catch(() => undefined);
   }
