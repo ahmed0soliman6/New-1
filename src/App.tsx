@@ -88,7 +88,7 @@ import { ClinicalReportsScreen } from './components/screens/ClinicalReportsScree
 import { BookingLandingScreen } from './components/screens/BookingLandingScreen';
 import { NewAppointmentModal } from './components/modals/NewAppointmentModal';
 import { db } from './services/firebase';
-import { doc, deleteDoc, setDoc, collection, getDocs, writeBatch, query, limit, where, type QueryConstraint } from 'firebase/firestore';
+import { doc, getDoc, deleteDoc, setDoc, collection, getDocs, writeBatch, query, limit, where, type QueryConstraint } from 'firebase/firestore';
 import { logoutAccount } from './services/auth';
 import { AuthScreen } from './components/AuthScreen';
 import { AuthProvider, useAuth, usePermissions } from './context/AuthContext';
@@ -2148,9 +2148,23 @@ function ClinicApp() {
 
   // Delete invoice / transaction safely (UI Action -> Firestore Delete -> onSnapshot -> UI)
   const handleDeleteTransaction = async (txId: string) => {
-    const matchingPayment = paymentsCanonical.find((p) => p.paymentId === txId || p.invoiceId === txId || p.visitId === txId);
-    const targetInvoiceId = matchingPayment?.invoiceId || txId;
-    const targetPaymentId = matchingPayment?.paymentId || txId;
+    const inMemory = paymentsCanonical.find((p) => p.paymentId === txId || p.invoiceId === txId || p.visitId === txId);
+    let targetPaymentId = inMemory?.paymentId;
+    let targetInvoiceId = inMemory?.invoiceId;
+
+    if (!inMemory && db) {
+      try {
+        const snap = await getDoc(doc(db, 'payments', txId)); // سجل قديم خارج النافذة
+        if (snap.exists()) {
+          targetPaymentId = txId;
+          targetInvoiceId = (snap.data() as { invoiceId?: string }).invoiceId;
+        }
+      } catch (e) {
+        console.warn('Payment lookup before delete failed:', e);
+      }
+    }
+    targetPaymentId = targetPaymentId || txId;
+    targetInvoiceId = targetInvoiceId || txId;
 
     // Cloud Firestore deletion
     if (db) {
