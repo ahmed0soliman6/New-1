@@ -9,7 +9,12 @@ function cleanPrivateKey(raw?: string): string | null {
   if (!raw) return null;
   let key = raw.trim();
 
-  // If user pasted the whole serviceAccountKey.json
+  // Strip outer quotes repeatedly
+  while ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) {
+    key = key.slice(1, -1).trim();
+  }
+
+  // If user pasted JSON (e.g. serviceAccountKey.json contents)
   if (key.startsWith('{')) {
     try {
       const parsed = JSON.parse(key);
@@ -17,14 +22,20 @@ function cleanPrivateKey(raw?: string): string | null {
     } catch {}
   }
 
-  // Strip outer quotes if any
-  if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) {
-    key = key.slice(1, -1);
+  // Strip outer quotes again if JSON string value was quoted
+  while ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) {
+    key = key.slice(1, -1).trim();
   }
 
-  // Replace escaped \n with actual newlines and remove \r
+  // Replace escaped newlines (\\n or \n literals) with real newlines, remove carriage returns
   key = key.replace(/\\n/g, '\n').replace(/\r/g, '');
-  return key;
+
+  // Ensure standard RSA PEM header and footer exist
+  if (!key.includes('-----BEGIN PRIVATE KEY-----')) {
+    key = `-----BEGIN PRIVATE KEY-----\n${key}\n-----END PRIVATE KEY-----`;
+  }
+
+  return key.trim();
 }
 
 /**
@@ -45,9 +56,17 @@ async function getGoogleAccessToken(clientEmail: string, privateKeyPem: string):
   const toB64Url = (obj: any) => Buffer.from(JSON.stringify(obj)).toString('base64url');
   const unsignedToken = `${toB64Url(header)}.${toB64Url(claimSet)}`;
 
-  const signer = crypto.createSign('RSA-SHA256');
-  signer.update(unsignedToken);
-  const signature = signer.sign(privateKeyPem, 'base64url');
+  let signature = '';
+  try {
+    const signer = crypto.createSign('RSA-SHA256');
+    signer.update(unsignedToken);
+    signature = signer.sign(privateKeyPem, 'base64url');
+  } catch (err: any) {
+    throw new Error(
+      `صيغة المفتاح الخاص (FIREBASE_PRIVATE_KEY) غير صالحة: ${err?.message || 'خطأ في التشفير'}. تأكد من نسخ المفتاح الخاص كاملاً من ملف serviceAccountKey.json.`
+    );
+  }
+
   const jwt = `${unsignedToken}.${signature}`;
 
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
@@ -62,11 +81,33 @@ async function getGoogleAccessToken(clientEmail: string, privateKeyPem: string):
   const data = await tokenRes.json().catch(() => ({}));
   if (!tokenRes.ok) {
     throw new Error(
-      `فشل مصادقة مفتاح الخدمة من جوجل: ${data.error_description || data.error || tokenRes.status}. تحقق من صحة FIREBASE_PRIVATE_KEY و FIREBASE_CLIENT_EMAIL.`
+      `فشل مصادقة حساب الخدمة من Google: ${data.error_description || data.error || tokenRes.status}. تحقق من صحة FIREBASE_CLIENT_EMAIL و FIREBASE_PRIVATE_KEY.`
     );
   }
 
   return data.access_token;
+}
+
+/**
+ * Verifies caller's Firebase ID token using Google Identity Toolkit REST API with Service Account Access Token
+ */
+async function verifyCallerToken(projectId: string, accessToken: string, idToken: string): Promise<string> {
+  const url = `https://identitytoolkit.googleapis.com/v1/projects/${projectId}/accounts:lookup`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ idToken }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.users || data.users.length === 0) {
+    throw new Error('انتهت صلاحية جلسة المدير. يرجى إعادة تسجيل الدخول.');
+  }
+
+  return data.users[0].localId;
 }
 
 /**
@@ -86,7 +127,7 @@ async function deleteFromFirebaseAuth(projectId: string, accessToken: string, ui
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
     const errorMsg = errorData.error?.message || '';
-    // If user is already deleted, treat as success
+    // If user is already deleted from Auth, treat as success
     if (errorMsg.includes('USER_NOT_FOUND')) {
       return true;
     }
@@ -101,7 +142,7 @@ async function deleteFromFirebaseAuth(projectId: string, accessToken: string, ui
  */
 async function deleteFromFirestore(projectId: string, accessToken: string, uid: string, username?: string) {
   const base = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
-  
+
   // Delete users/{uid}
   await fetch(`${base}/users/${uid}`, {
     method: 'DELETE',
@@ -155,7 +196,7 @@ function sendResponse(res: any, status: number, data: any) {
 }
 
 export default async function handler(req: any, res: any) {
-  // CORS configuration
+  // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -171,7 +212,7 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    // 1. Check Authorization
+    // 1. Check Authorization header
     const authHeader = req.headers.authorization || req.headers.Authorization;
     if (!authHeader || typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
       return sendResponse(res, 401, { error: 'غير مصرح: يجب تسجيل الدخول برمز صالح' });
@@ -189,10 +230,13 @@ export default async function handler(req: any, res: any) {
 
     let rawPrivateKey = process.env.FIREBASE_PRIVATE_KEY;
 
-    // Support single JSON pasted in FIREBASE_SERVICE_ACCOUNT or FIREBASE_PRIVATE_KEY
+    // Helper to extract JSON properties if user pasted full serviceAccountKey.json into any env var
     const parseJsonCert = (val?: string) => {
       if (!val) return;
-      const trimmed = val.trim();
+      let trimmed = val.trim();
+      while ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+        trimmed = trimmed.slice(1, -1).trim();
+      }
       if (trimmed.startsWith('{')) {
         try {
           const parsed = JSON.parse(trimmed);
@@ -206,7 +250,7 @@ export default async function handler(req: any, res: any) {
     parseJsonCert(process.env.FIREBASE_SERVICE_ACCOUNT);
     parseJsonCert(rawPrivateKey);
 
-    // Auto-detect project ID from clientEmail if not explicitly set
+    // Auto-detect project ID from clientEmail domain if not specified
     if (!projectId && clientEmail && clientEmail.includes('@')) {
       const domain = clientEmail.split('@')[1];
       if (domain.includes('.iam.gserviceaccount.com')) {
@@ -219,13 +263,13 @@ export default async function handler(req: any, res: any) {
     const missingVars: string[] = [];
     if (!clientEmail) missingVars.push('FIREBASE_CLIENT_EMAIL');
     if (!privateKey) missingVars.push('FIREBASE_PRIVATE_KEY');
-    if (!projectId) missingVars.push('VITE_FIREBASE_PROJECT_ID');
+    if (!projectId) missingVars.push('FIREBASE_PROJECT_ID');
 
     if (missingVars.length > 0) {
       return sendResponse(res, 500, {
         error: `متغيرات بيئة Firebase غير مكتملة في Vercel: (${missingVars.join(
           ', '
-        )}). تأكد من إضافتها وتفعيلها لجميع البيئات (Production و Preview) ثم إعادة النشر.`,
+        )}). تأكد من إضافتها لجميع البيئات (Production و Preview) ثم إعادة النشر (Redeploy).`,
       });
     }
 
@@ -237,35 +281,20 @@ export default async function handler(req: any, res: any) {
       return sendResponse(res, 400, { error: 'معرّف المستخدم (uid) مطلوب للحذف.' });
     }
 
-    // 4. Verify Admin Caller via Google Identity Toolkit
-    const apiKey = process.env.VITE_FIREBASE_API_KEY;
-    if (apiKey) {
-      const verifyRes = await fetch(
-        `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ idToken }),
-        }
-      );
-      const verifyData = await verifyRes.json().catch(() => ({}));
-      if (!verifyRes.ok || !verifyData.users || verifyData.users.length === 0) {
-        return sendResponse(res, 401, { error: 'انتهت صلاحية جلسة المدير. يرجى تسجيل الدخول مجدداً.' });
-      }
-      const callerUid = verifyData.users[0].localId;
-      if (callerUid === uid) {
-        return sendResponse(res, 400, { error: 'لا يمكنك حذف الحساب الحالي المسجل به.' });
-      }
-    }
-
-    // 5. Get Google Access Token using RSA-SHA256 signature
+    // 4. Obtain Google Access Token
     const accessToken = await getGoogleAccessToken(clientEmail!, privateKey!);
 
+    // 5. Verify Caller's session & ensure caller is not deleting themselves
+    const callerUid = await verifyCallerToken(projectId!, accessToken, idToken);
+    if (callerUid === uid) {
+      return sendResponse(res, 400, { error: 'لا يمكنك حذف الحساب الحالي المسجل به.' });
+    }
+
     // 6. Delete from Firebase Authentication
-    await deleteFromFirebaseAuth(projectId, accessToken, uid);
+    await deleteFromFirebaseAuth(projectId!, accessToken, uid);
 
     // 7. Delete from Firestore (users & usernames)
-    await deleteFromFirestore(projectId, accessToken, uid, username);
+    await deleteFromFirestore(projectId!, accessToken, uid, username);
 
     return sendResponse(res, 200, {
       success: true,

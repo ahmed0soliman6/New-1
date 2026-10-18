@@ -68,9 +68,7 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
     return nextFileNumber || 1;
   }, [patients, nextFileNumber]);
 
-  const [selectedVisitType, setSelectedVisitType] = useState<{ id: string; name: string; fee: number }>(
-    visitTypesList[0] || { id: '1', name: 'كشف جديد', fee: 300 }
-  );
+  const [selectedVisitType, setSelectedVisitType] = useState<{ id: string; name: string; fee: number } | null>(null);
   
   // Requirement 7: Separate badge pills for symptoms & complaint
   const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>([]);
@@ -84,6 +82,13 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
   const [payMethod, setPayMethod] = useState<'نقدي' | 'فيزا / كارت' | 'إنستاباي'>('نقدي');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [autoFilledPatientId, setAutoFilledPatientId] = useState<string | null>(null);
+
+  // Field-level validation error state for required fields
+  const [formErrors, setFormErrors] = useState<{
+    name?: string;
+    gender?: string;
+    visitType?: string;
+  }>({});
 
   // Requirement 3: Auto-suggest registered patient when typing name or phone
   const matchingPatients = React.useMemo(() => {
@@ -238,14 +243,39 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
     setComplaintText('');
     setChronicSelected([]);
     setAutoFilledPatientId(null);
+    setSelectedVisitType(null);
+    setFormErrors({});
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const errors: { name?: string; gender?: string; visitType?: string } = {};
+
     if (!name.trim()) {
-      alert('يرجى إدخال اسم المريض ثلاثياً أو رباعياً');
+      errors.name = 'يرجى إدخال اسم المريض (ثلاثياً أو رباعياً)';
+    }
+
+    if (!gender || (gender !== 'male' && gender !== 'female')) {
+      errors.gender = 'يرجى تحديد جنس المريض (ذكر / أنثى)';
+    }
+
+    if (!selectedVisitType || !selectedVisitType.name) {
+      errors.visitType = 'يرجى تحديد نوع الكشف أو الزيارة المتاحة';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      const firstErrKey = Object.keys(errors)[0];
+      const targetEl =
+        document.getElementById(`field-${firstErrKey}`) ||
+        document.getElementById('intake-errors-banner');
+      if (targetEl) {
+        targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
       return;
     }
+
+    setFormErrors({});
 
     const compiledComplaint = [
       ...selectedSymptoms,
@@ -266,10 +296,10 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
       phone: phone.trim(),
       age: Number(age) || 0,
       gender: gender || '',
-      visitType: selectedVisitType.name,
+      visitType: selectedVisitType?.name || 'كشف جديد',
       arrivalTime: formatAppTime(new Date(), language),
       elapsedMinutes: 1,
-      paidAmount: selectedVisitType.fee,
+      paidAmount: selectedVisitType?.fee || 0,
       paymentMethod: payMethod,
       complaint: compiledComplaint || 'كشف روتيني بالعيادة',
       chronicConditions: chronicSelected,
@@ -298,6 +328,26 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-white dark:bg-[#18233C] border border-[#00c2cb] text-slate-900 dark:text-[#45dee7] px-6 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-in fade-in">
           <span className="material-symbols-outlined text-2xl text-[#00c2cb]">check_circle</span>
           <span className="text-sm font-bold">{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Required Fields Error Summary Banner */}
+      {Object.keys(formErrors).length > 0 && (
+        <div
+          id="intake-errors-banner"
+          className="p-4 rounded-2xl bg-rose-500/10 border-2 border-rose-500/40 text-rose-800 dark:text-rose-200 flex items-start sm:items-center gap-3 animate-in fade-in shadow-sm"
+        >
+          <span className="material-symbols-outlined text-2xl text-rose-500 shrink-0 mt-0.5 sm:mt-0">
+            error
+          </span>
+          <div className="text-xs font-bold leading-relaxed">
+            <strong className="block text-sm mb-0.5 text-rose-600 dark:text-rose-400">
+              توجد حقول إجبارية لم يتم استكمالها بعد!
+            </strong>
+            <span>
+              يرجى إدخال الحقول المحددة بحدود ورسائل حمراء أدناه (اسم المريض، الجنس/النوع، أو نوع الزيارة) لتمكن من تسجيل الزيارة وطباعة التذكرة.
+            </span>
+          </div>
         </div>
       )}
 
@@ -472,18 +522,30 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Full Name */}
-              <div className="flex flex-col gap-1.5 sm:col-span-2">
+              <div id="field-name" className="flex flex-col gap-1.5 sm:col-span-2">
                 <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">
                   اسم المريض <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
-                  required
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    if (formErrors.name) setFormErrors((prev) => ({ ...prev, name: undefined }));
+                  }}
                   placeholder="أدخل اسم المريض..."
-                  className="bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] placeholder:text-slate-400 dark:placeholder:text-[#859394] text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
+                  className={`bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] placeholder:text-slate-400 dark:placeholder:text-[#859394] text-xs px-3.5 py-2.5 rounded-xl border transition-all focus:outline-none focus:ring-1 ${
+                    formErrors.name
+                      ? 'border-rose-500 ring-1 ring-rose-500 bg-rose-50/30 dark:bg-rose-950/20'
+                      : 'border-slate-200 dark:border-white/10 focus:ring-[#00c2cb]'
+                  }`}
                 />
+                {formErrors.name && (
+                  <span className="text-xs font-bold text-rose-500 flex items-center gap-1 mt-0.5">
+                    <span className="material-symbols-outlined text-sm">error</span>
+                    <span>{formErrors.name}</span>
+                  </span>
+                )}
               </div>
 
               {/* Phone */}
@@ -511,12 +573,21 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
               </div>
 
               {/* Gender - Requirement 5: Unselected by default */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">النوع / الجنس</label>
-                <div className="grid grid-cols-2 gap-2">
+              <div id="field-gender" className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">
+                  النوع / الجنس <span className="text-red-500">*</span>
+                </label>
+                <div
+                  className={`grid grid-cols-2 gap-2 p-1 rounded-2xl transition-all ${
+                    formErrors.gender ? 'border-2 border-rose-500 bg-rose-500/10' : ''
+                  }`}
+                >
                   <button
                     type="button"
-                    onClick={() => setGender('male')}
+                    onClick={() => {
+                      setGender('male');
+                      if (formErrors.gender) setFormErrors((prev) => ({ ...prev, gender: undefined }));
+                    }}
                     className={`py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
                       gender === 'male'
                         ? 'bg-teal-50 dark:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#45dee7] border-[#00c2cb] ring-1 ring-[#00c2cb]'
@@ -527,7 +598,10 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setGender('female')}
+                    onClick={() => {
+                      setGender('female');
+                      if (formErrors.gender) setFormErrors((prev) => ({ ...prev, gender: undefined }));
+                    }}
                     className={`py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
                       gender === 'female'
                         ? 'bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-[#d0bcff] border-purple-500 ring-1 ring-purple-500'
@@ -537,6 +611,12 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
                     أنثى
                   </button>
                 </div>
+                {formErrors.gender && (
+                  <span className="text-xs font-bold text-rose-500 flex items-center gap-1 mt-0.5">
+                    <span className="material-symbols-outlined text-sm">error</span>
+                    <span>{formErrors.gender}</span>
+                  </span>
+                )}
               </div>
 
               {/* Address Field */}
@@ -759,16 +839,25 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
             </div>
 
             {/* Dynamic Visit Types List - Requirement 9 */}
-            <div className="flex flex-col gap-2">
-              <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">نوع الزيارة / الكشف المتاح</label>
-              <div className="flex flex-col gap-2">
+            <div id="field-visitType" className="flex flex-col gap-2">
+              <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">
+                نوع الزيارة / الكشف المتاح <span className="text-red-500">*</span>
+              </label>
+              <div
+                className={`flex flex-col gap-2 p-1 rounded-2xl transition-all ${
+                  formErrors.visitType ? 'border-2 border-rose-500 bg-rose-500/10' : ''
+                }`}
+              >
                 {visitTypesList.map((vt, index) => (
                   <button
                     key={`${vt.id}-${index}`}
                     type="button"
-                    onClick={() => setSelectedVisitType(vt)}
+                    onClick={() => {
+                      setSelectedVisitType(vt);
+                      if (formErrors.visitType) setFormErrors((prev) => ({ ...prev, visitType: undefined }));
+                    }}
                     className={`py-2.5 px-3.5 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-between ${
-                      selectedVisitType.name === vt.name
+                      selectedVisitType?.name === vt.name
                         ? 'bg-[#00c2cb] text-slate-950 border-[#00c2cb] shadow-xs'
                         : 'bg-slate-50 dark:bg-[#080e1b] text-slate-700 dark:text-[#dde2f5] border-slate-200 dark:border-white/5 hover:bg-slate-100 dark:hover:bg-white/5'
                     }`}
@@ -780,6 +869,12 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
                   </button>
                 ))}
               </div>
+              {formErrors.visitType && (
+                <span className="text-xs font-bold text-rose-500 flex items-center gap-1 mt-0.5">
+                  <span className="material-symbols-outlined text-sm">error</span>
+                  <span>{formErrors.visitType}</span>
+                </span>
+              )}
             </div>
 
             {/* Payment Method */}
@@ -799,7 +894,9 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
             {/* Total Price Display */}
             <div className="bg-teal-50 dark:bg-[#18233C] p-4 rounded-xl border border-[#00c2cb]/30 flex items-center justify-between">
               <span className="text-xs font-bold text-slate-700 dark:text-[#dde2f5]">إجمالي المبلغ المستحق:</span>
-              <span className="text-2xl font-black text-[#008f97] dark:text-[#45dee7] font-mono">{selectedVisitType.fee} ج.م</span>
+              <span className="text-2xl font-black text-[#008f97] dark:text-[#45dee7] font-mono">
+                {selectedVisitType ? `${selectedVisitType.fee} ج.م` : 'غير محدد'}
+              </span>
             </div>
 
             {/* Submit Action Button */}

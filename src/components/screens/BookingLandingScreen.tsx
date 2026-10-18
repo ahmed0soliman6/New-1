@@ -439,11 +439,38 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
       notes,
       fee: feeNumber,
     });
+
+    if (!selectedBranchId) {
+      validation.branch = 'فرع العيادة (مكان الكشف) - الإلزامي';
+    }
+
+    if (!scheduledDate) {
+      validation.date = 'التاريخ المطلوب - الإلزامي';
+    }
+
     setErrors(validation);
-    if (Object.keys(validation).length > 0) return;
+    if (Object.keys(validation).length > 0) {
+      const fieldOrder = ['name', 'phone', 'branch', 'date', 'time', 'notes'];
+      const firstErrKey = fieldOrder.find((k) => (validation as any)[k]);
+      if (firstErrKey) {
+        setTimeout(() => {
+          const el = document.getElementById(`booking-field-${firstErrKey}`);
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el.focus();
+          }
+        }, 30);
+      }
+      return;
+    }
 
     if (!isDateValid) {
       setSubmitError('عفواً، هذا الفرع مغلق في التاريخ المحدد. يرجى اختيار أحد الأيام المتاحة الموضحة في صندوق التنبيه.');
+      const dateEl = document.getElementById('booking-field-date');
+      if (dateEl) {
+        dateEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        dateEl.focus();
+      }
       return;
     }
 
@@ -857,6 +884,7 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
                 <span className="text-[10px] font-normal text-slate-400">(الاسم ثنائي على الأقل)</span>
               </label>
               <input
+                id="booking-field-name"
                 type="text"
                 required
                 maxLength={BOOKING_LIMITS.nameMax}
@@ -889,6 +917,7 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
                 <span className="text-[10px] font-normal text-slate-400">(من 7 إلى 15 رقمًا)</span>
               </label>
               <input
+                id="booking-field-phone"
                 type="tel"
                 required
                 inputMode="tel"
@@ -915,15 +944,50 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
             </div>
           </div>
 
-          {/* Row 2: Date & Branch Selection */}
+          {/* Row 2: Branch & Date Selection */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {/* Date */}
+            {/* Branch (مكان الكشف) - الأولي كأول حقل */}
+            <div>
+              <label className="text-xs font-bold text-slate-200 dark:text-slate-300 mb-2 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-sm text-[#00c2cb]">domain</span>
+                <span>فرع العيادة (مكان الكشف) *</span>
+              </label>
+              <select
+                id="booking-field-branch"
+                value={selectedBranchId}
+                onChange={(e) => {
+                  setSelectedBranchId(e.target.value);
+                  setErrors((prev) => ({ ...prev, branch: undefined }));
+                }}
+                className={`w-full px-4 py-3 rounded-2xl bg-slate-950/80 dark:bg-[#080e1b] border ${
+                  errors.branch
+                    ? 'border-rose-500 ring-2 ring-rose-500/20 focus:ring-rose-500'
+                    : 'border-slate-700 dark:border-white/10 focus:ring-[#00c2cb]'
+                } text-white font-bold focus:outline-none focus:ring-2 transition-all cursor-pointer`}
+              >
+                <option value="">-- اختر فرع العيادة --</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name} ({b.workingHours ? b.workingHours : `من ${b.startTime || '16:00'} إلى ${b.endTime || '22:00'}`})
+                  </option>
+                ))}
+              </select>
+              {errors.branch && (
+                <p className="mt-1.5 text-xs text-rose-400 font-bold flex items-center gap-1">
+                  <span className="material-symbols-outlined text-xs">error</span>
+                  <span>الالزامى - {errors.branch}</span>
+                </p>
+              )}
+            </div>
+
+            {/* Date - الحقل الثاني */}
             <div>
               <label className="text-xs font-bold text-slate-200 dark:text-slate-300 mb-2 flex items-center gap-1.5">
                 <span className="material-symbols-outlined text-sm text-[#00c2cb]">calendar_month</span>
                 <span>التاريخ المطلوب *</span>
               </label>
               <input
+                id="booking-field-date"
                 type="date"
                 required
                 min={minDate}
@@ -974,25 +1038,6 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
                 </div>
               )}
             </div>
-
-            {/* Branch (مكان الكشف) */}
-            <div>
-              <label className="text-xs font-bold text-slate-200 dark:text-slate-300 mb-2 flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-sm text-[#00c2cb]">domain</span>
-                <span>فرع العيادة (مكان الكشف) *</span>
-              </label>
-              <select
-                value={selectedBranchId}
-                onChange={(e) => setSelectedBranchId(e.target.value)}
-                className="w-full px-4 py-3 rounded-2xl bg-slate-950/80 dark:bg-[#080e1b] border border-slate-700 dark:border-white/10 text-white font-bold focus:outline-none focus:ring-2 focus:ring-[#00c2cb] transition-all cursor-pointer"
-              >
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name} ({b.workingHours ? b.workingHours : `من ${b.startTime || '16:00'} إلى ${b.endTime || '22:00'}`})
-                  </option>
-                ))}
-              </select>
-            </div>
           </div>
 
           {/* Branch Working Hours & Details Info Card (Slim horizontal metadata row) */}
@@ -1041,7 +1086,7 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
           )}
 
           {/* Row 3: Available 15-minute Time Slots (Filtered against booked appointments) */}
-          <div className="p-4.5 rounded-2xl bg-slate-950/60 dark:bg-[#080e1b]/60 border border-slate-800 dark:border-white/5 space-y-3">
+          <div id="booking-field-time" className="p-4.5 rounded-2xl bg-slate-950/60 dark:bg-[#080e1b]/60 border border-slate-800 dark:border-white/5 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/5 pb-2">
               <div>
                 <label className="text-xs font-bold text-slate-200 dark:text-slate-300 flex items-center gap-1.5">

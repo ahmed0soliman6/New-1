@@ -29,7 +29,7 @@ export function cleanPhone(value: string): string {
   return normalizeDigits(value).replace(/[\s\-()+]/g, '');
 }
 
-export type BookingField = 'name' | 'phone' | 'date' | 'time' | 'notes' | 'fee';
+export type BookingField = 'name' | 'phone' | 'branch' | 'date' | 'time' | 'notes' | 'fee';
 export type BookingErrors = Partial<Record<BookingField, string>>;
 
 export interface BookingInput {
