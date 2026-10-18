@@ -19,6 +19,13 @@ import { subscribeToPrescriptionSettings } from '../../services/repositories/set
 import { toDayKey } from '../../utils/dayKey';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { meterQuery, meterDoc, meterWrite } from '../../services/readMeter';
+import {
+  validateBooking,
+  cleanName,
+  cleanPhone,
+  BOOKING_LIMITS,
+  type BookingErrors,
+} from '../../utils/bookingValidation';
 
 interface BookingLandingScreenProps {
   onAddAppointment?: (appointment: AppointmentListItem) => void;
@@ -255,6 +262,18 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
   const [visitType, setVisitType] = useState<string>('');
   const [notes, setNotes] = useState('');
 
+  const [errors, setErrors] = useState<BookingErrors>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const { minDate, maxDate } = useMemo(() => {
+    const now = new Date();
+    const min = now.toISOString().slice(0, 10);
+    const maxD = new Date(now.getTime() + BOOKING_LIMITS.windowFutureDays * 24 * 60 * 60 * 1000);
+    const max = maxD.toISOString().slice(0, 10);
+    return { minDate: min, maxDate: max };
+  }, []);
+
   // Auto-select first visit type
   useEffect(() => {
     if (visitTypes.length > 0 && !visitType) {
@@ -402,136 +421,147 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
     );
   };
 
-  // Send WhatsApp Action
-  const handleSendWhatsapp = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!patientName.trim()) {
-      alert('يرجى كتابة اسم المريض ثلاثي أو رباعي');
-      return;
-    }
+  // Submit Booking Action (Atomic Batch Write to Firestore)
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    setSubmitError(null);
+
+    const cleanedName = cleanName(patientName);
+    const cleanedPhone = cleanPhone(phone);
+    const matchingVt = visitTypes.find((vt) => vt.name === visitType);
+    const feeNumber = matchingVt ? matchingVt.fee : 300;
+
+    const validation = validateBooking({
+      name: cleanedName,
+      phone: cleanedPhone,
+      date: scheduledDate,
+      time: selectedTimeSlot,
+      notes,
+      fee: feeNumber,
+    });
+    setErrors(validation);
+    if (Object.keys(validation).length > 0) return;
 
     if (!isDateValid) {
-      alert('عفواً، هذا الفرع مغلق في التاريخ المحدد. يرجى اختيار أحد الأيام المتاحة الموضحة في صندوق التنبيه.');
+      setSubmitError('عفواً، هذا الفرع مغلق في التاريخ المحدد. يرجى اختيار أحد الأيام المتاحة الموضحة في صندوق التنبيه.');
       return;
     }
 
-    if (!selectedTimeSlot) {
-      alert('يرجى اختيار موعد متاح للكشف');
-      return;
-    }
-
-    const doctorPhone = doctorInfo.phone?.replace(/\D/g, '') || '01092847162';
-    const cleanPhone = doctorPhone.startsWith('0') ? `2${doctorPhone}` : doctorPhone;
-    const text = formatWhatsappMessage();
-    const encoded = encodeURIComponent(text);
-    const url = `https://wa.me/${cleanPhone}?text=${encoded}`;
-
-    const matchingVt = visitTypes.find((vt) => vt.name === visitType);
-    const expectedFee = matchingVt ? matchingVt.fee : 300;
-    const newApp: AppointmentListItem = {
-      id: `app-${Date.now()}`,
-      patientName: patientName.trim(),
-      phone: phone.trim() || 'بدون هاتف',
-      medicalCode: `EG-${Math.floor(100 + Math.random() * 900)}`,
-      timeSlot: selectedTimeSlot,
-      time: selectedTimeSlot,
-      date: scheduledDate,
-      branch: activeBranch?.name || 'الفرع الرئيسي',
-      visitType: visitType,
-      expectedFee,
-      status: 'مجدول' as any,
-      notes: `حجز عبر الواتساب: ${notes.trim()}`,
-    };
-
-    // Save to local storage for immediate slot exclusion
+    setSubmitting(true);
     try {
-      const existingOnline = safeStorage.getJSON<any[]>('soli_appointments_online', []) || [];
-      safeStorage.setJSON('soli_appointments_online', [newApp, ...existingOnline]);
-      window.dispatchEvent(new Event('soli_appointments_updated'));
-    } catch (e) {
-      console.warn('Local storage save warning:', e);
+      const { db } = await import('../../services/firebase');
+      if (!db) throw new Error('قاعدة البيانات غير متاحة حالياً');
+
+      const { doc, writeBatch } = await import('firebase/firestore');
+
+      const stamp = Date.now();
+      const patientId = `pat-online-${stamp}`;
+      const appointmentId = `app-${stamp}`;
+      const nowIso = new Date().toISOString();
+      const dayKey = scheduledDate; // الحجز يُختم بتاريخ الموعد نفسه
+
+      const patientRecord = {
+        patientId,
+        fullName: cleanedName,
+        phone: cleanedPhone,
+        fileNumber: 9000 + Math.floor(Math.random() * 1000),
+        medicalCode: `EG-ONL-${Math.floor(1000 + Math.random() * 9000)}`,
+        chronicDiseases: [],
+        allergies: [],
+        address: '',
+        bloodType: 'غير محدد',
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        createdBy: 'online_booking',
+      };
+
+      const appointmentRecord = {
+        appointmentId,
+        patientId,
+        patientName: cleanedName,
+        phone: cleanedPhone,
+        clinicLocationId: activeBranch?.id || 'loc-mohandessin',
+        scheduledDate,
+        scheduledTime: selectedTimeSlot,
+        visitType,
+        status: 'SCHEDULED',
+        expectedFee: feeNumber,
+        notes: notes.trim() ? `حجز عبر الموقع: ${notes.trim()}` : '',
+        dayKey,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        createdBy: 'online_booking',
+        appointmentDate: scheduledDate,
+        startTime: selectedTimeSlot,
+        endTime: selectedTimeSlot,
+        type: visitType,
+      };
+
+      // دفعة واحدة: إما ينجح الاثنان معًا أو يفشلان معًا
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'patients', patientId), patientRecord);
+      batch.set(doc(db, 'appointments', appointmentId), appointmentRecord);
+      await batch.commit();
+
+      meterWrite(2);
+
+      // لا يُحفظ شيء محليًا ولا تُعرض رسالة النجاح إلا بعد تأكيد الخادم
+      const localApp: AppointmentListItem = {
+        id: appointmentId,
+        appointmentId,
+        patientId,
+        patientName: cleanedName,
+        phone: cleanedPhone,
+        medicalCode: patientRecord.medicalCode,
+        date: scheduledDate,
+        time: selectedTimeSlot,
+        timeSlot: selectedTimeSlot,
+        branch: activeBranch?.name || 'الفرع الرئيسي',
+        visitType,
+        expectedFee: feeNumber,
+        status: 'مجدول' as any,
+        notes: appointmentRecord.notes,
+      };
+
+      try {
+        const existing = safeStorage.getJSON<any[]>('soli_appointments_online', []) || [];
+        safeStorage.setJSON('soli_appointments_online', [localApp, ...existing]);
+        window.dispatchEvent(new Event('soli_appointments_updated'));
+      } catch { /* التخزين المحلي اختياري */ }
+
+      onAddAppointment?.(localApp);
+
+      const doctorPhone = doctorInfo.phone?.replace(/\D/g, '') || '01092847162';
+      const cleanDoctorPhone = doctorPhone.startsWith('0') ? `2${doctorPhone}` : doctorPhone;
+      const text = formatWhatsappMessage();
+      const encoded = encodeURIComponent(text);
+      const url = `https://wa.me/${cleanDoctorPhone}?text=${encoded}`;
+
+      const confirmedData: ConfirmedBookingDetails = {
+        id: appointmentId,
+        patientName: cleanedName,
+        phone: cleanedPhone,
+        medicalCode: patientRecord.medicalCode,
+        timeSlot: selectedTimeSlot,
+        date: scheduledDate,
+        branch: activeBranch?.name || 'الفرع الرئيسي',
+        visitType,
+        expectedFee: feeNumber,
+        notes: notes.trim(),
+        whatsappUrl: url,
+        whatsappText: text,
+        clinicPhone: doctorInfo.phone,
+      };
+
+      setConfirmedBooking(confirmedData);
+      setToastMessage('تم تسجيل الحجز بنجاح ✓');
+      setTimeout(() => setToastMessage(null), 3500);
+    } catch (err) {
+      console.error('Booking failed:', err);
+      setSubmitError('تعذّر حفظ الحجز. تحقق من اتصال الإنترنت وحاول مرة أخرى، ولم يُحفظ أي شيء.');
+    } finally {
+      setSubmitting(false);
     }
-
-    // Auto-save to local callback if provided
-    if (onAddAppointment) {
-      onAddAppointment(newApp);
-    }
-
-    // Direct Firestore sync of Patient & Appointment with correct keys for doctor's dashboard
-    try {
-      import('../../services/firebase').then(({ db }) => {
-        if (db) {
-          import('firebase/firestore').then(({ doc, setDoc }) => {
-            const patientId = `pat-online-${Date.now()}`;
-            const timestamp = new Date().toISOString();
-            
-            // 1. Create Patient document in 'patients' collection
-            setDoc(doc(db, 'patients', patientId), {
-              patientId: patientId,
-              fullName: newApp.patientName,
-              phone: newApp.phone,
-              fileNumber: 9000 + Math.floor(Math.random() * 1000),
-              medicalCode: newApp.medicalCode || `EG-ONL-${Math.floor(1000 + Math.random() * 9000)}`,
-              chronicDiseases: [],
-              allergies: [],
-              address: '',
-              bloodType: 'غير محدد',
-              createdAt: timestamp,
-              updatedAt: timestamp,
-              createdBy: 'online_booking',
-            }, { merge: true }).then(() => {
-              // 2. Create Appointment document in 'appointments' collection
-              setDoc(doc(db, 'appointments', newApp.id), {
-                appointmentId: newApp.id,
-                patientId: patientId,
-                patientName: newApp.patientName,
-                phone: newApp.phone,
-                clinicLocationId: activeBranch?.id || 'loc-mohandessin',
-                scheduledDate: newApp.date,
-                scheduledTime: newApp.timeSlot,
-                visitType: newApp.visitType,
-                status: 'SCHEDULED',
-                expectedFee: newApp.expectedFee,
-                notes: newApp.notes,
-                dayKey: toDayKey(newApp.date),
-                createdAt: timestamp,
-                updatedAt: timestamp,
-                createdBy: 'online_booking',
-                // Keep backup legacy fields just in case
-                appointmentDate: newApp.date,
-                startTime: newApp.timeSlot,
-                endTime: newApp.timeSlot,
-                type: newApp.visitType,
-              }, { merge: true }).then(() => {
-                meterWrite(2);
-              }).catch((err) => console.warn('Booking sync warning:', err));
-            }).catch((err) => console.warn('Patient sync warning:', err));
-          });
-        }
-      });
-    } catch (e) {
-      console.warn('Firestore booking write failure:', e);
-    }
-
-    const confirmedData: ConfirmedBookingDetails = {
-      id: newApp.id,
-      patientName: newApp.patientName,
-      phone: newApp.phone,
-      medicalCode: newApp.medicalCode || `EG-${Math.floor(100 + Math.random() * 900)}`,
-      timeSlot: selectedTimeSlot,
-      date: scheduledDate,
-      branch: activeBranch?.name || 'الفرع الرئيسي',
-      visitType: visitType,
-      expectedFee,
-      notes: notes.trim(),
-      whatsappUrl: url,
-      whatsappText: text,
-      clinicPhone: doctorInfo.phone,
-    };
-
-    setConfirmedBooking(confirmedData);
-    setToastMessage('تم تسجيل طلب الحجز المباشر بنجاح! ✓');
-    setTimeout(() => setToastMessage(null), 4000);
   };
 
   // Reset booking form to make another appointment
@@ -816,7 +846,7 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
         </div>
 
         {/* The Form */}
-        <form onSubmit={handleSendWhatsapp} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
           {/* Row 1: Patient Name & Phone */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Patient Name */}
@@ -824,16 +854,31 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
               <label className="text-xs font-bold text-slate-200 dark:text-slate-300 mb-2 flex items-center gap-1.5">
                 <span className="material-symbols-outlined text-sm text-[#00c2cb]">person</span>
                 <span>اسم المريض *</span>
-                <span className="text-[10px] font-normal text-slate-400">(ثلاثي أو رباعي)</span>
+                <span className="text-[10px] font-normal text-slate-400">(الاسم ثنائي على الأقل)</span>
               </label>
               <input
                 type="text"
                 required
+                maxLength={BOOKING_LIMITS.nameMax}
+                autoComplete="name"
                 value={patientName}
-                onChange={(e) => setPatientName(e.target.value)}
+                onChange={(e) => {
+                  setPatientName(e.target.value);
+                  setErrors((prev) => ({ ...prev, name: undefined }));
+                }}
                 placeholder="مثال: أحمد سليمان محمد"
-                className="w-full px-4 py-3 rounded-2xl bg-slate-950/80 dark:bg-[#080e1b] border border-slate-700 dark:border-white/10 text-white placeholder-slate-500 font-bold focus:outline-none focus:ring-2 focus:ring-[#00c2cb] transition-all"
+                className={`w-full px-4 py-3 rounded-2xl bg-slate-950/80 dark:bg-[#080e1b] border ${
+                  errors.name
+                    ? 'border-rose-500 ring-2 ring-rose-500/20 focus:ring-rose-500'
+                    : 'border-slate-700 dark:border-white/10 focus:ring-[#00c2cb]'
+                } text-white placeholder-slate-500 font-bold focus:outline-none focus:ring-2 transition-all`}
               />
+              {errors.name && (
+                <p className="mt-1.5 text-xs text-rose-400 font-bold flex items-center gap-1">
+                  <span className="material-symbols-outlined text-xs">error</span>
+                  <span>{errors.name}</span>
+                </p>
+              )}
             </div>
 
             {/* Phone */}
@@ -841,17 +886,32 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
               <label className="text-xs font-bold text-slate-200 dark:text-slate-300 mb-2 flex items-center gap-1.5">
                 <span className="material-symbols-outlined text-sm text-[#00c2cb]">call</span>
                 <span>رقم الهاتف *</span>
-                <span className="text-[10px] font-normal text-slate-400">(لإرسال تذكير واتساب)</span>
+                <span className="text-[10px] font-normal text-slate-400">(من 7 إلى 15 رقمًا)</span>
               </label>
               <input
                 type="tel"
                 required
+                inputMode="tel"
+                maxLength={BOOKING_LIMITS.phoneMax + 5}
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => {
+                  setPhone(e.target.value);
+                  setErrors((prev) => ({ ...prev, phone: undefined }));
+                }}
                 placeholder="مثال: 01012345678"
-                className="w-full px-4 py-3 rounded-2xl bg-slate-950/80 dark:bg-[#080e1b] border border-slate-700 dark:border-white/10 text-white placeholder-slate-500 font-bold font-mono focus:outline-none focus:ring-2 focus:ring-[#00c2cb] transition-all"
+                className={`w-full px-4 py-3 rounded-2xl bg-slate-950/80 dark:bg-[#080e1b] border ${
+                  errors.phone
+                    ? 'border-rose-500 ring-2 ring-rose-500/20 focus:ring-rose-500'
+                    : 'border-slate-700 dark:border-white/10 focus:ring-[#00c2cb]'
+                } text-white placeholder-slate-500 font-bold font-mono focus:outline-none focus:ring-2 transition-all`}
                 dir="ltr"
               />
+              {errors.phone && (
+                <p className="mt-1.5 text-xs text-rose-400 font-bold flex items-center gap-1">
+                  <span className="material-symbols-outlined text-xs">error</span>
+                  <span>{errors.phone}</span>
+                </p>
+              )}
             </div>
           </div>
 
@@ -866,17 +926,26 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
               <input
                 type="date"
                 required
+                min={minDate}
+                max={maxDate}
                 value={scheduledDate}
                 onChange={(e) => {
                   setScheduledDate(e.target.value);
                   setSelectedTimeSlot('');
+                  setErrors((prev) => ({ ...prev, date: undefined }));
                 }}
                 className={`w-full px-4 py-3 rounded-2xl bg-slate-950/80 dark:bg-[#080e1b] border ${
-                  isDateValid 
-                    ? 'border-slate-700 dark:border-white/10 focus:ring-[#00c2cb]' 
-                    : 'border-rose-500 ring-2 ring-rose-500/20 focus:ring-rose-500'
+                  errors.date || !isDateValid 
+                    ? 'border-rose-500 ring-2 ring-rose-500/20 focus:ring-rose-500' 
+                    : 'border-slate-700 dark:border-white/10 focus:ring-[#00c2cb]'
                 } text-white font-bold font-mono focus:outline-none transition-all`}
               />
+              {errors.date && (
+                <p className="mt-1.5 text-xs text-rose-400 font-bold flex items-center gap-1">
+                  <span className="material-symbols-outlined text-xs">error</span>
+                  <span>{errors.date}</span>
+                </p>
+              )}
               
               {!isDateValid && (
                 <div className="mt-2.5 p-3 rounded-xl bg-rose-500/10 border border-rose-500/25 text-rose-300 text-xs">
@@ -1003,7 +1072,10 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
                     <button
                       key={slot.raw}
                       type="button"
-                      onClick={() => setSelectedTimeSlot(slot.label)}
+                      onClick={() => {
+                        setSelectedTimeSlot(slot.label);
+                        setErrors((prev) => ({ ...prev, time: undefined }));
+                      }}
                       className={`px-3 py-2.5 rounded-xl text-xs font-bold font-mono transition-all cursor-pointer flex items-center justify-center gap-1 border ${
                         isSelected
                           ? 'bg-[#00c2cb] text-slate-950 border-[#00c2cb] shadow-md scale-105 font-black'
@@ -1021,6 +1093,12 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
                 <span className="material-symbols-outlined text-lg text-rose-400">event_busy</span>
                 <span>جميع مواعيد هذا الفرع محجوزة بالكامل في تاريخ ({scheduledDate}). يرجى اختيار تاريخ آخر أو فرع آخر.</span>
               </div>
+            )}
+            {errors.time && (
+              <p className="mt-1.5 text-xs text-rose-400 font-bold flex items-center gap-1">
+                <span className="material-symbols-outlined text-xs">error</span>
+                <span>{errors.time}</span>
+              </p>
             )}
           </div>
 
@@ -1050,26 +1128,47 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
               <label className="text-xs font-bold text-slate-200 dark:text-slate-300 mb-2 flex items-center gap-1.5">
                 <span className="material-symbols-outlined text-sm text-[#00c2cb]">edit_note</span>
                 <span>ملاحظات الموعد</span>
-                <span className="text-[10px] font-normal text-slate-400">(اختياري)</span>
+                <span className="text-[10px] font-normal text-slate-400">(اختياري - حتى 500 حرف)</span>
               </label>
               <input
                 type="text"
+                maxLength={BOOKING_LIMITS.notesMax}
                 value={notes}
-                onChange={(e) => setNotes(e.target.value)}
+                onChange={(e) => {
+                  setNotes(e.target.value);
+                  setErrors((prev) => ({ ...prev, notes: undefined }));
+                }}
                 placeholder="مثال: متابعة قرحة المعدة، كشف مستعجل..."
                 className="w-full px-4 py-3 rounded-2xl bg-slate-950/80 dark:bg-[#080e1b] border border-slate-700 dark:border-white/10 text-white placeholder-slate-500 font-bold focus:outline-none focus:ring-2 focus:ring-[#00c2cb] transition-all"
               />
+              {errors.notes && (
+                <p className="mt-1.5 text-xs text-rose-400 font-bold flex items-center gap-1">
+                  <span className="material-symbols-outlined text-xs">error</span>
+                  <span>{errors.notes}</span>
+                </p>
+              )}
             </div>
           </div>
+
+          {/* Submit Error Notification Banner */}
+          {submitError && (
+            <div className="p-4 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-200 text-xs font-bold flex items-center gap-2.5 animate-in fade-in">
+              <span className="material-symbols-outlined text-rose-400 text-lg shrink-0">error</span>
+              <span className="leading-relaxed">{submitError}</span>
+            </div>
+          )}
 
           {/* Form Action Buttons */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-800 dark:border-white/5">
             <button
               type="submit"
-              className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-sm flex items-center justify-center gap-2.5 shadow-xl transition-all cursor-pointer active:scale-95"
+              disabled={submitting}
+              className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-sm flex items-center justify-center gap-2.5 shadow-xl transition-all cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <span className="material-symbols-outlined text-xl">event_available</span>
-              <span>إرسال طلب حجز مباشر</span>
+              <span className={`material-symbols-outlined text-xl ${submitting ? 'animate-spin' : ''}`}>
+                {submitting ? 'progress_activity' : 'event_available'}
+              </span>
+              <span>{submitting ? 'جارٍ الحفظ…' : 'إرسال طلب حجز مباشر'}</span>
             </button>
 
             <div className="flex items-center gap-2 w-full sm:w-auto justify-end">

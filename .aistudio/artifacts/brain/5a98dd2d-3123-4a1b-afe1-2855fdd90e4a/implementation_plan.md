@@ -1,80 +1,79 @@
-# خطة التنفيذ: تشديد قواعد الحجز العام (Firestore Rules) + اختبار صحتها (Prompt 7)
+# خطة التنفيذ: إصلاح الحجز العام والتحقق الصارم في الواجهة والقواعد (Prompt 9)
 
-تهدف هذه الخطة إلى تشديد القيود الأمنية للحجز العام (المجهول) في `firestore.rules` بدقة تامة طبقًا للجدول المطلوب، مع إضافة حزمة اختبارات آلية تتحقق من قبول الحالات الصحيحة ورفض الحالات المخالفة دون المساس بصلاحيات الطاقم الطبي المسجل.
+تهدف هذه الخطة إلى إصلاح شامل لنظام الحجز العام (`#booking`) لمنع إرسال أي بيانات غير متوافقة من الواجهة، ومنع إظهار رسالة النجاح أو الحفظ المحلي قبل تأكيد الخادم الفعلي، واستخدام الكتابة المجمعة ذرية (`writeBatch`) لحفظ المريض والموعد معًا، وتطابق قواعد Firestore بنسبة 100% مع قيود الواجهة لضمان ظهور الحجز الصحيح فورًا في بطاقة إدارة المواعيد والتقويم لدى الطاقم الطبي.
 
 ---
 
 ## 1. القرارات الفنية وتفضيلات المستخدم
-1. **طول اسم المريض الأدنى**: **6 أحرف** (تطبيق الوضع الصارم من 6 إلى 30 حرفًا كما تم تأكيده في الإجابات التوضيحية).
-2. **سكربت الاختبارات**: إعداد `"test:rules": "firebase emulators:exec --only firestore \"node tests/rules.test.mjs\""` مع توفير فحص بنية القواعد والتحقق الآلي.
-3. **تطبيق القيود الدقيقة**:
-   - اسم المريض: `6` إلى `30` حرفًا.
-   - الهاتف: `7` إلى `15` حرفًا.
-   - الملاحظات: نص حتى `500` حرف (أو غير موجود/فارغ).
-   - الرسوم `expectedFee`: رقم بين `0` و `10,000`.
-   - نافذة التاريخ `scheduledDate`: بين `request.time - duration.value(2, 'd')` و `request.time + duration.value(15, 'd')`.
-   - الحالة: `'SCHEDULED'` فقط.
-   - المنشئ: `'online_booking'` فقط.
-   - الأمراض المزمنة والحساسية للمريض: مصفوفات فارغة فقط (`size() == 0`).
-   - تدقيق المعرفات: `pat-online-[0-9]+` للمريض و `app-[0-9]+` للموعد.
-   - التحقق الصارم من الحقول عبر `hasAll` و `hasOnly`.
+1. **التحقق الصارم من الاسم والهاتف والتاريخ**:
+   - الاسم: ثنائي على الأقل، من 6 إلى 30 حرفًا.
+   - الهاتف: من 7 إلى 15 رقمًا (مع تحويل الأرقام العربية والفارسية تلقائيًا إلى الإنجليزية).
+   - التاريخ: تقييد حقل التاريخ بالخاصيتين `min` (اليوم) و `max` (اليوم + 30 يومًا)، والتحقق من النافذة (-2 أيام إلى +30 يومًا).
+2. **الكتابة الذرية وعدم التسرع في النجاح**:
+   - استخدام `writeBatch` لكتابة `patients` و `appointments` دفعة واحدة.
+   - عدم استدعاء الحفظ المحلي أو إظهار رسالة النجاح إلا بعد اكتمال `await batch.commit()`.
+   - إظهار رسالة خطأ واضحة باللون الأحمر في حالة انقطاع الاتصال أو فشل الكتابة، مع تعطيل زر الإرسال بنص «جارٍ الحفظ…» أثناء الطلب.
+3. **تأكيد الحجز وتكامل واتساب العيادة**:
+   - إظهار بطاقة التأكيد المفصلة (`ConfirmedBookingDetails`) متضمنة زر التواصل المباشر لتأكيد الحجز عبر واتساب العيادة.
+4. **ظهور الحجز فورًا في إدارة المواعيد والتقويم**:
+   - استماع `App.tsx` اللحظي لمجموعة `appointments` ومجموعة `patients` يضمن ظهور الحجز الجديد فور كتابته في Firestore دون الحاجة لإعادة تحميل الصفحة.
 
 ---
 
 ## 2. خطوات التنفيذ التفصيلية
 
-### المهمة 1: تحديث `firestore.rules`
-1. **إضافة وتحديث دوال المساعدة قبل `hasPermission`**:
-   - `onlineText(val, minLen, maxLen)`
-   - `scheduledDateInWindow(dateStr)`
-   - `isValidOnlinePatient(d)`
-   - `isValidOnlineAppointment(d)`
-2. **تحديث قواعد المجموعات**:
-   - مجموعة `patients`:
-     ```rules
-     allow create: if hasPermission('patient-records', 'create') ||
-                      hasPermission('patients', 'create') ||
-                      hasPermission('new-visit', 'create') ||
-                      (patientId.matches('^pat-online-[0-9]+$') && isValidOnlinePatient(request.resource.data));
-     ```
-   - مجموعة `appointments`:
-     ```rules
-     allow create: if hasPermission('upcoming-followups', 'create') ||
-                      hasPermission('appointments', 'create') ||
-                      hasPermission('new-visit', 'create') ||
-                      (appointmentId.matches('^app-[0-9]+$') && isValidOnlineAppointment(request.resource.data));
-     ```
-   - الحفاظ على قواعد القراءة والتحديث والحذف لكافة المجموعات وصلاحيات الطاقم الطبي دون أي تغيير.
+### المهمة 1: إنشاء ملف التحقق المشترك `src/utils/bookingValidation.ts`
+- إنشاء الملف وتضمين:
+  - ثوابت الحدود `BOOKING_LIMITS`:
+    - `nameMin: 6`, `nameMax: 30`
+    - `phoneMin: 7`, `phoneMax: 15`
+    - `notesMax: 500`, `feeMax: 10000`
+    - `windowPastDays: 2`, `windowFutureDays: 30`
+  - دوال التنظيف والتحويل:
+    - `normalizeDigits(value)`: تحويل الأرقام المشرقية والفارسية.
+    - `cleanName(value)`: تنظيف المسافات الزائدة.
+    - `cleanPhone(value)`: استخلاص الأرقام فقط.
+  - دالة التحقق الشاملة `validateBooking(input)` وتوليد كائن الأخطاء `BookingErrors`.
 
 ---
 
-### المهمة 2: التحقق النحوي من القواعد
-- التحقق من توازن الأقواس (`{}` و `()` و `[]`).
-- التأكد من بقاء `rules_version = '2';` في السطر الأول.
-- التأكد من تعريف كافة الدوال داخل نطاق `match /databases/{database}/documents`.
+### المهمة 2: ترقية صفحة الحجز `src/components/screens/BookingLandingScreen.tsx`
+- إضافة الحالات:
+  - `errors: BookingErrors`
+  - `submitting: boolean`
+  - `submitError: string | null`
+- تحديث حقول النموذج:
+  - حقل الاسم: `maxLength={30}`, `autoComplete="name"`, وعرض `errors.name` تحته بلون أحمر.
+  - حقل الهاتف: `inputMode="tel"`, `maxLength={20}`, وعرض `errors.phone`. حذف أي استبدال افتراضي بـ `'بدون هاتف'`.
+  - حقل التاريخ: تعيين `min` و `max` للنافذة المسموحة، وعرض `errors.date`.
+  - مسح خطأ الحقل فور تعديل المستخدم له.
+- دالة الإرسال `handleSubmit`:
+  - التحقق عبر `validateBooking`.
+  - استدعاء `writeBatch` لكتابة المريض والموعد معًا في خطوة ذرية واحدة.
+  - تسجيل `meterWrite(2)` بعد نجاح `batch.commit()`.
+  - تحديث التخزين المحلي واستدعاء `onAddAppointment` وبناء `ConfirmedBookingDetails` مع رابط تأكيد واتساب العيادة.
+  - معالجة أي خطأ شبكي بإظهار `submitError` دون حفظ محلي ودون رسالة نجاح زائفة.
 
 ---
 
-### المهمة 3: إعداد حزمة الاختبارات الآلية
-1. تثبيت الحزم المطلوبة عبر `install_applet_package`:
-   - `@firebase/rules-unit-testing`
-   - `firebase-tools`
-2. إضافة السكربت في `package.json`:
-   - `"test:rules": "firebase emulators:exec --only firestore \"node tests/rules.test.mjs\""`
-3. إنشاء ملف الاختبارات `tests/rules.test.mjs` يشمل الحالات الـ 16 المحددة بالكامل:
-   - الحالات المقبولة (1 و 2).
-   - الحالات المرفوضة (3 إلى 16).
-   - حالة مستخدم مسجل يمتلك صلاحية التحقق من عدم كسر صلاحيات الأطباء والمستخدمين.
+### المهمة 3: ضبط وتصحيح `firestore.rules`
+- استبدال كتلة `// ONLINE BOOKING VALIDATION HELPERS` حتى `// Dynamic Permission Checker` بالكتلة الصارمة:
+  - `onlineText(text, minLen, maxLen)`
+  - `onlineFullName(name)`: التحقق من الطول وكون الاسم ثنائيًا على الأقل (`name.matches('^\\S+\\s+\\S+.*$')`).
+  - `onlinePhone(phone)`: أرقام فقط من 7 إلى 15 (`phone.matches('^[0-9]{7,15}$')`).
+  - `scheduledDateInWindow(dateStr)`: استخدام تجزئة التاريخ `dateStr.split('-')` و `timestamp.date(int(p[0]), int(p[1]), int(p[2]))` للتحقق الموثوق من نافذة اليومين السابقين و 30 يومًا قادمة.
+  - `isValidOnlinePatient(d)` و `isValidOnlineAppointment(d)` مع فحص `hasAll` و `hasOnly` وتطابق القيود.
 
 ---
 
-### المهمة 4: التقرير والتحقق
-- تشغيل واختبار القواعد وعرض تقرير الحالات الـ 16 كاملة مع النتيجة PASS أو FAIL.
-- توضيح أمر النشر اليدوي للمستخدم: `firebase deploy --only firestore:rules`.
+### المهمة 4: تحديث اختبارات القواعد `tests/rules.test.mjs`
+- حذف المحاكاة اليدوية `validateRulesLocally`.
+- جعل الاختبار يتطلب المحاكي الحقيقي مباشرة؛ إن لم يتوفر يطبع تنبيهًا واضحًا دون إخراج نتائج مصطنعة.
+- الحفاظ على الحالات الـ 17 واختبار قيود الاسم الثنائي والتاريخ.
 
 ---
 
-## 3. التحقق ومعايير القبول
-1. نجاح `compile_applet` و `lint_applet` دون أخطاء.
-2. توازن كافة الأقواس وسلامة منطق القواعد النحوي.
-3. تغطية الاختبارات الآلية لكافة الحالات الـ 16 بدقة.
+### المهمة 5: التحقق والمراجعة
+1. التأكد من نجاح `lint_applet` (`tsc --noEmit`).
+2. التأكد من نجاح `compile_applet` (`npm run build`).
+3. التحقق من سلامة الواجهة وظهور الحجوزات الصالحة في إدارة المواعيد والتقويم لدى الطبيب والسكرتيرة.

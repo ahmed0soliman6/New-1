@@ -2412,6 +2412,10 @@ function ClinicApp() {
 
   // Add scheduled appointment: Patient first, then Appointment in one Firestore transaction
   const handleAddAppointment = async (app: AppointmentListItem) => {
+    const apptId = app.appointmentId || app.id;
+    if (apptId && appointmentsCanonical.some((a) => a.appointmentId === apptId)) {
+      return;
+    }
     const timestamp = new Date().toISOString();
     const cleanPhone = (app.phone || '').trim();
     const cleanName = (app.patientName || '').trim();
@@ -2857,7 +2861,7 @@ function ClinicApp() {
               {activeScreen === 'booking-landing' && (
                 <BookingLandingScreen
                   onAddAppointment={handleAddAppointment}
-                  onNavigate={handleNavigate}
+                  onNavigateToAppointments={() => handleNavigate('appointments')}
                 />
               )}
 
