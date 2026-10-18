@@ -1,57 +1,46 @@
-# خطة التنفيذ: حذف المستخدمين من Firebase Authentication عبر Vercel Serverless Function و Private Key
+# خطة التنفيذ: تصحيح شروط إشعارات المتابعة وإخفاء المتابعات المتأخرة من مركز التنبيهات
 
-تهدف هذه الخطة إلى حل مشكلة بقاء المستخدمين في صفحة Firebase Authentication بعد حذفهم من واجهة إدارة المستخدمين، وذلك من خلال إنشاء نقطة نهاية خادم (Serverless Function) متوافقة مع Vercel وبيئة التطوير، تستخدم المفتاح الخاص `FIREBASE_PRIVATE_KEY` للاتصال بـ Firebase Admin SDK وحذف الحساب نهائياً من نظام المصادقة وقاعدة البيانات في آن واحد.
+تهدف هذه الخطة إلى حصر إشعارات المتابعات في مركز التنبيهات وشريط الهيدر ولوحة التحكم على المتابعات القادمة المستحقة خلال النطاق الزمني المحدد بالضبط (من 0 إلى 2 يوم)، وإخفاء المتابعات التي تجاوزت تاريخها واستحقاقها (`daysRemaining < 0`) من مركز التنبيهات لتبقى متاحة ومجهزة للإدارة الشاملة حصرياً في شاشة إدارة المتابعات المخصصة.
 
 ---
 
-## 1. سبب المشكلة والحل الجذري
-- **سبب المشكلة**: مكتبة العميل في المتصفح (`firebase/auth` Client SDK) لا تملك صلاحية حذف مستخدمين آخرين؛ فقط خادم يمتلك صلاحيات المشرف (`Firebase Admin SDK`) عبر `private_key` يستطيع استدعاء `deleteUser(uid)`. ما كان يحدث سابقاً هو حذف مستند المستخدم من Firestore فقط، فظل حسابه في Firebase Authentication.
-- **الحل الجذري**:
-  1. إنشاء دالة سحابية Serverless في مسار `/api/users/delete.ts`.
-  2. تهيئة `firebase-admin` باستخدام المتغيرات السرية المضافة في Vercel (`FIREBASE_PRIVATE_KEY` و `FIREBASE_CLIENT_EMAIL` و `FIREBASE_PROJECT_ID`).
-  3. التحقق الأمني من هوية المشرف (Admin) عبر التحقق من الـ `ID Token` للمستخدم الحالي قبل تنفيذ الحذف.
-  4. استدعاء `deleteUser(targetUid)` في Firebase Auth، ثم حذف سجلات المستخدم من Firestore.
+## 1. تحليل المشكلة والحل الهيكلي
+- **سبب المشكلة الحالي**: كان شرط الفلترة في `Header.tsx` و `DashboardScreen.tsx` يعتمد على `f.daysRemaining < 2`. ولأن الأيام المتبقية للمتابعات المتأخرة تكون بالسالب (مثل `-34` و `-28` يوماً)، فإن شرط أقل من 2 يتحقق منطقياً للقيم السالبة، مما تسبب في استمرار ظهور المتابعات المتأخرة مع شارات تحذيرية في مركز التنبيهات الإكلينيكي.
+- **الحل الهيكلي**:
+  - تحديث شرط الفلترة في مركز التنبيهات بشريط الهيدر وفي كارت التنبيهات بصفحة الرئيسية ليصبح صريحاً:
+    `f.daysRemaining >= 0 && f.daysRemaining <= 2`
+  - التناغم التام: إبقاء كافة المتابعات المتأخرة والسابقة قابلة للبحث والفلترة والإدارة الشاملة في شاشة المتابعات المخصصة (`AppointmentsScreen.tsx`).
 
 ---
 
 ## 2. خطوات التنفيذ التفصيلية
 
-### الخطوة 1: تثبيت حزمة `firebase-admin`
-- إضافة حزمة `firebase-admin` إلى الاعتماديات (`dependencies`) لدعم عمليات الإدارة وحذف المستخدمين.
+### الخطوة 1: تحديث `src/components/Header.tsx`
+- التعديل على `urgentFollowUps`:
+  - تغيير الشرط ليصبح:
+    ```ts
+    const urgentFollowUps = useMemo(() => {
+      return followUpsList.filter((f) => f.daysRemaining >= 0 && f.daysRemaining <= 2);
+    }, [followUpsList]);
+    ```
+  - حصر التنبيهات والإشعار الرقمي العائم على المتابعات القادمة فقط خلال (0 إلى 2 يوم).
 
 ---
 
-### الخطوة 2: إنشاء دالة Vercel Serverless Function: `api/users/delete.ts`
-- دعم معالجة طلبات `POST`:
-  - استخراج رمز المصادقة `Bearer <idToken>` من ترويسة الطلب `Authorization`.
-  - التحقق من الرمز عبر `admin.auth().verifyIdToken()`.
-  - التحقق من أن المستخدم صاحب الطلب يحمل دور المدير (`role === 'admin'`).
-  - معالجة تنسيق المفتاح الخاص `FIREBASE_PRIVATE_KEY` (معالجة الأسطر الجديدة `\n`).
-  - تنفيذ `admin.auth().deleteUser(uid)`.
-  - إرجاع استجابة JSON بنجاح العملية أو تفاصيل أي خطأ.
+### الخطوة 2: تحديث `src/components/screens/DashboardScreen.tsx`
+- التعديل على `dashboardUrgentFollowUps`:
+  - تغيير الشرط ليصبح:
+    ```ts
+    const dashboardUrgentFollowUps = useMemo(() => {
+      return (followUps || [])
+        .filter((f) => f.daysRemaining >= 0 && f.daysRemaining <= 2)
+        .sort((a, b) => a.daysRemaining - b.daysRemaining);
+    }, [followUps]);
+    ```
 
 ---
 
-### الخطوة 3: تحديث دالة `deleteManagedUser` في `src/services/auth.ts`
-- تحديث الدالة لتقوم بالخطوات التالية بالتسلسل:
-  1. الحصول على رمز المصادقة للمدير الحالي: `await auth.currentUser.getIdToken()`.
-  2. إرسال طلب `POST` إلى `/api/users/delete` بالمعرف `uid`.
-  3. في حال نجاح الحذف من Firebase Auth (أو في حال كان الحساب غير موجود أصلاً في Auth):
-     - حذف مستند المستخدم من Firestore (`users/${uid}`).
-     - حذف اسم المستخدم من فهرس الأسماء (`usernames/${username}`).
-  4. في حال فشل الطلب من الخادم، يتم إظهار رسالة خطأ واضحة للمدير توضح السبب دون حذف البيانات من Firestore بشكل غير متزامن.
-
----
-
-### الخطوة 4: توثيق متغيرات البيئة في `.env.example`
-- توضيح المتغيرات الخاصة بالخادم في Vercel:
-  - `FIREBASE_PROJECT_ID`
-  - `FIREBASE_CLIENT_EMAIL`
-  - `FIREBASE_PRIVATE_KEY`
-
----
-
-### الخطوة 5: التحقق والاختبار (Verification)
-1. فحص التوافق عبر `lint_applet` (`tsc --noEmit`).
-2. بناء المشروع عبر `compile_applet` للتأكد من خلوه من أي تعارضات في حزم العميل والخادم.
-3. التأكد من عمل واجهة إدارة المستخدمين (`UserManagementPanel.tsx`) وسلاسة التنبيهات.
+### الخطوة 3: المراجعة والتحقق (Verification)
+1. تشغيل `lint_applet` للتأكد من السلامة البرمجية وعدم وجود أي أخطاء نمطية.
+2. تشغيل `compile_applet` لتأكيد بناء التطبيق.
+3. تنفيذ `node tests/rules.test.mjs` لضمان عدم وجود أي تعارضات.

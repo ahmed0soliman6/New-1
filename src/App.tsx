@@ -2855,7 +2855,14 @@ function ClinicApp() {
               )}
 
               {activeScreen === 'clinical-reports' && (
-                <ClinicalReportsScreen />
+                <ClinicalReportsScreen
+                  visits={visitsCanonical}
+                  invoices={invoicesCanonical}
+                  payments={paymentsCanonical}
+                  prescriptions={prescriptionsCanonical}
+                  followUps={followUpsCanonical}
+                  patients={patientsCanonical}
+                />
               )}
 
               {activeScreen === 'booking-landing' && (

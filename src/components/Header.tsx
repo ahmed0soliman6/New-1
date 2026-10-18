@@ -91,9 +91,9 @@ export const Header: React.FC<HeaderProps> = ({
     };
   }, [showNotifications]);
 
-  // Filter urgent follow-ups: Only patients with less than 2 days remaining (< 2 days: 0 days, 1 day, or overdue)
+  // Filter urgent upcoming follow-ups: Only patients with 0 to 2 days remaining (0 <= days <= 2)
   const urgentFollowUps = useMemo(() => {
-    return followUpsList.filter((f) => f.daysRemaining < 2);
+    return followUpsList.filter((f) => f.daysRemaining >= 0 && f.daysRemaining <= 2);
   }, [followUpsList]);
 
   // Send stylized WhatsApp message for doctor-scheduled follow-up

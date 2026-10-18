@@ -127,10 +127,10 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   const [activeAlertsCardTab, setActiveAlertsCardTab] = useState<'queue' | 'alerts' | 'followups'>('queue');
   const [dashboardWhatsappToast, setDashboardWhatsappToast] = useState<string | null>(null);
 
-  // Urgent upcoming follow-ups: strictly less than 2 days (< 2 days: 0, 1 days remaining, or overdue)
+  // Urgent upcoming follow-ups: strictly 0 to 2 days remaining (0 <= days <= 2)
   const dashboardUrgentFollowUps = useMemo(() => {
     return (followUps || [])
-      .filter((f) => f.daysRemaining < 2)
+      .filter((f) => f.daysRemaining >= 0 && f.daysRemaining <= 2)
       .sort((a, b) => a.daysRemaining - b.daysRemaining);
   }, [followUps]);
 
