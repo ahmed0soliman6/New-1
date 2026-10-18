@@ -67,6 +67,42 @@ service cloud.firestore {
           );
     }
 
+    // =============================================================
+    // ONLINE BOOKING VALIDATION HELPERS
+    // =============================================================
+    function onlineText(text, minLen, maxLen) {
+      return text is string && text.size() >= minLen && text.size() <= maxLen;
+    }
+
+    function scheduledDateInWindow(dateStr) {
+      return dateStr is string &&
+        dateStr.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+        timestamp(dateStr + 'T00:00:00Z') >= request.time - duration.value(2, 'd') &&
+        timestamp(dateStr + 'T00:00:00Z') <= request.time + duration.value(30, 'd');
+    }
+
+    function isValidOnlinePatient(d) {
+      return d.keys().hasAll(['patientId', 'fullName', 'phone', 'chronicDiseases', 'allergies', 'createdBy']) &&
+        d.keys().hasOnly(['patientId', 'fullName', 'phone', 'fileNumber', 'medicalCode', 'chronicDiseases', 'allergies', 'address', 'bloodType', 'createdAt', 'updatedAt', 'createdBy']) &&
+        onlineText(d.fullName, 6, 30) &&
+        onlineText(d.phone, 7, 15) &&
+        d.createdBy == 'online_booking' &&
+        d.chronicDiseases is list && d.chronicDiseases.size() == 0 &&
+        d.allergies is list && d.allergies.size() == 0;
+    }
+
+    function isValidOnlineAppointment(d) {
+      return d.keys().hasAll(['appointmentId', 'patientId', 'patientName', 'phone', 'scheduledDate', 'scheduledTime', 'status', 'expectedFee', 'createdBy']) &&
+        d.keys().hasOnly(['appointmentId', 'patientId', 'patientName', 'phone', 'clinicLocationId', 'scheduledDate', 'scheduledTime', 'visitType', 'status', 'expectedFee', 'notes', 'dayKey', 'createdAt', 'updatedAt', 'createdBy', 'appointmentDate', 'startTime', 'endTime', 'type']) &&
+        onlineText(d.patientName, 6, 30) &&
+        onlineText(d.phone, 7, 15) &&
+        d.status == 'SCHEDULED' &&
+        d.createdBy == 'online_booking' &&
+        d.expectedFee is number && d.expectedFee >= 0 && d.expectedFee <= 10000 &&
+        (!('notes' in d) || d.notes == null || (d.notes is string && d.notes.size() <= 500)) &&
+        scheduledDateInWindow(d.scheduledDate);
+    }
+
     // Dynamic Permission Checker: checks customPermissions -> fallback allowedScreens -> fallback role
     function hasPermission(screen, action) {
       let u = getUserDoc();
@@ -191,7 +227,7 @@ service cloud.firestore {
     // =============================================================
     match /patients/{patientId} {
       allow read: if hasPermission('patient-records', 'view') || hasPermission('patients', 'view') || hasPermission('new-visit', 'view') || hasPermission('clinical-exam', 'view') || hasPermission('prescription-pad', 'view');
-      allow create: if hasPermission('patient-records', 'create') || hasPermission('patients', 'create') || hasPermission('new-visit', 'create') || patientId.matches('^pat-online-.*');
+      allow create: if hasPermission('patient-records', 'create') || hasPermission('patients', 'create') || hasPermission('new-visit', 'create') || (patientId.matches('^pat-online-[0-9]+$') && isValidOnlinePatient(request.resource.data));
       allow update: if hasPermission('patient-records', 'update') || hasPermission('patients', 'update') || hasPermission('new-visit', 'update') || hasPermission('clinical-exam', 'update') || hasPermission('prescription-pad', 'update') || isDoctor() || isAdmin();
       allow delete: if hasPermission('patient-records', 'delete') || hasPermission('patients', 'delete') || isAdmin();
     }
@@ -201,7 +237,7 @@ service cloud.firestore {
     // =============================================================
     match /appointments/{appointmentId} {
       allow read: if hasPermission('upcoming-followups', 'view') || hasPermission('appointments', 'view') || hasPermission('new-visit', 'view');
-      allow create: if hasPermission('upcoming-followups', 'create') || hasPermission('appointments', 'create') || hasPermission('new-visit', 'create') || appointmentId.matches('^app-.*');
+      allow create: if hasPermission('upcoming-followups', 'create') || hasPermission('appointments', 'create') || hasPermission('new-visit', 'create') || (appointmentId.matches('^app-[0-9]+$') && isValidOnlineAppointment(request.resource.data));
       allow update: if hasPermission('upcoming-followups', 'update') || hasPermission('appointments', 'update') || hasPermission('new-visit', 'update') || hasPermission('waiting-queue', 'update');
       allow delete: if hasPermission('upcoming-followups', 'delete') || hasPermission('appointments', 'delete');
     }

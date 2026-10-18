@@ -57,6 +57,8 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   const { language, isRTL, t } = useLanguage();
 
   const [dashboardTimeframe, setDashboardTimeframe] = useState<'today' | 'week' | 'month' | 'all'>('today');
+  const [rangeRequested, setRangeRequested] = useState(false);
+  const [rangeRefreshKey, setRangeRefreshKey] = useState(0);
 
   // On-demand range stats for Dashboard when READ_OPT is active and timeframe is not today
   const [remoteVisitStats, setRemoteVisitStats] = useState<{ total: number; completed: number } | null>(null);
@@ -75,7 +77,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   }, [dashboardTimeframe]);
 
   useEffect(() => {
-    if (!READ_OPT || dashboardTimeframe === 'today') {
+    if (!READ_OPT || dashboardTimeframe === 'today' || !rangeRequested) {
       setRemoteVisitStats(null);
       return;
     }
@@ -94,12 +96,17 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [dashboardTimeframe, rangeFromKey, rangeToKey]);
+  }, [dashboardTimeframe, rangeFromKey, rangeToKey, rangeRequested, rangeRefreshKey]);
 
-  const { payments: rangePayments, invoices: rangeInvoices } = useFinanceRange(
+  const {
+    payments: rangePayments,
+    invoices: rangeInvoices,
+    reload: reloadRange,
+  } = useFinanceRange(
     rangeFromKey || '2000-01-01',
     rangeToKey || todayKey(),
-    READ_OPT && dashboardTimeframe !== 'today'
+    READ_OPT && dashboardTimeframe !== 'today' && rangeRequested,
+    'لوحة التحكم'
   );
 
   const rangeTransactions = useMemo(() => {
@@ -667,7 +674,7 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
 
       {/* Timeframe Filter Bar */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between bg-white dark:bg-[#0f172a] p-3 rounded-2xl border border-slate-200 dark:border-white/10 shadow-xs gap-2.5">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="material-symbols-outlined text-[#00c2cb] text-xl">
             insights
           </span>
@@ -683,6 +690,23 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
               <span>جاري التحميل...</span>
             </span>
           )}
+          {READ_OPT && dashboardTimeframe !== 'today' && rangeRequested && (
+            <button
+              type="button"
+              disabled={statsLoading}
+              onClick={() => {
+                void reloadRange();
+                setRangeRefreshKey((prev) => prev + 1);
+              }}
+              title="تحديث بيانات الفترة"
+              className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-700 dark:text-[#45dee7] bg-teal-50 dark:bg-[#00c2cb]/15 hover:bg-teal-100 dark:hover:bg-[#00c2cb]/25 px-2 py-0.5 rounded-md transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <span className={`material-symbols-outlined text-xs ${statsLoading ? 'animate-spin' : ''}`}>
+                refresh
+              </span>
+              <span>تحديث البيانات</span>
+            </button>
+          )}
         </div>
 
         <div className="flex items-center bg-slate-100 dark:bg-[#111A2E] p-1 rounded-xl border border-slate-200 dark:border-white/5 overflow-x-auto">
@@ -693,7 +717,10 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
           ].map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setDashboardTimeframe(tab.id as any)}
+              onClick={() => {
+                setDashboardTimeframe(tab.id as any);
+                setRangeRequested(false);
+              }}
               className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                 dashboardTimeframe === tab.id
                   ? 'bg-[#00c2cb] text-[#08101C] shadow-sm'
@@ -709,7 +736,30 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
       {/* =========================================================================
           2. CSS SELECTOR 1: TOP 5 KPI SUMMARY GRID (LIVE & ACCURATE STATS - CLICKABLE)
          ========================================================================= */}
-      <section className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
+      {READ_OPT && dashboardTimeframe !== 'today' && !rangeRequested ? (
+        <div className="flex flex-col items-center justify-center gap-3 p-6 sm:p-8 rounded-3xl border-2 border-dashed border-slate-300 dark:border-white/10 bg-white/60 dark:bg-[#0f172a]/60 text-center animate-in fade-in duration-200 shadow-xs">
+          <div className="w-12 h-12 rounded-2xl bg-[#00c2cb]/15 text-[#00c2cb] flex items-center justify-center font-bold">
+            <span className="material-symbols-outlined text-2xl">insights</span>
+          </div>
+          <div className="space-y-1 max-w-md">
+            <h4 className="text-sm font-bold text-slate-800 dark:text-white">
+              عرض إحصائيات {dashboardTimeframe === 'week' ? 'هذا الأسبوع' : 'هذا الشهر'}
+            </h4>
+            <p className="text-xs text-slate-500 dark:text-[#bbc9ca]">
+              بيانات هذه الفترة لا تُجلب تلقائيًا لتوفير القراءات. اضغط الزر أدناه لعرضها عند الحاجة.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setRangeRequested(true)}
+            className="px-5 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-98"
+          >
+            <span className="material-symbols-outlined text-base">visibility</span>
+            <span>عرض بيانات {dashboardTimeframe === 'week' ? 'الأسبوع' : 'الشهر'}</span>
+          </button>
+        </div>
+      ) : (
+        <section className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
         {/* KPI 1: Actual Arrived / Registered Visits -> Navigates to waiting-queue / reception */}
         <button
           onClick={() => onNavigate('waiting-queue')}
@@ -856,6 +906,7 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
           </div>
         </button>
       </section>
+      )}
 
       {/* =========================================================================
           CLINICAL ALERTS & NOTIFICATION HUB CARD (بطاقة التنبيهات والإشعارات السريرية)

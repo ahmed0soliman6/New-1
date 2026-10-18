@@ -18,6 +18,7 @@ import { db } from '../../services/firebase';
 import { subscribeToPrescriptionSettings } from '../../services/repositories/settingsRepo';
 import { toDayKey } from '../../utils/dayKey';
 import { useLanguage } from '../../i18n/LanguageContext';
+import { meterQuery, meterDoc, meterWrite } from '../../services/readMeter';
 
 interface BookingLandingScreenProps {
   onAddAppointment?: (appointment: AppointmentListItem) => void;
@@ -183,6 +184,7 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
       unsubVisitTypes = onSnapshot(
         doc(db, 'settings', 'visitTypes'),
         (snap) => {
+          meterDoc('booking:visitTypes', snap, 'حجوزات');
           if (snap.exists()) {
             const data = snap.data();
             const items = (data.items || data.types || []) as any[];
@@ -202,6 +204,7 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
       unsubServices = onSnapshot(
         collection(db, 'services'),
         (snap) => {
+          meterQuery('booking:services', snap, 'حجوزات');
           const items: any[] = [];
           snap.forEach((docSnap) => {
             if (docSnap.exists()) {
@@ -499,7 +502,9 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
                 startTime: newApp.timeSlot,
                 endTime: newApp.timeSlot,
                 type: newApp.visitType,
-              }, { merge: true }).catch((err) => console.warn('Booking sync warning:', err));
+              }, { merge: true }).then(() => {
+                meterWrite(2);
+              }).catch((err) => console.warn('Booking sync warning:', err));
             }).catch((err) => console.warn('Patient sync warning:', err));
           });
         }
