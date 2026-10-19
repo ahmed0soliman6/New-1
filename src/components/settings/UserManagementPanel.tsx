@@ -182,6 +182,10 @@ export const UserManagementPanel: React.FC = () => {
       setError('ليس لديك صلاحية لتعديل أدوار وصلاحيات المستخدمين.');
       return;
     }
+    if (normalizeRole(user.role) === 'admin') {
+      setError('دور المدير ثابت ومحمي في قاعدة البيانات ولا يمكن تعديله.');
+      return;
+    }
     const currentNormalized = normalizeRole(user.role);
     const initialRole =
       presetRole ||
@@ -201,13 +205,9 @@ export const UserManagementPanel: React.FC = () => {
     if (!roleModalTarget) return;
     const { user, selectedRole: newRole } = roleModalTarget;
 
-    // Guard: Prevent admin from demoting himself
-    if (
-      user.uid === currentUid &&
-      normalizeRole(user.role) === 'admin' &&
-      normalizeRole(newRole) !== 'admin'
-    ) {
-      setError('لا يمكنك سحب صلاحية المدير من حسابك الحالي المسجل به في النظام منعاً لفقدان حق الإدارة.');
+    // Guard: Prevent changing any admin account's role
+    if (normalizeRole(user.role) === 'admin') {
+      setError('دور المدير ثابت ومحمي في قاعدة البيانات ولا يمكن تعديله لأي حساب مدير.');
       return;
     }
 
@@ -237,6 +237,10 @@ export const UserManagementPanel: React.FC = () => {
     }
     if (user.uid === currentUid) {
       setError('لا يمكنك تعطيل حسابك الحالي المسجل به في النظام.');
+      return;
+    }
+    if (normalizeRole(user.role) === 'admin') {
+      setError('لا يمكن تعطيل حساب المدير. حسابات المديرين محمية دائماً ضد التعطيل.');
       return;
     }
 
@@ -545,6 +549,7 @@ export const UserManagementPanel: React.FC = () => {
               const isBusyThis = actionUserId === user.uid;
               const isActive = user.active !== false;
               const normalizedUserRole = normalizeRole(user.role);
+              const isUserAdmin = normalizedUserRole === 'admin' || user.role === 'ADMIN' || user.role === 'admin';
 
               if (isEditing) {
                 return (
@@ -566,9 +571,10 @@ export const UserManagementPanel: React.FC = () => {
                         <div>
                           <label className="text-[10px] text-slate-400 block">الدور:</label>
                           <select
+                            disabled={isUserAdmin}
                             value={editRole}
                             onChange={(e) => setEditRole(e.target.value as UserRole)}
-                            className="w-full rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-[#111A2E] p-1.5 text-xs focus:ring-1 focus:ring-[#00c2cb] outline-none font-bold cursor-pointer"
+                            className="w-full rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-[#111A2E] p-1.5 text-xs focus:ring-1 focus:ring-[#00c2cb] outline-none font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <option value="SECRETARY">سكرتير</option>
                             <option value="DOCTOR">طبيب</option>
@@ -699,13 +705,19 @@ export const UserManagementPanel: React.FC = () => {
                       <PermissionGate permission="roles.manage">
                         <button
                           type="button"
-                          disabled={isBusyThis}
+                          disabled={isBusyThis || isUserAdmin}
                           onClick={() => openRoleChangeModal(user)}
-                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-purple-500/30 bg-purple-500/5 hover:bg-purple-500/15 text-purple-600 dark:text-purple-400 text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50"
-                          title="تعديل الدور وتعيين الصلاحيات"
+                          className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-bold transition-all ${
+                            isUserAdmin
+                              ? 'border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/5 text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-50'
+                              : 'border-purple-500/30 bg-purple-500/5 hover:bg-purple-500/15 text-purple-600 dark:text-purple-400 cursor-pointer disabled:opacity-50'
+                          }`}
+                          title={isUserAdmin ? 'دور المدير ثابت ولا يمكن تعديله' : 'تعديل الدور وتعيين الصلاحيات'}
                         >
-                          <span className="material-symbols-outlined text-xs">admin_panel_settings</span>
-                          <span>تغيير الدور</span>
+                          <span className="material-symbols-outlined text-xs">
+                            {isUserAdmin ? 'lock' : 'admin_panel_settings'}
+                          </span>
+                          <span>{isUserAdmin ? 'دور ثابت' : 'تغيير الدور'}</span>
                         </button>
                       </PermissionGate>
 
@@ -725,16 +737,20 @@ export const UserManagementPanel: React.FC = () => {
                       <PermissionGate permission="users.disable">
                         <button
                           type="button"
-                          disabled={isCurrentUser || isBusyThis}
+                          disabled={isCurrentUser || isBusyThis || isUserAdmin}
                           onClick={() => handleToggleActiveClick(user)}
-                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-                            isActive
-                              ? 'border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10'
-                              : 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10'
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors ${
+                            isCurrentUser || isUserAdmin
+                              ? 'border-slate-200 dark:border-white/10 text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-40'
+                              : isActive
+                              ? 'border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 cursor-pointer'
+                              : 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 cursor-pointer'
                           }`}
                           title={
                             isCurrentUser
                               ? 'لا يمكنك تعطيل حسابك الحالي'
+                              : isUserAdmin
+                              ? 'لا يمكن تعطيل حساب المدير'
                               : isActive
                               ? 'تعطيل الحساب ومنعه من الدخول'
                               : 'إعادة تفعيل الحساب'

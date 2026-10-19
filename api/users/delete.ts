@@ -111,6 +111,70 @@ async function verifyCallerToken(projectId: string, accessToken: string, idToken
 }
 
 /**
+ * Reads caller's or target user's role and active status from Firestore users collection
+ */
+async function getCallerRole(projectId: string, accessToken: string, callerUid: string): Promise<{ role: string; active: boolean }> {
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${callerUid}`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (res.status === 404) return { role: '', active: false };
+  if (!res.ok) throw new Error('تعذّر التحقق من صلاحية المتصل.');
+  const doc: any = await res.json();
+  const fields = doc.fields || {};
+  return {
+    role: fields.role?.stringValue || '',
+    active: fields.active?.booleanValue !== false,
+  };
+}
+
+/**
+ * Counts total active admin users in the system to prevent deleting the last admin
+ */
+async function countActiveAdmins(projectId: string, accessToken: string): Promise<number> {
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
+  const body = {
+    structuredQuery: {
+      from: [{ collectionId: 'users' }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: 'role' },
+          op: 'IN',
+          value: {
+            arrayValue: {
+              values: [
+                { stringValue: 'ADMIN' },
+                { stringValue: 'admin' },
+              ],
+            },
+          },
+        },
+      },
+    },
+  };
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    throw new Error('تعذّر التحقق من عدد المديرين في النظام.');
+  }
+
+  const results: any[] = await res.json();
+  const activeAdmins = results.filter((r) => {
+    if (!r.document || !r.document.fields) return false;
+    const activeVal = r.document.fields.active?.booleanValue;
+    return activeVal !== false;
+  });
+
+  return activeAdmins.length;
+}
+
+/**
  * Deletes a user account from Firebase Authentication using Google Identity Toolkit REST API
  */
 async function deleteFromFirebaseAuth(projectId: string, accessToken: string, uid: string): Promise<boolean> {
@@ -284,10 +348,26 @@ export default async function handler(req: any, res: any) {
     // 4. Obtain Google Access Token
     const accessToken = await getGoogleAccessToken(clientEmail!, privateKey!);
 
-    // 5. Verify Caller's session & ensure caller is not deleting themselves
+    // 5. Verify Caller's session & role
     const callerUid = await verifyCallerToken(projectId!, accessToken, idToken);
+
+    const caller = await getCallerRole(projectId!, accessToken, callerUid);
+    const isAdminCaller = caller.active && (caller.role === 'ADMIN' || caller.role === 'admin');
+    if (!isAdminCaller) {
+      return sendResponse(res, 403, { error: 'لا تملك صلاحية حذف المستخدمين.' });
+    }
+
     if (callerUid === uid) {
       return sendResponse(res, 400, { error: 'لا يمكنك حذف الحساب الحالي المسجل به.' });
+    }
+
+    // Prevent deleting the last admin
+    const targetUser = await getCallerRole(projectId!, accessToken, uid);
+    if (targetUser.role === 'ADMIN' || targetUser.role === 'admin') {
+      const activeAdminCount = await countActiveAdmins(projectId!, accessToken);
+      if (activeAdminCount <= 1) {
+        return sendResponse(res, 400, { error: 'لا يمكن حذف آخر مدير في النظام' });
+      }
     }
 
     // 6. Delete from Firebase Authentication
