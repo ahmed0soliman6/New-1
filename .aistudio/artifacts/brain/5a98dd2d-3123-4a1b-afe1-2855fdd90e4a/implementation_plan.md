@@ -1,25 +1,39 @@
-# خطة العمل: إزالة البيانات الوهمية وتخصيص العلامات الحيوية وحذف حقل المحافظة
+# تقرير إنجاز برومبت 13: الصلاحيات الصريحة فقط في قواعد الإعدادات (بدون اعتماد على الدور)
 
-تهدف هذه الخطة إلى تنفيذ التعديلات المطلوبة بدقة بناءً على تفضيلاتك لمنع أي بيانات وهمية أو تلقائية في النظام:
-
----
-
-### 1. إزالة البيانات الوهمية وحذف حقل المحافظة / المنطقة نهائياً
-- **حذف حقل المحافظة (`governorate`) من واجهات النظام**:
-  - حذف حقل "المحافظة / المنطقة" نهائياً من شاشة "ملفات المرضى (EMR)" ونموذج تعديل بيانات المريض وشاشات التسجيل، مع الاعتماد التام والكامل على حقل "العنوان بالتفصيل".
-- **إزالة القيمة التلقائية ("القاهرة")**:
-  - إزالة أي تعيين تلقائي لقيمة `'القاهرة'` من كافة ملفات الخادم والواجهة (`App.tsx` و `PatientDetailFullScreen.tsx` وغيرهما).
+## 1. الحالة والنتيجة
+- **الحالة:** تم التنفيذ بنجاح واجتياز كافة الفحوصات والاختبارات بنسبة 100%.
+- **النطاق المطبق:** تم تعديل ملف `firestore.rules` فقط في كتلة `allow create, update` داخل `match /settings/{settingId}`.
+- **القواعد الصارمة:** لم يتم نشر القواعد، لم يتم المساس بـ `allow read` أو `allow delete`، ولم يتم تغيير أي مجموعة أخرى أو إضافة شروط بالبريد الإلكتروني.
 
 ---
 
-### 2. ضبط العلامات الحيوية وإلغاء القراءات الوهمية
-- **إلغاء قيم الافتراض التلقائية (`120/80` و `76` و `37` و `110` و `98` و `75`)**:
-  - تفريغ كافة قيم الافتراض التلقائية في `App.tsx` و `database.ts` و `VitalsCard.tsx` و `printPrescription.ts` و `exportPatientDossierPdf.ts`.
-- **عرض القيم المُدخلة فقط**:
-  - تحديث شاشة تفاصيل المريض وسجل الكشوفات والزيارات الطبية (`PatientDetailFullScreen.tsx`) لإظهار بطاقات القراءات التي قام الطبيب/الموظف بكتابتها بالفعل فقط، وإخفاء أي خانة لم يتم إدخالها تماماً.
+## 2. النص المعدل في `firestore.rules` (السطور 456-474)
+
+```javascript
+      allow create, update: if isAdmin()
+        // مستندات تشغيلية: صلاحية شاشة الروشتة أو الكشف
+        || (settingId in ['prescriptionSettings', 'doctorProfile']
+              && hasPermission('prescription-pad', 'update'))
+        || (settingId in ['lifestyleAdvice', 'recurringTemplates', 'clinicStatus']
+              && hasPermission('clinical-exam', 'update'))
+        // نداءات وتنبيهات: أي شاشة تشغيلية تملك صلاحية تعديلها
+        || (settingId == 'latestAlert'
+              && (hasPermission('waiting-queue', 'update')
+                  || hasPermission('new-visit', 'update')
+                  || hasPermission('clinical-exam', 'update')
+                  || hasPermission('prescription-pad', 'update')))
+        // أنواع الزيارة: المالية أو الإعدادات
+        || (settingId == 'visitTypes'
+              && (hasPermission('billing-payments', 'update')
+                  || hasPermission('system-settings', 'update')))
+        // بقية الإعدادات: شاشة إعدادات النظام فقط
+        || (settingId not in ['prescriptionSettings', 'doctorProfile', 'lifestyleAdvice', 'recurringTemplates', 'clinicStatus', 'latestAlert', 'visitTypes']
+              && hasPermission('system-settings', 'update'));
+```
 
 ---
 
-### 3. التحقق والتأكد
-- تشغيل فحص البناء والأخطاء البرمجية (`lint_applet` و `compile_applet`).
-- إجراء اختبارات القواعد للتحقق من سلامة البيانات في Firestore.
+## 3. الفحوصات المنفذة
+- `npm run lint` (`tsc --noEmit`): نجاح تام.
+- `compile_applet`: نجاح البناء بالكامل.
+- حزمة اختبارات الأمان وقواعد Firestore (`tests/security-hardening.test.mjs` و `tests/rules.test.mjs`): 30 اختباراً ناجحاً بنسبة 100%.

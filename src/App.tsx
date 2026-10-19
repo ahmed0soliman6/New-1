@@ -1091,8 +1091,15 @@ function ClinicApp() {
   const [syncStatus, setSyncStatus] = useState<'connected' | 'offline' | 'syncing' | 'error'>(db ? 'connected' : 'offline');
   const [syncErrorDetails, setSyncErrorDetails] = useState<string | null>(null);
   const [doctorStatus, setDoctorStatus] = useState<'available' | 'break'>('available');
+  const recentAlertIdsRef = useRef<Map<string, number>>(new Map());
 
   const registerAlert = (alertItem: ClinicAlertPayload, options?: { skipPublish?: boolean }) => {
+    const now = Date.now();
+    const seen = recentAlertIdsRef.current;
+    for (const [k, t] of seen) if (now - t > 60_000) seen.delete(k);
+    if (seen.has(alertItem.id)) return;
+    seen.set(alertItem.id, now);
+
     setCallingBanner(alertItem);
     setAlertHistory((prev) => [alertItem, ...prev.filter((a) => a.id !== alertItem.id)].slice(0, 20));
 
@@ -1266,7 +1273,7 @@ function ClinicApp() {
         }
         if (alertConfig.visualEnabled && alertConfig.newVisitVisual) {
           registerAlert({
-            id: `new-${v.visitId}-${Date.now()}`,
+            id: `new-${v.visitId}`,
             type: 'new_visit',
             title: 'تسجيل كشف وزيارة جديدة',
             message: `تم تسجيل المريض (${patientName}) في قائمة الانتظار بنجاح.`,
@@ -1274,7 +1281,7 @@ function ClinicApp() {
             timestamp: formatAppTime(new Date()),
             visitId: v.visitId,
             patientId: v.patientId,
-          });
+          }, { skipPublish: true });
           setTimeout(() => setCallingBanner(null), 5000);
         }
       }
@@ -1285,7 +1292,7 @@ function ClinicApp() {
         }
         if (alertConfig.visualEnabled && alertConfig.callPatientVisual) {
           registerAlert({
-            id: `call-${v.visitId}-${Date.now()}`,
+            id: `call-${v.visitId}`,
             type: 'call',
             title: 'نداء دخول المريض لغرفة الكشف',
             message: `تذكرة (${ticket}) — المريض (${patientName}) يتفضل لغرفة الطبيب للكشف`,
@@ -1293,7 +1300,7 @@ function ClinicApp() {
             timestamp: formatAppTime(new Date()),
             visitId: v.visitId,
             patientId: v.patientId,
-          });
+          }, { skipPublish: true });
           setTimeout(() => setCallingBanner(null), 5000);
         }
       }
@@ -1307,7 +1314,7 @@ function ClinicApp() {
         }
         if (alertConfig.visualEnabled && alertConfig.finishExamVisual) {
           registerAlert({
-            id: `finish-${v.visitId}-${Date.now()}`,
+            id: `finish-${v.visitId}`,
             type: 'finish',
             title: 'إشعار انتهاء الكشف الطبي',
             message: `تم الانتهاء من كشف المريض (${patientName}) واعتماد الروشتة. العيادة جاهزة لاستقبال المريض التالي.`,
@@ -1315,7 +1322,7 @@ function ClinicApp() {
             timestamp: formatAppTime(new Date()),
             visitId: v.visitId,
             patientId: v.patientId,
-          });
+          }, { skipPublish: true });
           setTimeout(() => setCallingBanner(null), 6000);
         }
       }
@@ -2188,13 +2195,20 @@ function ClinicApp() {
 
   // Call Patient
   const handleCallPatient = async (ticket: string, name: string) => {
+    const targetQueueNum = parseInt(ticket.replace(/\D/g, ''), 10);
+    const targetVisit =
+      visitsCanonical.find((v) => v.queueNumber === targetQueueNum) ||
+      visitsCanonical.find((v) => v.visitId === ticket) ||
+      visitsCanonical.find((v) => patientsCanonical.find((p) => p.patientId === v.patientId)?.fullName === name);
+    const visitId = targetVisit ? targetVisit.visitId : ticket;
+
     const alertConfig = loadAlertSettings();
     if (alertConfig.audioEnabled && alertConfig.callPatientAudio) {
       playSingleAlertSound('call');
     }
     if (alertConfig.visualEnabled && alertConfig.callPatientVisual) {
       registerAlert({
-        id: `call-${Date.now()}`,
+        id: `call-${visitId}`,
         type: 'call',
         title: 'نداء دخول المريض لغرفة الكشف',
         message: `تذكرة (${ticket}) — المريض (${name}) يتفضل لغرفة الطبيب للكشف`,
@@ -2204,11 +2218,6 @@ function ClinicApp() {
       setTimeout(() => setCallingBanner(null), 5000);
     }
 
-    const targetQueueNum = parseInt(ticket.replace(/\D/g, ''), 10);
-    const targetVisit =
-      visitsCanonical.find((v) => v.queueNumber === targetQueueNum) ||
-      visitsCanonical.find((v) => v.visitId === ticket) ||
-      visitsCanonical.find((v) => patientsCanonical.find((p) => p.patientId === v.patientId)?.fullName === name);
     if (!targetVisit) return;
 
     const canonicalPat = patientsCanonical.find((p) => p.patientId === targetVisit.patientId);
@@ -2270,7 +2279,7 @@ function ClinicApp() {
 
     if (db) {
       try {
-        await checkInAppointmentTransaction({
+        const checkInResult = await checkInAppointmentTransaction({
           db,
           appointmentId: appt.appointmentId,
           paymentAmount: fee,
@@ -2285,7 +2294,7 @@ function ClinicApp() {
         }
         if (alertConfig.visualEnabled && alertConfig.newVisitVisual) {
           registerAlert({
-            id: `new-${Date.now()}`,
+            id: `new-${checkInResult.visit.visitId}`,
             type: 'new_visit',
             title: 'تسجيل حضور موعد مسبق بالانتظار',
             message: `تم تأكيد حضور المريض (${patient.fullName}) وتحويله لصالة الانتظار.`,
@@ -2362,7 +2371,7 @@ function ClinicApp() {
 
     if (db) {
       try {
-        await registerWalkInTransaction({
+        const registeredVisit = await registerWalkInTransaction({
           db,
           patient,
           paymentAmount: item.paidAmount,
@@ -2395,7 +2404,7 @@ function ClinicApp() {
         }
         if (alertConfig.visualEnabled && alertConfig.newVisitVisual) {
           registerAlert({
-            id: `new-${Date.now()}`,
+            id: `new-${registeredVisit.visitId}`,
             type: 'new_visit',
             title: 'تسجيل كشف وزيارة جديدة',
             message: `تم تسجيل المريض (${item.patientName}) في قائمة الانتظار بنجاح.`,
@@ -2565,8 +2574,9 @@ function ClinicApp() {
       playSingleAlertSound('finish');
     }
     if (alertConfig.visualEnabled && alertConfig.finishExamVisual) {
+      const visitId = activeWaiting?.visitId || activeExamPatient?.id || 'exam';
       registerAlert({
-        id: `finish-${Date.now()}`,
+        id: `finish-${visitId}`,
         type: 'finish',
         title: 'إشعار السكرتارية: انتهاء الكشف الطبي',
         message: `تم الانتهاء من كشف المريض (${activeExamPatient?.name || 'المريض'}) واعتماد الروشتة. العيادة جاهزة لاستقبال المريض التالي.`,

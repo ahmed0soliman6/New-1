@@ -453,11 +453,25 @@ service cloud.firestore {
 
     match /settings/{settingId} {
       allow read: if isUserActive() || settingId == 'prescriptionSettings' || settingId == 'visitTypes';
-      allow create, update: if (
-        settingId in ['prescriptionSettings', 'visitTypes'] && (isDoctor() || hasPermission('system-settings', 'update'))
-      ) || (
-        settingId not in ['prescriptionSettings', 'visitTypes'] && (isAdmin() || hasPermission('system-settings', 'update'))
-      );
+      allow create, update: if isAdmin()
+        // مستندات تشغيلية: صلاحية شاشة الروشتة أو الكشف
+        || (settingId in ['prescriptionSettings', 'doctorProfile']
+              && hasPermission('prescription-pad', 'update'))
+        || (settingId in ['lifestyleAdvice', 'recurringTemplates', 'clinicStatus']
+              && hasPermission('clinical-exam', 'update'))
+        // نداءات وتنبيهات: أي شاشة تشغيلية تملك صلاحية تعديلها
+        || (settingId == 'latestAlert'
+              && (hasPermission('waiting-queue', 'update')
+                  || hasPermission('new-visit', 'update')
+                  || hasPermission('clinical-exam', 'update')
+                  || hasPermission('prescription-pad', 'update')))
+        // أنواع الزيارة: المالية أو الإعدادات
+        || (settingId == 'visitTypes'
+              && (hasPermission('billing-payments', 'update')
+                  || hasPermission('system-settings', 'update')))
+        // بقية الإعدادات: شاشة إعدادات النظام فقط
+        || (settingId not in ['prescriptionSettings', 'doctorProfile', 'lifestyleAdvice', 'recurringTemplates', 'clinicStatus', 'latestAlert', 'visitTypes']
+              && hasPermission('system-settings', 'update'));
       allow delete: if isAdmin();
     }
 
