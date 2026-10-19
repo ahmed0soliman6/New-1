@@ -470,7 +470,7 @@ service cloud.firestore {
               && (hasPermission('billing-payments', 'update')
                   || hasPermission('system-settings', 'update')))
         // بقية الإعدادات: شاشة إعدادات النظام فقط
-        || (settingId not in ['prescriptionSettings', 'doctorProfile', 'lifestyleAdvice', 'recurringTemplates', 'clinicStatus', 'latestAlert', 'visitTypes']
+        || (!(settingId in ['prescriptionSettings', 'doctorProfile', 'lifestyleAdvice', 'recurringTemplates', 'clinicStatus', 'latestAlert', 'visitTypes'])
               && hasPermission('system-settings', 'update'));
       allow delete: if isAdmin();
     }
