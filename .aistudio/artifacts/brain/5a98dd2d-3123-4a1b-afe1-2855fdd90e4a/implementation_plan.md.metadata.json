@@ -1,6 +1,6 @@
 {
-  "summary": "تم تنفيذ برومبت 16 بنجاح: تم إنشاء vitalsMapper.ts، وربط VitalsCard بـ ExaminationScreen عبر examVitals، وتمرير القياسات الحقيقية بدون قيم وهمية في handleFinishExam داخل App.tsx لحفظها في Firestore.",
-  "updatedAt": "2026-10-19T21:10:40.484490387Z",
-  "requestFeedback": true,
-  "userFacing": true
+  "summary":  "تم تنفيذ برومبت 17 بنجاح: تم إضافة خاصية onChange في VitalsCard.tsx لالتقاط التغييرات فور الكتابة، وفصل initialExamVitals في ExaminationScreen.tsx لتقرأ مرة واحدة فقط من الزيارة دون التسبب في أي حلقة تحديث.",
+  "updatedAt":  "2026-10-29T19:49:08.562263967Z",
+  "requestFeedback":  true,
+  "userFacing":  true
 }

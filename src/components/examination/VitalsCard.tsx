@@ -14,9 +14,10 @@ export interface VitalsData {
 interface VitalsCardProps {
   initialVitals?: Partial<VitalsData>;
   onSave?: (vitals: VitalsData) => void;
+  onChange?: (vitals: VitalsData) => void;
 }
 
-export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onSave }) => {
+export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onSave, onChange }) => {
   const { language, isRTL } = useLanguage();
 
   // Parse blood pressure string into systolic & diastolic
@@ -46,6 +47,18 @@ export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onSave })
     height: initialVitals?.height || '',
     spo2: initialVitals?.spo2 || '',
   });
+
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const mountedRef = useRef(false);
+
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return; // لا ترسل شيئًا عند التحميل الأول
+    }
+    onChangeRef.current?.(vitals);
+  }, [vitals]);
 
   const [savedFeedback, setSavedFeedback] = useState(false);
 

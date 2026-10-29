@@ -1,29 +1,21 @@
-# تقرير إنجاز برومبت 16: حفظ العلامات الحيوية الفعلية للطبيب عند إنهاء الكشف
+# تقرير إنجاز برومبت 17: التقاط العلامات الحيوية أثناء الكتابة (إصلاح خطأ برومبت 16)
 
 ## 1. الحالة والنتيجة
-- **الحالة:** تم التنفيذ بنجاح واجتياز الفحص البرمجي والبناء بنسبة 100%.
-- **النطاق المغلق:** 3 ملفات فقط:
-  1. `src/utils/vitalsMapper.ts` (جديد)
+- **الحالة:** تم التنفيذ بنجاح واجتياز الفحص البرمجي (`npm run lint`) والبناء (`npm run build`) بنسبة 100%.
+- **النطاق المطبق:** ملفان فقط:
+  1. `src/components/examination/VitalsCard.tsx`
   2. `src/components/screens/ExaminationScreen.tsx`
-  3. `src/App.tsx` (معالج `handleFinishExam` والاستيراد فقط).
+- لم يتم تعديل `App.tsx` أو `vitalsMapper.ts` أو القواعد.
 
 ---
 
-## 2. ما تم إنجازه بالتفصيل
-1. **إنشاء `src/utils/vitalsMapper.ts`:**
-   - دالة `toNum`: تحويل النصوص إلى أرقام بدقة مع دعم الفواصل العشرية، وإرجاع `null` للقيم الفارغة.
-   - دالة `vitalsToVisit`: تحويل مدخلات بطاقة الطبيب إلى كائن `Visit.vitalSigns` لـ Firestore مع تحويل الحقول غير المدخلة إلى `null` دون أي قيم افتراضية.
-   - دالة `hasAnyVital`: التحقق مما إذا كان هناك أي قياس مدخل بالفعل.
-2. **تعديل `src/components/screens/ExaminationScreen.tsx`:**
-   - إضافة حالة `examVitals` وتمريرها إلى `<VitalsCard initialVitals={examVitals} onSave={(v) => setExamVitals(v)} />`.
-   - تمرير `vitals: hasAnyVital(examVitals) ? examVitals : null` في استدعاء `onFinishExam`.
-   - توسيع واجهة `ExaminationScreenProps.onFinishExam` بالحقل الجديد.
-3. **تعديل `src/App.tsx`:**
-   - استيراد `vitalsToVisit` و `VitalsData`.
-   - توسيع معامل `handleFinishExam` ليستقبل `vitals?: Partial<VitalsData> | null`.
-   - تحديث إسناد `vitalSigns`:
-     ```ts
-     const vitalSigns = examData?.vitals
-       ? vitalsToVisit(examData.vitals)
-       : (activeWaiting.vitalSigns || {});
-     ```
+## 2. تفاصيل التعديلات المنفذة
+
+### أ. `src/components/examination/VitalsCard.tsx`
+- **السطر 17:** إضافة `onChange?: (vitals: VitalsData) => void;` إلى `VitalsCardProps`.
+- **السطر 20:** استلام `onChange` في معاملات المكوّن `VitalsCard`.
+- **السطور 49-59:** إضافة مرجع `onChangeRef` و`mountedRef` وربط `useEffect` بحالة `[vitals]` لإرسال أي تعديل فور كتابته دون إرسال شيء عند التحميل الأول.
+
+### ب. `src/components/screens/ExaminationScreen.tsx`
+- **السطور 228-246:** تعريف `initialExamVitals` مرة واحدة فقط عبر `useState` مبدئي يبحث عن الزيارة النشطة (`activeVisit`) من خلال `currentVisitId` أو مطابقة `patient.id` مع حالات `IN_PROGRESS` / `WAITING`، ويستخرج `vitalSigns` المحفوظة إن وُجدت أي قيمة فيها عبر `hasAnyVital(mapped)`.
+- **السطور 1631-1635:** استبدال تمرير `examVitals` بتمرير `initialVitals={initialExamVitals}` وإضافة `onChange={(v) => setExamVitals(v)}` مع الإبقاء على `onSave={(v) => setExamVitals(v)}`.

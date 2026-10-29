@@ -225,6 +225,25 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
 
   // Vital signs state for exam
   const [examVitals, setExamVitals] = useState<Partial<VitalsData>>({});
+  const [initialExamVitals] = useState<Partial<VitalsData> | undefined>(() => {
+    const activeVisit = visits.find(
+      (v) =>
+        (currentVisitId && v.visitId === currentVisitId) ||
+        (patient?.id && v.patientId === patient.id && (v.status === 'IN_PROGRESS' || v.status === 'WAITING'))
+    );
+    const vs = activeVisit?.vitalSigns;
+    if (!vs) return undefined;
+    const mapped: Partial<VitalsData> = {
+      bp: vs.bloodPressure || '',
+      pulse: vs.pulse != null ? String(vs.pulse) : '',
+      temp: vs.temperature != null ? String(vs.temperature) : '',
+      rbs: vs.randomBloodSugar != null ? String(vs.randomBloodSugar) : '',
+      weight: vs.weight != null ? String(vs.weight) : '',
+      height: vs.height != null ? String(vs.height) : '',
+      spo2: vs.oxygenSaturation != null ? String(vs.oxygenSaturation) : '',
+    };
+    return hasAnyVital(mapped) ? mapped : undefined;
+  });
 
   // Consultation state - only loads registered data from visit registration if present
   const [complaint, setComplaint] = useState(patient?.chiefComplaint || '');
@@ -1610,7 +1629,8 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
         {/* 1. Vital Signs Card (Conditional on displaySettings.showVitals) */}
         {displaySettings.showVitals && (activeTab === 'all' || activeTab === 'vitals') && (
           <VitalsCard
-            initialVitals={examVitals}
+            initialVitals={initialExamVitals}
+            onChange={(v) => setExamVitals(v)}
             onSave={(v) => setExamVitals(v)}
           />
         )}
