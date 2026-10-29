@@ -17,7 +17,8 @@ import {
   SymptomCatalogItem,
   QueueItem,
 } from '../../types';
-import { VitalsCard } from '../examination/VitalsCard';
+import { VitalsCard, type VitalsData } from '../examination/VitalsCard';
+import { hasAnyVital } from '../../utils/vitalsMapper';
 import { RadiologyCard } from '../examination/RadiologyCard';
 import { LabCard } from '../examination/LabCard';
 import { DiagnosisCard, PatientDiagnosis } from '../examination/DiagnosisCard';
@@ -79,6 +80,7 @@ interface ExaminationScreenProps {
     diagnoses: PatientDiagnosis[];
     followupDate: string;
     lifestyleAdvice: string;
+    vitals?: Partial<VitalsData> | null;
   }) => void;
 
   // Catalogs and handlers
@@ -220,6 +222,9 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
   useEffect(() => {
     setDisplaySettings(loadExamDisplaySettings());
   }, []);
+
+  // Vital signs state for exam
+  const [examVitals, setExamVitals] = useState<Partial<VitalsData>>({});
 
   // Consultation state - only loads registered data from visit registration if present
   const [complaint, setComplaint] = useState(patient?.chiefComplaint || '');
@@ -724,6 +729,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
         diagnoses: patientDiagnoses,
         followupDate,
         lifestyleAdvice,
+        vitals: hasAnyVital(examVitals) ? examVitals : null,
       });
       setShowSuccessModal(true);
       setTimeout(() => {
@@ -1603,7 +1609,10 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
 
         {/* 1. Vital Signs Card (Conditional on displaySettings.showVitals) */}
         {displaySettings.showVitals && (activeTab === 'all' || activeTab === 'vitals') && (
-          <VitalsCard />
+          <VitalsCard
+            initialVitals={examVitals}
+            onSave={(v) => setExamVitals(v)}
+          />
         )}
 
         {/* Quick Prescription Template Selector - Placed below Vital Signs */}

@@ -80,6 +80,8 @@ import { PatientIntakeScreen } from './components/screens/PatientIntakeScreen';
 import { QueueScreen } from './components/screens/QueueScreen';
 import { AppointmentsScreen } from './components/screens/AppointmentsScreen';
 import { ExaminationScreen } from './components/screens/ExaminationScreen';
+import { vitalsToVisit } from './utils/vitalsMapper';
+import type { VitalsData } from './components/examination/VitalsCard';
 import { PrescriptionPadScreen } from './components/screens/PrescriptionPadScreen';
 import { PatientListItemsScreen } from './components/screens/PatientFilesScreen';
 import { FinanceScreen } from './components/screens/FinanceScreen';
@@ -2488,6 +2490,7 @@ function ClinicApp() {
     diagnoses: any[];
     followupDate: string;
     lifestyleAdvice: string;
+    vitals?: Partial<VitalsData> | null;
   }) => {
     const activeWaiting =
       visitsCanonical.find((v) => v.patientId === activeExamPatient?.id && (v.status === 'IN_PROGRESS' || v.status === 'WAITING')) ||
@@ -2516,7 +2519,9 @@ function ClinicApp() {
         treatment: rxItems.map((p) => p.drugName).join(' + '),
       };
 
-      const vitalSigns = activeWaiting.vitalSigns || {};
+      const vitalSigns = examData?.vitals
+        ? vitalsToVisit(examData.vitals)
+        : (activeWaiting.vitalSigns || {});
 
       try {
         await completeVisitTransaction({
