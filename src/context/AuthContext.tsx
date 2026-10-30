@@ -91,6 +91,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      // Instant optimistic hydration from localStorage if available to avoid blocking first open
+      const cacheKey = `soli_cached_profile_${fbUser.uid}`;
+      try {
+        const cachedRaw = localStorage.getItem(cacheKey);
+        if (cachedRaw) {
+          const cachedProfile = JSON.parse(cachedRaw) as UserProfile;
+          if (cachedProfile && cachedProfile.uid === fbUser.uid && cachedProfile.active !== false) {
+            setUserProfile(cachedProfile);
+            setLoading(false);
+          }
+        }
+      } catch {}
+
       // Listen in real-time to user's profile in Firestore
       const userDocRef = doc(db, 'users', fbUser.uid);
       unsubscribeDoc = onSnapshot(
@@ -102,6 +115,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             // Instant enforcement: if account is disabled, sign out immediately
             if (!isActive) {
+              try { localStorage.removeItem(cacheKey); } catch {}
               alert('تم تعطيل حسابك من قِبل إدارة العيادة. يرجى التواصل مع الإدارة.');
               void signOut(auth);
               setUserProfile(null);
@@ -121,7 +135,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 ? (rawCustomPermissions as CustomPermissionsMap)
                 : undefined;
 
-            setUserProfile({
+            const nextProfile: UserProfile = {
               uid: fbUser.uid,
               username: data.username || fbUser.email?.split('@')[0] || 'user',
               displayName: data.displayName || data.username || 'مستخدم',
@@ -130,9 +144,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               active: true,
               allowedScreens: customScreens,
               customPermissions,
-            });
+            };
+            setUserProfile(nextProfile);
+            try { localStorage.setItem(cacheKey, JSON.stringify(nextProfile)); } catch {}
           } else {
             // User document does not exist in Firestore users collection
+            try { localStorage.removeItem(cacheKey); } catch {}
             console.warn('[AuthContext] User document not found in Firestore for UID:', fbUser.uid);
             void signOut(auth);
             setUserProfile(null);
@@ -141,7 +158,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         },
         (error) => {
           console.warn('[AuthContext] Error fetching profile:', error);
-          setUserProfile(null);
           setLoading(false);
         }
       );

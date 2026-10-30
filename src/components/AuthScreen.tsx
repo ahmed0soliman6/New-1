@@ -91,9 +91,14 @@ export const AuthScreen: React.FC = () => {
           </div>
 
           {/* Username Input */}
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-300 block">اسم المستخدم</label>
-            <div className="relative">
+            <div className="flex items-center gap-2.5">
+              <div className="w-11 h-11 shrink-0 rounded-2xl bg-[#050a14] border border-white/10 flex items-center justify-center text-[#00c2cb] pointer-events-none">
+                <span className="material-symbols-outlined text-lg">
+                  person
+                </span>
+              </div>
               <input
                 required
                 pattern="[A-Za-z0-9._-]{3,32}"
@@ -101,16 +106,13 @@ export const AuthScreen: React.FC = () => {
                 onChange={(e) => setUsername(e.target.value.toLowerCase())}
                 placeholder="ادخل اسم المستخدم..."
                 dir="ltr"
-                className="w-full rounded-2xl bg-[#050a14] px-4 py-3 text-sm text-white placeholder:text-slate-500 outline-none border border-white/10 focus:border-[#00c2cb] focus:ring-1 focus:ring-[#00c2cb] transition-all"
+                className="flex-1 min-w-0 rounded-2xl bg-[#050a14] px-4 py-3 text-sm text-white placeholder:text-slate-500 outline-none border border-white/10 focus:border-[#00c2cb] focus:ring-1 focus:ring-[#00c2cb] transition-all"
               />
-              <span className="material-symbols-outlined absolute left-3 top-3 text-slate-500 text-lg pointer-events-none">
-                person
-              </span>
             </div>
           </div>
 
-          {/* Password Input with Show/Hide Toggle */}
-          <div className="space-y-1">
+          {/* Password Input with External Show/Hide Toggle */}
+          <div className="space-y-1.5">
             <div className="flex items-center justify-between mb-1">
               <label className="text-xs font-bold text-slate-300">كلمة المرور</label>
               <button
@@ -121,7 +123,17 @@ export const AuthScreen: React.FC = () => {
                 استرداد رمز المدير؟
               </button>
             </div>
-            <div className="relative">
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="w-11 h-11 shrink-0 rounded-2xl bg-[#050a14] hover:bg-[#162338] border border-white/10 hover:border-[#00c2cb]/50 text-slate-300 hover:text-[#00c2cb] transition-colors cursor-pointer flex items-center justify-center"
+                title={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
+              >
+                <span className="material-symbols-outlined text-lg">
+                  {showPassword ? 'visibility_off' : 'visibility'}
+                </span>
+              </button>
               <input
                 required
                 minLength={8}
@@ -130,18 +142,8 @@ export const AuthScreen: React.FC = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 dir="ltr"
-                className="w-full rounded-2xl bg-[#050a14] px-4 py-3 text-sm text-white placeholder:text-slate-500 outline-none border border-white/10 focus:border-[#00c2cb] focus:ring-1 focus:ring-[#00c2cb] transition-all pl-11"
+                className="flex-1 min-w-0 rounded-2xl bg-[#050a14] px-4 py-3 text-sm text-white placeholder:text-slate-500 outline-none border border-white/10 focus:border-[#00c2cb] focus:ring-1 focus:ring-[#00c2cb] transition-all"
               />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute left-3 top-3 text-slate-400 hover:text-[#00c2cb] transition-colors cursor-pointer flex items-center justify-center"
-                title={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
-              >
-                <span className="material-symbols-outlined text-lg">
-                  {showPassword ? 'visibility_off' : 'visibility'}
-                </span>
-              </button>
             </div>
           </div>
 

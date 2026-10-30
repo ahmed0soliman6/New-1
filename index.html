@@ -25,8 +25,9 @@
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=block" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=block" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block" rel="stylesheet" />
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons&display=block" />
     
     <title>سولي ميديكال | Soli Medical Clinic</title>
@@ -54,34 +55,6 @@
     <meta property="og:type" content="website" />
     <meta property="og:image" content="./pwa-512x512.png" />
     <meta name="twitter:card" content="summary_large_image" />
-    
-    <script>
-      // Prevent stale Service Worker caching issues that cause white screen of death
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function(registrations) {
-          for (var registration of registrations) {
-            registration.unregister().then(function(success) {
-              if (success) console.log('Soli PWA ServiceWorker unregistered successfully to prevent stale assets caching.');
-            });
-          }
-        }).catch(function(err) {
-          console.warn('Error unregistering service workers:', err);
-        });
-      }
-
-      // Force purge cache storage to avoid loading outdated hashed Vite bundles
-      if ('caches' in window) {
-        caches.keys().then(function(keys) {
-          keys.forEach(function(key) {
-            caches.delete(key).then(function() {
-              console.log('Cleared stale Cache Storage:', key);
-            });
-          });
-        }).catch(function(err) {
-          console.warn('Error clearing caches:', err);
-        });
-      }
-    </script>
   </head>
   <body class="bg-[#f4f7fb] text-slate-900 font-sans antialiased selection:bg-[#00c2cb]/30 selection:text-[#008f97] transition-colors duration-200">
     <div id="root"></div>

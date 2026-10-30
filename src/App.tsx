@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
 import {
   ScreenType,
   AppointmentListItem,
@@ -72,23 +72,40 @@ import type {
   SystemSettings,
   PrescriptionItemSnapshot,
 } from './types/database';
-import { DatabaseInspectorModal } from './components/database/DatabaseV1InspectorModal';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { DashboardScreen } from './components/screens/DashboardScreen';
 import { PatientIntakeScreen } from './components/screens/PatientIntakeScreen';
 import { QueueScreen } from './components/screens/QueueScreen';
 import { AppointmentsScreen } from './components/screens/AppointmentsScreen';
-import { ExaminationScreen } from './components/screens/ExaminationScreen';
 import { vitalsToVisit } from './utils/vitalsMapper';
 import type { VitalsData } from './components/examination/VitalsCard';
-import { PrescriptionPadScreen } from './components/screens/PrescriptionPadScreen';
-import { PatientListItemsScreen } from './components/screens/PatientFilesScreen';
-import { FinanceScreen } from './components/screens/FinanceScreen';
-import { SettingsScreen } from './components/screens/SettingsScreen';
-import { ClinicalReportsScreen } from './components/screens/ClinicalReportsScreen';
-import { BookingLandingScreen } from './components/screens/BookingLandingScreen';
 import { NewAppointmentModal } from './components/modals/NewAppointmentModal';
+
+const DatabaseInspectorModal = lazy(() =>
+  import('./components/database/DatabaseV1InspectorModal').then((m) => ({ default: m.DatabaseInspectorModal }))
+);
+const ExaminationScreen = lazy(() =>
+  import('./components/screens/ExaminationScreen').then((m) => ({ default: m.ExaminationScreen }))
+);
+const PrescriptionPadScreen = lazy(() =>
+  import('./components/screens/PrescriptionPadScreen').then((m) => ({ default: m.PrescriptionPadScreen }))
+);
+const PatientListItemsScreen = lazy(() =>
+  import('./components/screens/PatientFilesScreen').then((m) => ({ default: m.PatientListItemsScreen }))
+);
+const FinanceScreen = lazy(() =>
+  import('./components/screens/FinanceScreen').then((m) => ({ default: m.FinanceScreen }))
+);
+const SettingsScreen = lazy(() =>
+  import('./components/screens/SettingsScreen').then((m) => ({ default: m.SettingsScreen }))
+);
+const ClinicalReportsScreen = lazy(() =>
+  import('./components/screens/ClinicalReportsScreen').then((m) => ({ default: m.ClinicalReportsScreen }))
+);
+const BookingLandingScreen = lazy(() =>
+  import('./components/screens/BookingLandingScreen').then((m) => ({ default: m.BookingLandingScreen }))
+);
 import { db } from './services/firebase';
 import { doc, getDoc, deleteDoc, setDoc, collection, getDocs, writeBatch, query, limit, where, type QueryConstraint } from 'firebase/firestore';
 import { logoutAccount } from './services/auth';
@@ -591,7 +608,7 @@ function ClinicApp() {
   // Auto-seed Firestore catalog references if empty on first-ever install (never seed mock patients/visits)
   useEffect(() => {
     if (!db) return;
-    const checkAndSeed = async () => {
+    const seedTimer = setTimeout(async () => {
       try {
         const alreadyInitialized = safeStorage.getItem(StorageKeys.CLINIC_DB_INITIALIZED);
         if (alreadyInitialized) {
@@ -629,8 +646,8 @@ function ClinicApp() {
       } catch (err) {
         console.warn('Error during Firestore catalog seeding:', err);
       }
-    };
-    checkAndSeed();
+    }, 1500);
+    return () => clearTimeout(seedTimer);
   }, [db]);
 
   // Real-time Firestore-driven notifications refs & windowed listener readiness
@@ -723,18 +740,10 @@ function ClinicApp() {
           subscribeToRadiologyOrders(db, (items) => { onDataSuccess(); setRadiologyOrdersCanonical(items); }, onError),
         ];
 
-    const unsubscribers = [
+    const unsubscribers: Array<() => void> = [
       ...operational,
-      subscribeToMedications(db, (items) => { onDataSuccess(); if (items) setMedicationsCanonical(items); }, onError),
-      subscribeToLabTests(db, (items) => { onDataSuccess(); if (items) setLabTestsCanonical(items); }, onError),
-      subscribeToRadiologyTypes(db, (items) => { onDataSuccess(); if (items) setRadiologyTypesCanonical(items); }, onError),
-      subscribeToDiagnoses(db, (items) => { onDataSuccess(); if (items) setDiagnosesCanonical(items); }, onError),
-      subscribeToSymptoms(db, (items) => { onDataSuccess(); if (items) setSymptomsCanonical(items); }, onError),
-      subscribeToChronicDiseases(db, (items) => { onDataSuccess(); if (items) setChronicDiseasesCanonical(items); }, onError),
       subscribeToDoctorProfile(db, (profile) => { if (profile) setDoctorProfile(profile); }, onError),
-      subscribeToDoctorSettings(db, (settings) => { if (settings) setDoctorSettingsCanonical(settings); }, onError),
       subscribeToAlertSettings(db, (settings) => { if (settings) setCachedAlertSettings(settings); }, onError),
-      subscribeToRecurringTemplates(db, (templates) => { if (templates) setCachedRecurringTemplates(templates); }, onError),
       subscribeToVisitTypes(db, (types) => {
         if (types && Array.isArray(types) && types.length > 0) {
           const uniqueMap = new Map<string, { id: string; name: string; fee: number }>();
@@ -755,15 +764,34 @@ function ClinicApp() {
           localStorage.setItem('soli_visit_types', JSON.stringify(deduplicated));
         }
       }, onError),
-      subscribeToPrescriptionSettings(db, (settings) => {
-        if (settings && Object.keys(settings).length > 0) {
-          localStorage.setItem('soli_prescription_settings', JSON.stringify(settings));
-          window.dispatchEvent(new Event('soli_prescription_updated'));
-          window.dispatchEvent(new Event('storage'));
-        }
-      }, onError),
     ];
-    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+
+    // Stage secondary catalog and template subscriptions slightly after initial operational render
+    const catalogTimer = setTimeout(() => {
+      if (!db) return;
+      unsubscribers.push(
+        subscribeToMedications(db, (items) => { onDataSuccess(); if (items) setMedicationsCanonical(items); }, onError),
+        subscribeToLabTests(db, (items) => { onDataSuccess(); if (items) setLabTestsCanonical(items); }, onError),
+        subscribeToRadiologyTypes(db, (items) => { onDataSuccess(); if (items) setRadiologyTypesCanonical(items); }, onError),
+        subscribeToDiagnoses(db, (items) => { onDataSuccess(); if (items) setDiagnosesCanonical(items); }, onError),
+        subscribeToSymptoms(db, (items) => { onDataSuccess(); if (items) setSymptomsCanonical(items); }, onError),
+        subscribeToChronicDiseases(db, (items) => { onDataSuccess(); if (items) setChronicDiseasesCanonical(items); }, onError),
+        subscribeToDoctorSettings(db, (settings) => { if (settings) setDoctorSettingsCanonical(settings); }, onError),
+        subscribeToRecurringTemplates(db, (templates) => { if (templates) setCachedRecurringTemplates(templates); }, onError),
+        subscribeToPrescriptionSettings(db, (settings) => {
+          if (settings && Object.keys(settings).length > 0) {
+            localStorage.setItem('soli_prescription_settings', JSON.stringify(settings));
+            window.dispatchEvent(new Event('soli_prescription_updated'));
+            window.dispatchEvent(new Event('storage'));
+          }
+        }, onError),
+      );
+    }, 250);
+
+    return () => {
+      clearTimeout(catalogTimer);
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+    };
   }, [syncRetryCounter, READ_OPT ? dayStamp : 'static']);
 
   // Database Architecture Inspector Modal
@@ -2728,7 +2756,13 @@ function ClinicApp() {
               </button>
             </div>
           ) : (
-            <>
+            <Suspense
+              fallback={
+                <div className="flex items-center justify-center py-20">
+                  <div className="w-8 h-8 border-2 border-[#00c2cb] border-t-transparent rounded-full animate-spin" />
+                </div>
+              }
+            >
               {activeScreen === 'dashboard' && (
                 <DashboardScreen
                   onNavigate={handleNavigate}
@@ -2922,7 +2956,7 @@ function ClinicApp() {
                   followUps={followUpsCanonical}
                 />
               )}
-            </>
+            </Suspense>
           )}
         </main>
       </div>
@@ -2936,31 +2970,35 @@ function ClinicApp() {
       />
 
       {/* Database Architecture Inspector Modal */}
-      <DatabaseInspectorModal
-        isOpen={isDatabaseInspectorOpen}
-        onClose={() => setIsDatabaseInspectorOpen(false)}
-        users={users}
-        doctorProfile={doctorProfile}
-        clinicLocations={clinicLocations}
-        patients={patientsCanonical}
-        appointments={appointmentsCanonical}
-        visits={visitsCanonical}
-        invoices={invoicesCanonical}
-        payments={paymentsCanonical}
-        services={services}
-        followUps={followUpsCanonical}
-        prescriptions={prescriptionsCanonical}
-        medications={medicationsCanonical}
-        labTests={labTestsCanonical}
-        labOrders={labOrdersCanonical}
-        radiologyTypes={radiologyTypesCanonical}
-        radiologyOrders={radiologyOrdersCanonical}
-        diagnoses={diagnosesCanonical}
-        symptoms={symptomsCanonical}
-        chronicDiseases={chronicDiseasesCanonical}
-        doctorSettings={doctorSettingsCanonical}
-        systemSettings={systemSettingsCanonical}
-      />
+      {isDatabaseInspectorOpen && (
+        <Suspense fallback={null}>
+          <DatabaseInspectorModal
+            isOpen={isDatabaseInspectorOpen}
+            onClose={() => setIsDatabaseInspectorOpen(false)}
+            users={users}
+            doctorProfile={doctorProfile}
+            clinicLocations={clinicLocations}
+            patients={patientsCanonical}
+            appointments={appointmentsCanonical}
+            visits={visitsCanonical}
+            invoices={invoicesCanonical}
+            payments={paymentsCanonical}
+            services={services}
+            followUps={followUpsCanonical}
+            prescriptions={prescriptionsCanonical}
+            medications={medicationsCanonical}
+            labTests={labTestsCanonical}
+            labOrders={labOrdersCanonical}
+            radiologyTypes={radiologyTypesCanonical}
+            radiologyOrders={radiologyOrdersCanonical}
+            diagnoses={diagnosesCanonical}
+            symptoms={symptomsCanonical}
+            chronicDiseases={chronicDiseasesCanonical}
+            doctorSettings={doctorSettingsCanonical}
+            systemSettings={systemSettingsCanonical}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
@@ -2984,8 +3022,10 @@ function PublicBookingApp() {
   return (
     <div className="min-h-screen bg-[#080e1b] text-white p-4 sm:p-6 lg:p-8" dir="rtl">
       <div className="max-w-4xl mx-auto">
-        {/* Standalone Landing Page Component */}
-        <BookingLandingScreen />
+        <Suspense fallback={null}>
+          {/* Standalone Landing Page Component */}
+          <BookingLandingScreen />
+        </Suspense>
       </div>
     </div>
   );
