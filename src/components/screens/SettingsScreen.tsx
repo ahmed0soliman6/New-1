@@ -1932,6 +1932,38 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                       />
                     </div>
                   </div>
+
+                  {/* Interactive Standalone HTML Architecture Map (Archify Standard) */}
+                  <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-[#00c2cb] text-xl">account_tree</span>
+                      <span className="font-bold text-slate-800 dark:text-[#dde2f5]">
+                        الخريطة المعمارية والتشغيلية التفاعلية للنظام (Archify Interactive HTML)
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-[#859394] leading-relaxed">
+                      صفحة HTML تفاعلية مستقلة بالكامل تعمل بدون إنترنت؛ تشرح دورة المريض، البنية المعمارية والأمان، مخطط علاقات قاعدة البيانات (16 مجموعة)، والدليل التشغيلي للأدوار مع إمكانية تتبع المسارات ومشاركتها.
+                    </p>
+                    <div className="flex flex-wrap items-center gap-3 pt-1">
+                      <a
+                        href={`${import.meta.env.BASE_URL}soli-medical-architecture.html`}
+                        download="soli-medical-architecture.html"
+                        className="px-4 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-xs active:scale-95"
+                      >
+                        <span className="material-symbols-outlined text-base">download</span>
+                        <span>تحميل الخريطة التفاعلية المستقلة (HTML)</span>
+                      </a>
+                      <a
+                        href={`${import.meta.env.BASE_URL}soli-medical-architecture.html`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-4 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-[#18233C] dark:hover:bg-[#242a38] text-slate-800 dark:text-[#dde2f5] font-bold text-xs flex items-center gap-2 transition-all cursor-pointer"
+                      >
+                        <span className="material-symbols-outlined text-base">open_in_new</span>
+                        <span>معاينة الخريطة التفاعلية في المتصفح</span>
+                      </a>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
