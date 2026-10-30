@@ -767,8 +767,9 @@ function ClinicApp() {
     ];
 
     // Stage secondary catalog and template subscriptions slightly after initial operational render
+    let isSubscriptionMounted = true;
     const catalogTimer = setTimeout(() => {
-      if (!db) return;
+      if (!db || !isSubscriptionMounted) return;
       unsubscribers.push(
         subscribeToMedications(db, (items) => { onDataSuccess(); if (items) setMedicationsCanonical(items); }, onError),
         subscribeToLabTests(db, (items) => { onDataSuccess(); if (items) setLabTestsCanonical(items); }, onError),
@@ -789,6 +790,7 @@ function ClinicApp() {
     }, 250);
 
     return () => {
+      isSubscriptionMounted = false;
       clearTimeout(catalogTimer);
       unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
@@ -835,7 +837,7 @@ function ClinicApp() {
             registrationTime: formatAppTime(created),
             visitsCount: p.visitsCount || 1,
             totalPaid: 0, // يُحسب عند فتح تفاصيل المريض فقط
-            lastDiagnosis: p.lastDiagnosis || 'كشف عيادة باطنة',
+            lastDiagnosis: p.lastDiagnosis || '',
           };
         });
     }
@@ -867,7 +869,7 @@ function ClinicApp() {
       const pPayments = paymentsCanonical.filter((pm) => pm.patientId === p.patientId);
       const totalPaid = pPayments.reduce((acc, pm) => acc + (pm.amount || 0), 0);
       const lastVisit = [...pVisits].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-      const lastDiag = lastVisit?.clinicalData?.diagnosis?.[0] || 'كشف عيادة باطنة';
+      const lastDiag = lastVisit?.clinicalData?.diagnosis?.[0] || p.lastDiagnosis || '';
       
       const birthYear = p.dateOfBirth ? new Date(p.dateOfBirth).getFullYear() : undefined;
       const calculatedAge = birthYear ? Math.max(1, new Date().getFullYear() - birthYear) : 0;
@@ -1122,6 +1124,66 @@ function ClinicApp() {
   const [syncErrorDetails, setSyncErrorDetails] = useState<string | null>(null);
   const [doctorStatus, setDoctorStatus] = useState<'available' | 'break'>('available');
   const recentAlertIdsRef = useRef<Map<string, number>>(new Map());
+  const bannerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inFlightActionsRef = useRef<Set<string>>(new Set());
+
+  const scheduleBannerDismiss = (durationMs = 5000, expectedAlertId?: string) => {
+    if (bannerTimeoutRef.current) {
+      clearTimeout(bannerTimeoutRef.current);
+    }
+    bannerTimeoutRef.current = setTimeout(() => {
+      setCallingBanner((prev) => {
+        if (expectedAlertId && prev && prev.id !== expectedAlertId) return prev;
+        return null;
+      });
+      bannerTimeoutRef.current = null;
+    }, durationMs);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (bannerTimeoutRef.current) {
+        clearTimeout(bannerTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const normalizeArabicName = (name?: string | null): string => {
+    if (!name) return '';
+    return name
+      .trim()
+      .toLowerCase()
+      .replace(/[أإآ]/g, 'ا')
+      .replace(/ة/g, 'ه')
+      .replace(/ى/g, 'ي')
+      .replace(/\s+/g, ' ');
+  };
+
+  const normalizePhoneDigits = (phone?: string | null): string => {
+    if (!phone) return '';
+    const digits = phone.replace(/\D/g, '');
+    if (digits.startsWith('0020')) return digits.slice(3);
+    if (digits.startsWith('20') && digits.length === 12) return `0${digits.slice(2)}`;
+    return digits;
+  };
+
+  const findMatchingPatient = (criteria: { patientId?: string; phone?: string; fullName?: string }): Patient | undefined => {
+    if (criteria.patientId) {
+      const byId = patientsCanonical.find((p) => p.patientId === criteria.patientId);
+      if (byId) return byId;
+    }
+    const targetPhone = normalizePhoneDigits(criteria.phone);
+    if (targetPhone.length >= 8) {
+      const byPhone = patientsCanonical.find((p) => normalizePhoneDigits(p.phone) === targetPhone);
+      if (byPhone) return byPhone;
+    }
+    const targetName = normalizeArabicName(criteria.fullName);
+    if (targetName) {
+      const byName = patientsCanonical.find((p) => normalizeArabicName(p.fullName) === targetName);
+      if (byName) return byName;
+    }
+    return undefined;
+  };
 
   const registerAlert = (alertItem: ClinicAlertPayload, options?: { skipPublish?: boolean }) => {
     const now = Date.now();
@@ -1176,35 +1238,46 @@ function ClinicApp() {
   const isInitialClinicStatusRef = useRef(true);
   const lastClinicStatusRef = useRef<'available' | 'break'>('available');
 
-  const triggerDoctorStatusAlert = (newStatus: 'available' | 'break', updatedBy?: string) => {
+  const triggerDoctorStatusAlert = (
+    newStatus: 'available' | 'break',
+    updatedBy?: string,
+    statusKey?: string | number,
+    options?: { skipPublish?: boolean }
+  ) => {
     const alertConfig = loadAlertSettings();
+    const resolvedKey = statusKey != null && String(statusKey).trim() !== ''
+      ? String(statusKey)
+      : String(Math.floor(Date.now() / 10000));
+
     if (newStatus === 'break') {
       if (alertConfig.audioEnabled) {
         playSingleAlertSound('call');
       }
       if (alertConfig.visualEnabled) {
+        const alertId = `break-${resolvedKey}`;
         registerAlert({
-          id: `break-${Date.now()}`,
+          id: alertId,
           type: 'call',
           title: 'تنبيه: الطبيب في فترة استراحة ☕',
           message: `أعلن (${updatedBy || 'الطبيب'}) بدء فترة استراحة مؤقتة. يرجى التوقف عن تحويل المرضى لغرفة الكشف.`,
           timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-        });
-        setTimeout(() => setCallingBanner(null), 6000);
+        }, options);
+        scheduleBannerDismiss(6000, alertId);
       }
     } else {
       if (alertConfig.audioEnabled) {
         playSingleAlertSound('finish');
       }
       if (alertConfig.visualEnabled) {
+        const alertId = `avail-${resolvedKey}`;
         registerAlert({
-          id: `avail-${Date.now()}`,
+          id: alertId,
           type: 'new_visit',
           title: 'تنبيه: الطبيب متاح للكشف الآن 🟢',
           message: 'انتهت فترة الاستراحة، الطبيب جاهز ومستعد لاستقبال وفحص المريض التالي في طابور الانتظار.',
           timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-        });
-        setTimeout(() => setCallingBanner(null), 6000);
+        }, options);
+        scheduleBannerDismiss(6000, alertId);
       }
     }
   };
@@ -1220,7 +1293,7 @@ function ClinicApp() {
           if (lastClinicStatusRef.current !== newStatus) {
             setDoctorStatus(newStatus);
             lastClinicStatusRef.current = newStatus;
-            triggerDoctorStatusAlert(newStatus, event.data.updatedBy);
+            triggerDoctorStatusAlert(newStatus, event.data.updatedBy, event.data.statusKey || event.data.timestamp, { skipPublish: true });
           }
         }
       };
@@ -1237,7 +1310,7 @@ function ClinicApp() {
             const newStatus = parsed.status as 'available' | 'break';
             setDoctorStatus(newStatus);
             lastClinicStatusRef.current = newStatus;
-            triggerDoctorStatusAlert(newStatus, parsed.updatedBy);
+            triggerDoctorStatusAlert(newStatus, parsed.updatedBy, parsed.statusKey || parsed.timestamp, { skipPublish: true });
           }
         } catch {}
       }
@@ -1259,7 +1332,7 @@ function ClinicApp() {
 
         // If status changed and it's not the initial mount, broadcast audio & visual alert to all connected users
         if (!isInitialClinicStatusRef.current && lastClinicStatusRef.current !== newStatus) {
-          triggerDoctorStatusAlert(newStatus, clinicData.updatedBy);
+          triggerDoctorStatusAlert(newStatus, clinicData.updatedBy, clinicData.updatedAt || newStatus, { skipPublish: true });
         }
         lastClinicStatusRef.current = newStatus;
         isInitialClinicStatusRef.current = false;
@@ -1312,7 +1385,7 @@ function ClinicApp() {
             visitId: v.visitId,
             patientId: v.patientId,
           }, { skipPublish: true });
-          setTimeout(() => setCallingBanner(null), 5000);
+          scheduleBannerDismiss(5000, `new-${v.visitId}`);
         }
       }
       // 2. Patient called into exam room
@@ -1331,7 +1404,7 @@ function ClinicApp() {
             visitId: v.visitId,
             patientId: v.patientId,
           }, { skipPublish: true });
-          setTimeout(() => setCallingBanner(null), 5000);
+          scheduleBannerDismiss(5000, `call-${v.visitId}`);
         }
       }
       // 3. Examination completed: automatically removes previous waiting/call notification for this patient!
@@ -1353,7 +1426,7 @@ function ClinicApp() {
             visitId: v.visitId,
             patientId: v.patientId,
           }, { skipPublish: true });
-          setTimeout(() => setCallingBanner(null), 6000);
+          scheduleBannerDismiss(6000, `finish-${v.visitId}`);
         }
       }
 
@@ -1387,9 +1460,7 @@ function ClinicApp() {
             }
             if (alertConfig.visualEnabled) {
               registerAlert(incoming, { skipPublish: true });
-              setTimeout(() => {
-                setCallingBanner((prev) => (prev?.id === incoming.id ? null : prev));
-              }, 6000);
+              scheduleBannerDismiss(6000, incoming.id);
             }
           }
         }
@@ -1445,9 +1516,7 @@ function ClinicApp() {
 
         if (alertConfig.visualEnabled) {
           registerAlert(alertItem, { skipPublish: true });
-          setTimeout(() => {
-            setCallingBanner((prev) => (prev?.id === alertItem.id ? null : prev));
-          }, 6000);
+          scheduleBannerDismiss(6000, alertItem.id);
         }
       },
       (err) => console.warn('Latest alert subscription error:', err)
@@ -1464,19 +1533,20 @@ function ClinicApp() {
     setDoctorStatus(nextStatus);
     lastClinicStatusRef.current = nextStatus;
     const updatedBy = userProfile?.displayName || userProfile?.username || 'الطبيب';
+    const statusKey = `${nextStatus}-${Math.floor(Date.now() / 5000)}`;
 
     // Trigger audio & visual alert in local session
-    triggerDoctorStatusAlert(nextStatus, updatedBy);
+    triggerDoctorStatusAlert(nextStatus, updatedBy, statusKey);
 
     // 1. Multi-tab BroadcastChannel
     try {
       const channel = new BroadcastChannel('soli_clinic_channel');
-      channel.postMessage({ type: 'STATUS_CHANGE', status: nextStatus, updatedBy, timestamp: Date.now() });
+      channel.postMessage({ type: 'STATUS_CHANGE', status: nextStatus, updatedBy, statusKey, timestamp: Date.now() });
       channel.close();
     } catch {}
 
     // 2. LocalStorage cross-tab sync
-    safeStorage.setJSON(StorageKeys.CLINIC_STATUS_EVENT, { status: nextStatus, updatedBy, timestamp: Date.now() });
+    safeStorage.setJSON(StorageKeys.CLINIC_STATUS_EVENT, { status: nextStatus, updatedBy, statusKey, timestamp: Date.now() });
 
     // 3. Sync to Firestore immediately so all other connected accounts & devices receive the status update in real-time
     if (db) {
@@ -2097,89 +2167,104 @@ function ClinicApp() {
       return;
     }
 
-    // 1. Find or resolve patient
-    let targetPatientId = patientsCanonical.find(
-      (p) => p.fullName.trim() === newTx.patientName.trim()
-    )?.patientId;
+    const txKey = `tx:${newTx.id || `${normalizeArabicName(newTx.patientName)}-${newTx.amount}`}`;
+    if (inFlightActionsRef.current.has(txKey)) return;
+    inFlightActionsRef.current.add(txKey);
 
-    if (!targetPatientId && newTx.patientName.trim()) {
-      targetPatientId = `pat-${Date.now()}`;
-      const maxNum = patientsCanonical.reduce((max, p) => (p.fileNumber && p.fileNumber > max ? p.fileNumber : max), 0);
-      const newPat: Patient = {
-        patientId: targetPatientId,
-        fileNumber: maxNum + 1,
-        fullName: newTx.patientName.trim(),
-        phone: '',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      if (db) {
-        setDoc(doc(db, 'patients', targetPatientId), newPat).catch((e) => console.warn('Patient save fallback:', e));
-      }
-    }
+    try {
+      // 1. Find or resolve patient using normalized Arabic name matching
+      const matchedPatient = findMatchingPatient({ fullName: newTx.patientName });
+      let targetPatientId = matchedPatient?.patientId;
 
-    const invoiceId = `inv-${Date.now()}`;
-    const paymentId = `pay-${Date.now()}`;
-    const totalAmount = newTx.totalAmount ?? newTx.amount ?? 0;
-    const discountAmount = newTx.discountAmount ?? 0;
-    const finalTotal = Math.max(0, totalAmount - discountAmount);
-    const paidAmount = newTx.paidAmount ?? (newTx.status === 'مدفوعة' ? finalTotal : (newTx.amount ?? 0));
-    const txDateIso = newTx.date
-      ? `${newTx.date}T${new Date().toISOString().split('T')[1] || '12:00:00.000Z'}`
-      : new Date().toISOString();
-
-    const newInvoice: Invoice = {
-      invoiceId,
-      patientId: targetPatientId || 'pat-general',
-      visitId: '',
-      clinicLocationId: 'loc-main',
-      items: [
-        {
-          serviceId: `srv-${Date.now()}`,
-          nameAr: newTx.serviceName || newTx.description || 'كشف واستشارة طبية',
-          quantity: 1,
-          unitPrice: totalAmount,
-          total: totalAmount,
-        },
-      ],
-      subtotal: totalAmount,
-      discount: discountAmount,
-      total: finalTotal,
-      paidAmount: paidAmount > 0 ? paidAmount : (newTx.status === 'مدفوعة' ? finalTotal : 0),
-      remainingAmount: Math.max(0, finalTotal - (paidAmount > 0 ? paidAmount : (newTx.status === 'مدفوعة' ? finalTotal : 0))),
-      status: (newTx.status === 'مدفوعة' || paidAmount >= finalTotal) ? 'PAID' : 'UNPAID',
-      createdAt: txDateIso,
-      updatedAt: txDateIso,
-      dayKey: toDayKey(txDateIso),
-    };
-
-    const newPayment: Payment = {
-      paymentId,
-      patientId: targetPatientId || 'pat-general',
-      visitId: '',
-      invoiceId,
-      clinicLocationId: 'loc-main',
-      amount: newInvoice.paidAmount > 0 ? newInvoice.paidAmount : finalTotal,
-      method: (newTx.paymentMethod || newTx.method) === 'فيزا / كارت' ? 'CARD' : 'CASH',
-      status: 'PAID',
-      receiptNumber: newTx.receiptNo || `REC-${Math.floor(10000 + Math.random() * 90000)}`,
-      paidAt: txDateIso,
-      receivedBy: 'doc-1',
-      dayKey: toDayKey(txDateIso),
-    };
-
-    if (db) {
-      try {
-        const tasks: Promise<unknown>[] = [
-          setDoc(doc(db, 'invoices', invoiceId), newInvoice),
-        ];
-        if (newInvoice.status === 'PAID' || newPayment.amount > 0) {
-          tasks.push(setDoc(doc(db, 'payments', paymentId), newPayment));
+      if (!targetPatientId && newTx.patientName.trim()) {
+        targetPatientId = `pat-${Date.now()}`;
+        const maxNum = patientsCanonical.reduce((max, p) => (p.fileNumber && p.fileNumber > max ? p.fileNumber : max), 0);
+        const newPat: Patient = {
+          patientId: targetPatientId,
+          fileNumber: maxNum + 1,
+          fullName: newTx.patientName.trim(),
+          phone: '',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        if (db) {
+          setDoc(doc(db, 'patients', targetPatientId), newPat).catch((e) => console.warn('Patient save fallback:', e));
         }
-        await Promise.allSettled(tasks);
-      } catch (err) {
-        console.warn('Error saving transaction to Firestore:', err);
       }
+
+      const invoiceId = newTx.id && newTx.id.startsWith('inv-') ? newTx.id : `inv-${Date.now()}`;
+      const paymentId = `pay-${invoiceId.replace(/^inv-/, '')}`;
+      const totalAmount = newTx.totalAmount ?? newTx.amount ?? 0;
+      const discountAmount = newTx.discountAmount ?? 0;
+      const finalTotal = Math.max(0, totalAmount - discountAmount);
+      const paidAmount = newTx.paidAmount ?? (newTx.status === 'مدفوعة' ? finalTotal : (newTx.amount ?? 0));
+      const txDateIso = newTx.date
+        ? `${newTx.date}T${new Date().toISOString().split('T')[1] || '12:00:00.000Z'}`
+        : new Date().toISOString();
+
+      const rawMethod = newTx.paymentMethod || newTx.method || 'نقدي';
+      const resolvedPaymentMethod: 'CASH' | 'CARD' | 'TRANSFER' =
+        rawMethod.includes('فيزا') || rawMethod.includes('كارت')
+          ? 'CARD'
+          : rawMethod.includes('إنستا') || rawMethod === 'TRANSFER'
+          ? 'TRANSFER'
+          : 'CASH';
+
+      const newInvoice: Invoice = {
+        invoiceId,
+        patientId: targetPatientId || 'pat-general',
+        visitId: '',
+        clinicLocationId: 'loc-main',
+        items: [
+          {
+            serviceId: `srv-${invoiceId.replace(/^inv-/, '')}`,
+            nameAr: newTx.serviceName || newTx.description || 'كشف واستشارة طبية',
+            quantity: 1,
+            unitPrice: totalAmount,
+            total: totalAmount,
+          },
+        ],
+        subtotal: totalAmount,
+        discount: discountAmount,
+        total: finalTotal,
+        paidAmount: paidAmount > 0 ? paidAmount : (newTx.status === 'مدفوعة' ? finalTotal : 0),
+        remainingAmount: Math.max(0, finalTotal - (paidAmount > 0 ? paidAmount : (newTx.status === 'مدفوعة' ? finalTotal : 0))),
+        status: (newTx.status === 'مدفوعة' || paidAmount >= finalTotal) ? 'PAID' : 'UNPAID',
+        createdAt: txDateIso,
+        updatedAt: txDateIso,
+        dayKey: toDayKey(txDateIso),
+      };
+
+      const newPayment: Payment = {
+        paymentId,
+        patientId: targetPatientId || 'pat-general',
+        visitId: '',
+        invoiceId,
+        clinicLocationId: 'loc-main',
+        amount: newInvoice.paidAmount > 0 ? newInvoice.paidAmount : finalTotal,
+        method: resolvedPaymentMethod,
+        status: 'PAID',
+        receiptNumber: newTx.receiptNo || `REC-${Math.floor(10000 + Math.random() * 90000)}`,
+        paidAt: txDateIso,
+        receivedBy: userProfile?.username || userProfile?.displayName || 'receptionist',
+        dayKey: toDayKey(txDateIso),
+      };
+
+      if (db) {
+        try {
+          const tasks: Promise<unknown>[] = [
+            setDoc(doc(db, 'invoices', invoiceId), newInvoice),
+          ];
+          if (newInvoice.status === 'PAID' || newPayment.amount > 0) {
+            tasks.push(setDoc(doc(db, 'payments', paymentId), newPayment));
+          }
+          await Promise.allSettled(tasks);
+        } catch (err) {
+          console.warn('Error saving transaction to Firestore:', err);
+        }
+      }
+    } finally {
+      inFlightActionsRef.current.delete(txKey);
     }
   };
 
@@ -2245,7 +2330,7 @@ function ClinicApp() {
         ticket,
         timestamp: formatAppTime(new Date()),
       });
-      setTimeout(() => setCallingBanner(null), 5000);
+      scheduleBannerDismiss(5000, `call-${visitId}`);
     }
 
     if (!targetVisit) return;
@@ -2284,9 +2369,10 @@ function ClinicApp() {
     };
     setActiveExamPatient(matchedPatient);
 
-    if (db) {
+    const callerDoctorId = userProfile?.username || userProfile?.uid;
+    if (db && callerDoctorId) {
       try {
-        await startVisitTransaction(db, targetVisit.visitId, userProfile?.username || 'usr-hazem-dr');
+        await startVisitTransaction(db, targetVisit.visitId, callerDoctorId);
       } catch (error) {
         console.error('startVisit error:', error);
       }
@@ -2331,7 +2417,7 @@ function ClinicApp() {
             ticket: String(nextFileNumber),
             timestamp: formatAppTime(new Date()),
           });
-          setTimeout(() => setCallingBanner(null), 5000);
+          scheduleBannerDismiss(5000, `new-${checkInResult.visit.visitId}`);
         }
       } catch (error) {
         alert(error instanceof Error ? error.message : 'فشل تسجيل حضور المريض في قاعدة البيانات');
@@ -2341,111 +2427,120 @@ function ClinicApp() {
 
   // Walk-in: Patient + Invoice + Payment + Visit are committed in one transaction
   const handleAddPatientToQueue = async (item: QueueItem) => {
-    const timestamp = new Date().toISOString();
     const cleanPhone = (item.phone || '').trim();
     const cleanName = (item.patientName || '').trim();
+    const lockKey = `queue:${item.patientId || normalizePhoneDigits(cleanPhone) || normalizeArabicName(cleanName)}`;
+    if (inFlightActionsRef.current.has(lockKey)) return;
+    inFlightActionsRef.current.add(lockKey);
 
-    // Look up existing patient strictly by patientId, valid non-empty phone, or exact name match
-    const basePat = item.patientId
-      ? patientsCanonical.find((p) => p.patientId === item.patientId)
-      : patientsCanonical.find((p) => {
-          const pPhone = (p.phone || '').trim();
-          const pName = (p.fullName || '').trim().toLowerCase();
-          const phoneMatches = cleanPhone !== '' && pPhone !== '' && pPhone === cleanPhone;
-          const nameMatches = cleanName !== '' && pName !== '' && pName === cleanName.toLowerCase();
-          return phoneMatches || nameMatches;
-        });
-    
-    // Convert entered age to a valid dateOfBirth so the age calculation is perfectly synchronized and correct
-    const calculatedDOB = item.age && Number(item.age) > 0
-      ? new Date(new Date().getFullYear() - Number(item.age), 0, 1).toISOString().split('T')[0]
-      : null;
+    try {
+      const timestamp = new Date().toISOString();
 
-    const patientGender: 'male' | 'female' | undefined = item.gender === 'female'
-      ? 'female'
-      : item.gender === 'male'
-      ? 'male'
-      : (basePat?.gender || undefined);
+      // Look up existing patient by patientId, normalized phone digits, or normalized Arabic name
+      const basePat = findMatchingPatient({
+        patientId: item.patientId,
+        phone: cleanPhone,
+        fullName: cleanName,
+      });
 
-    const targetPatientId = basePat?.patientId || item.patientId || `pat-${Date.now()}`;
+      // Convert entered age to a valid dateOfBirth so the age calculation is perfectly synchronized and correct
+      const calculatedDOB = item.age && Number(item.age) > 0
+        ? new Date(new Date().getFullYear() - Number(item.age), 0, 1).toISOString().split('T')[0]
+        : null;
 
-    const patient: Patient = basePat
-      ? {
-          ...basePat,
-          fullName: cleanName || basePat.fullName,
-          phone: cleanPhone || basePat.phone,
-          gender: patientGender,
-          chronicDiseases: Array.from(new Set([...(basePat.chronicDiseases || []), ...(item.chronicConditions || [])])),
-          address: item.address || basePat.address || basePat.governorate || '',
-          bloodType: item.bloodType && item.bloodType !== 'غير محدد' ? item.bloodType : (basePat.bloodType || 'غير محدد'),
-          dateOfBirth: calculatedDOB || basePat.dateOfBirth || null,
-          updatedAt: timestamp,
-        }
-      : {
-          patientId: targetPatientId,
-          fullName: cleanName || 'مريض جديد',
-          phone: cleanPhone,
-          gender: patientGender,
-          fileNumber: typeof item.fileNumber === 'number' ? item.fileNumber : parseInt(String(item.fileNumber), 10) || nextFileNumber,
-          medicalCode: item.medicalCode || `EG-${Math.floor(Math.random() * 90000) + 10000}`,
-          chronicDiseases: item.chronicConditions || [],
-          allergies: [],
-          address: item.address || '',
-          bloodType: item.bloodType || 'غير محدد',
-          dateOfBirth: calculatedDOB,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-          createdBy: userProfile?.username || 'receptionist',
-        };
-    const paymentMethodEnum = item.paymentMethod.includes('فيزا') || item.paymentMethod.includes('كارت') ? 'CARD' : 'CASH';
+      const patientGender: 'male' | 'female' | undefined = item.gender === 'female'
+        ? 'female'
+        : item.gender === 'male'
+        ? 'male'
+        : (basePat?.gender || undefined);
 
-    if (db) {
-      try {
-        const registeredVisit = await registerWalkInTransaction({
-          db,
-          patient,
-          paymentAmount: item.paidAmount,
-          paymentMethod: paymentMethodEnum,
-          receivedBy: userProfile?.username || 'receptionist',
-          clinicLocationId: 'loc-mohandessin',
-          appointmentId: item.appointmentId || intakeInitialData?.appointmentId || null,
-          receptionistData: { symptoms: item.complaint || '', chronicDiseases: patient.chronicDiseases || [], notes: '' },
-        });
+      const targetPatientId = basePat?.patientId || item.patientId || `pat-${Date.now()}`;
 
-        // If this intake was initiated from a scheduled appointment, mark the appointment as ARRIVED in Firestore
-        // so it disappears from the active scheduled appointments view across all user accounts
-        const apptIdToMark = item.appointmentId || intakeInitialData?.appointmentId;
-        if (apptIdToMark && db) {
-          try {
-            await setDoc(
-              doc(db, 'appointments', apptIdToMark),
-              { status: 'ARRIVED', updatedAt: timestamp },
-              { merge: true }
-            );
-          } catch (apptErr) {
-            console.warn('Could not update appointment status to ARRIVED:', apptErr);
+      const patient: Patient = basePat
+        ? {
+            ...basePat,
+            fullName: cleanName || basePat.fullName,
+            phone: cleanPhone || basePat.phone,
+            gender: patientGender,
+            chronicDiseases: Array.from(new Set([...(basePat.chronicDiseases || []), ...(item.chronicConditions || [])])),
+            address: item.address || basePat.address || basePat.governorate || '',
+            bloodType: item.bloodType && item.bloodType !== 'غير محدد' ? item.bloodType : (basePat.bloodType || 'غير محدد'),
+            dateOfBirth: calculatedDOB || basePat.dateOfBirth || null,
+            updatedAt: timestamp,
           }
-        }
-        setIntakeInitialData(null);
+        : {
+            patientId: targetPatientId,
+            fullName: cleanName || 'مريض جديد',
+            phone: cleanPhone,
+            gender: patientGender,
+            fileNumber: typeof item.fileNumber === 'number' ? item.fileNumber : parseInt(String(item.fileNumber), 10) || nextFileNumber,
+            medicalCode: item.medicalCode || `EG-${Math.floor(Math.random() * 90000) + 10000}`,
+            chronicDiseases: item.chronicConditions || [],
+            allergies: [],
+            address: item.address || '',
+            bloodType: item.bloodType || 'غير محدد',
+            dateOfBirth: calculatedDOB,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+            createdBy: userProfile?.username || 'receptionist',
+          };
+      const paymentMethodEnum =
+        item.paymentMethod.includes('فيزا') || item.paymentMethod.includes('كارت')
+          ? 'CARD'
+          : item.paymentMethod.includes('إنستا')
+          ? 'TRANSFER'
+          : 'CASH';
 
-        const alertConfig = loadAlertSettings();
-        if (alertConfig.audioEnabled && alertConfig.newVisitAudio) {
-          playSingleAlertSound('new_visit');
-        }
-        if (alertConfig.visualEnabled && alertConfig.newVisitVisual) {
-          registerAlert({
-            id: `new-${registeredVisit.visitId}`,
-            type: 'new_visit',
-            title: 'تسجيل كشف وزيارة جديدة',
-            message: `تم تسجيل المريض (${item.patientName}) في قائمة الانتظار بنجاح.`,
-            ticket: String(item.ticketNumber || nextFileNumber),
-            timestamp: formatAppTime(new Date()),
+      if (db) {
+        try {
+          const registeredVisit = await registerWalkInTransaction({
+            db,
+            patient,
+            paymentAmount: item.paidAmount,
+            paymentMethod: paymentMethodEnum,
+            receivedBy: userProfile?.username || 'receptionist',
+            clinicLocationId: 'loc-mohandessin',
+            appointmentId: item.appointmentId || intakeInitialData?.appointmentId || null,
+            receptionistData: { symptoms: item.complaint || '', chronicDiseases: patient.chronicDiseases || [], notes: '' },
           });
-          setTimeout(() => setCallingBanner(null), 5000);
+
+          // If this intake was initiated from a scheduled appointment, mark the appointment as ARRIVED in Firestore
+          // so it disappears from the active scheduled appointments view across all user accounts
+          const apptIdToMark = item.appointmentId || intakeInitialData?.appointmentId;
+          if (apptIdToMark && db) {
+            try {
+              await setDoc(
+                doc(db, 'appointments', apptIdToMark),
+                { status: 'ARRIVED', updatedAt: timestamp },
+                { merge: true }
+              );
+            } catch (apptErr) {
+              console.warn('Could not update appointment status to ARRIVED:', apptErr);
+            }
+          }
+          setIntakeInitialData(null);
+
+          const alertConfig = loadAlertSettings();
+          if (alertConfig.audioEnabled && alertConfig.newVisitAudio) {
+            playSingleAlertSound('new_visit');
+          }
+          if (alertConfig.visualEnabled && alertConfig.newVisitVisual) {
+            registerAlert({
+              id: `new-${registeredVisit.visitId}`,
+              type: 'new_visit',
+              title: 'تسجيل كشف وزيارة جديدة',
+              message: `تم تسجيل المريض (${item.patientName}) في قائمة الانتظار بنجاح.`,
+              ticket: String(item.ticketNumber || nextFileNumber),
+              timestamp: formatAppTime(new Date()),
+            });
+            scheduleBannerDismiss(5000, `new-${registeredVisit.visitId}`);
+          }
+        } catch (error) {
+          alert(error instanceof Error ? error.message : 'فشل إضافة المريض للانتظار في قاعدة البيانات');
         }
-      } catch (error) {
-        alert(error instanceof Error ? error.message : 'فشل إضافة المريض للانتظار في قاعدة البيانات');
       }
+    } finally {
+      inFlightActionsRef.current.delete(lockKey);
     }
   };
 
@@ -2455,58 +2550,63 @@ function ClinicApp() {
     if (apptId && appointmentsCanonical.some((a) => a.appointmentId === apptId)) {
       return;
     }
-    const timestamp = new Date().toISOString();
     const cleanPhone = (app.phone || '').trim();
     const cleanName = (app.patientName || '').trim();
-    const existingPatient = patientsCanonical.find((p) => {
-      if (app.patientId && p.patientId === app.patientId) return true;
-      const pPhone = (p.phone || '').trim();
-      const pName = (p.fullName || '').trim().toLowerCase();
-      const phoneMatch = cleanPhone !== '' && pPhone !== '' && pPhone === cleanPhone;
-      const nameMatch = cleanName !== '' && pName !== '' && pName === cleanName.toLowerCase();
-      return phoneMatch || nameMatch;
-    });
+    const lockKey = `appt:${apptId || normalizePhoneDigits(cleanPhone) || normalizeArabicName(cleanName)}-${app.date || ''}`;
+    if (inFlightActionsRef.current.has(lockKey)) return;
+    inFlightActionsRef.current.add(lockKey);
 
-    const targetPatientId = existingPatient?.patientId || app.patientId || `pat-${Date.now()}`;
+    try {
+      const timestamp = new Date().toISOString();
+      const existingPatient = findMatchingPatient({
+        patientId: app.patientId,
+        phone: cleanPhone,
+        fullName: cleanName,
+      });
 
-    const patientToSave: Patient = existingPatient || {
-      patientId: targetPatientId,
-      fullName: cleanName || 'مريض محجوز',
-      phone: cleanPhone,
-      fileNumber: nextFileNumber,
-      medicalCode: app.medicalCode || `EG-${Math.floor(Math.random() * 90000) + 10000}`,
-      chronicDiseases: [],
-      allergies: [],
-      address: '',
-      bloodType: 'غير محدد',
-      dateOfBirth: null,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      createdBy: userProfile?.username || 'receptionist',
-    };
+      const targetPatientId = existingPatient?.patientId || app.patientId || `pat-${Date.now()}`;
 
-    const resolvedBranch = findBranch(app.branch);
-    const newApp: Appointment = {
-      appointmentId: app.appointmentId || app.id || `app-${Date.now()}`,
-      patientId: targetPatientId,
-      patientName: cleanName || 'مريض محجوز',
-      phone: cleanPhone,
-      clinicLocationId: resolvedBranch.id || resolvedBranch.name || 'loc-mohandessin',
-      scheduledDate: app.date || new Date().toISOString().split('T')[0],
-      scheduledTime: app.timeSlot || app.time || '07:30 م',
-      visitType: app.visitType || 'كشف جديد',
-      status: 'SCHEDULED',
-      notes: app.notes || 'حجز موعد كشف مسبق',
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      createdBy: userProfile?.username || 'receptionist',
-    };
-    if (db) {
-      try {
-        await createAppointmentTransaction({ db, patient: patientToSave, appointment: newApp });
-      } catch (error) {
-        alert(error instanceof Error ? error.message : 'تعذر حفظ الموعد في قاعدة البيانات');
+      const patientToSave: Patient = existingPatient || {
+        patientId: targetPatientId,
+        fullName: cleanName || 'مريض محجوز',
+        phone: cleanPhone,
+        fileNumber: nextFileNumber,
+        medicalCode: app.medicalCode || `EG-${Math.floor(Math.random() * 90000) + 10000}`,
+        chronicDiseases: [],
+        allergies: [],
+        address: '',
+        bloodType: 'غير محدد',
+        dateOfBirth: null,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        createdBy: userProfile?.username || 'receptionist',
+      };
+
+      const resolvedBranch = findBranch(app.branch);
+      const newApp: Appointment = {
+        appointmentId: apptId || `app-${Date.now()}`,
+        patientId: targetPatientId,
+        patientName: cleanName || existingPatient?.fullName || 'مريض محجوز',
+        phone: cleanPhone || existingPatient?.phone || '',
+        clinicLocationId: resolvedBranch.id || resolvedBranch.name || 'loc-mohandessin',
+        scheduledDate: app.date || new Date().toISOString().split('T')[0],
+        scheduledTime: app.timeSlot || app.time || '07:30 م',
+        visitType: app.visitType || 'كشف جديد',
+        status: 'SCHEDULED',
+        notes: app.notes || '',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        createdBy: userProfile?.username || 'receptionist',
+      };
+      if (db) {
+        try {
+          await createAppointmentTransaction({ db, patient: patientToSave, appointment: newApp });
+        } catch (error) {
+          alert(error instanceof Error ? error.message : 'تعذر حفظ الموعد في قاعدة البيانات');
+        }
       }
+    } finally {
+      inFlightActionsRef.current.delete(lockKey);
     }
   };
 
@@ -2519,7 +2619,25 @@ function ClinicApp() {
     followupDate: string;
     lifestyleAdvice: string;
     vitals?: Partial<VitalsData> | null;
+    chiefComplaint?: string;
+    examination?: string;
+    history?: string;
   }) => {
+    const resolvedDoctorId = userProfile?.username || userProfile?.uid;
+    if (!resolvedDoctorId) {
+      alert('تعذر التحقق من حساب الطبيب المسجل حاليًا. يرجى إعادة تسجيل الدخول قبل إنهاء الكشف.');
+      return;
+    }
+
+    const diagnosisStrings = (examData?.diagnoses || [])
+      .map((d) => (typeof d === 'string' ? d.trim() : (d?.nameAr || d?.nameEn || '').trim()))
+      .filter(Boolean);
+
+    if (diagnosisStrings.length === 0) {
+      alert('يرجى إدخال أو اختيار تشخيص طبي واحد على الأقل قبل إنهاء الكشف وحفظ الزيارة.');
+      return;
+    }
+
     const activeWaiting =
       visitsCanonical.find((v) => v.patientId === activeExamPatient?.id && (v.status === 'IN_PROGRESS' || v.status === 'WAITING')) ||
       visitsCanonical.find((v) => v.status === 'IN_PROGRESS') ||
@@ -2532,18 +2650,21 @@ function ClinicApp() {
       const rxSnapshots: PrescriptionItemSnapshot[] = rxItems.map((item) => ({
         name: item.drugName,
         strength: item.scientificName || '',
-        form: item.dosageForm || 'أقراص',
-        dose: item.dosage || 'قرص واحد',
-        frequency: item.dosage || 'يومياً',
-        duration: item.duration,
-        instructions: 'تناول العلاج وفق الإرشادات الموضحة بالروشتة',
+        form: item.dosageForm || '',
+        dose: item.dosage || '',
+        frequency: item.timing || item.dosage || '',
+        duration: item.duration || '',
+        instructions: item.notes?.trim() || (item as any).dosageInstructions?.trim() || '',
       }));
 
       const clinicalData = {
-        chiefComplaint: activeWaiting.receptionistData?.symptoms || activeExamPatient?.chiefComplaint || 'كشف عيادة باطنة',
-        history: 'متابعة سريرية متكاملة',
-        examination: 'العلامات الحيوية وفحص القلب والصدر مستقر',
-        diagnosis: examData?.diagnoses?.map((d) => d.nameAr || d.nameEn) || [activeExamPatient?.lastDiagnosis || 'كشف عيادة باطنة'],
+        chiefComplaint:
+          examData?.chiefComplaint !== undefined
+            ? examData.chiefComplaint
+            : (activeWaiting.receptionistData?.symptoms || activeExamPatient?.chiefComplaint || ''),
+        history: examData?.history ?? '',
+        examination: examData?.examination ?? '',
+        diagnosis: diagnosisStrings,
         treatment: rxItems.map((p) => p.drugName).join(' + '),
       };
 
@@ -2555,11 +2676,11 @@ function ClinicApp() {
         await completeVisitTransaction({
           db,
           visitId: activeWaiting.visitId,
-          doctorId: userProfile?.username || 'usr-hazem-dr',
+          doctorId: resolvedDoctorId,
           clinicalData,
           vitalSigns,
           prescriptionItems: rxSnapshots,
-          prescriptionNotes: examData?.lifestyleAdvice || 'مع أطيب تمنياتنا بالشفاء العاجل',
+          prescriptionNotes: examData?.lifestyleAdvice ?? '',
           labOrders: examData?.labOrders?.map((l) => {
             const hasResult = !!(l.resultValue && l.resultValue.trim());
             const isReport = l.status === 'REPORT';
@@ -2592,7 +2713,7 @@ function ClinicApp() {
             scheduledDate: examData.followupDate,
             fee: 0,
             isFree: true,
-            notes: examData.lifestyleAdvice || 'متابعة حددها الطبيب',
+            notes: examData.lifestyleAdvice || '',
           } : undefined,
         });
       } catch (error) {
@@ -2616,7 +2737,7 @@ function ClinicApp() {
         ticket: String(activeWaiting?.queueNumber || ''),
         timestamp: formatAppTime(new Date()),
       });
-      setTimeout(() => setCallingBanner(null), 6000);
+      scheduleBannerDismiss(6000, `finish-${visitId}`);
     }
   };
 

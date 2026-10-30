@@ -81,6 +81,9 @@ interface ExaminationScreenProps {
     followupDate: string;
     lifestyleAdvice: string;
     vitals?: Partial<VitalsData> | null;
+    chiefComplaint?: string;
+    examination?: string;
+    history?: string;
   }) => void;
 
   // Catalogs and handlers
@@ -152,7 +155,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
   const [displaySettings, setDisplaySettings] = useState<ExamDisplaySettings>(loadExamDisplaySettings);
 
   // Load layout settings for the prescription printing & PDF exporting
-  const [prescriptionConfig] = useState<any>(() => {
+  const loadPrescriptionSettingsConfig = () => {
     try {
       const cached = localStorage.getItem('soli_prescription_settings');
       if (cached) return JSON.parse(cached);
@@ -188,7 +191,9 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
         phone: b.mobile,
       })),
     };
-  });
+  };
+
+  const [prescriptionConfig, setPrescriptionConfig] = useState<any>(loadPrescriptionSettingsConfig);
 
   const [showPrintPreviewModal, setShowPrintPreviewModal] = useState(false);
 
@@ -218,9 +223,16 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
     }, patient ? patient.name : 'مريض');
   };
 
-  // Sync display settings on mount and tab focus
+  // Sync display settings and prescription layout settings on mount and updates
   useEffect(() => {
     setDisplaySettings(loadExamDisplaySettings());
+    const syncRxSettings = () => setPrescriptionConfig(loadPrescriptionSettingsConfig());
+    window.addEventListener('soli_prescription_updated', syncRxSettings);
+    window.addEventListener('storage', syncRxSettings);
+    return () => {
+      window.removeEventListener('soli_prescription_updated', syncRxSettings);
+      window.removeEventListener('storage', syncRxSettings);
+    };
   }, []);
 
   // Vital signs state for exam
@@ -728,6 +740,13 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
       alert('غير مصرح لك بإنهاء الكشف الطبي أو حفظ الزيارة.');
       return;
     }
+    if (patientDiagnoses.length === 0) {
+      alert('يرجى إدخال أو اختيار تشخيص طبي واحد على الأقل قبل إنهاء الكشف وحفظ الزيارة.');
+      if (activeTab !== 'all' && activeTab !== 'diag') {
+        setActiveTab('diag');
+      }
+      return;
+    }
     try {
       assertPermission('clinical.complete', 'إنهاء الكشف وحفظ الزيارة');
       setIsExamFinished(true);
@@ -749,6 +768,9 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
         followupDate,
         lifestyleAdvice,
         vitals: hasAnyVital(examVitals) ? examVitals : null,
+        chiefComplaint: complaint.trim(),
+        examination: physicalExam.trim(),
+        history: '',
       });
       setShowSuccessModal(true);
       setTimeout(() => {

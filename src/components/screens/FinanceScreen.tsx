@@ -29,8 +29,8 @@ import type { Patient } from '../../types/database';
 
 export interface FinanceScreenProps {
   transactions: TransactionRecord[];
-  onAddTransaction: (newTx: TransactionRecord) => void;
-  onDeleteTransaction?: (txId: string) => void;
+  onAddTransaction: (newTx: TransactionRecord) => void | Promise<void>;
+  onDeleteTransaction?: (txId: string) => void | Promise<void>;
   patients?: PatientListItem[];
   patientsCanonical?: Patient[];
 }
@@ -148,9 +148,10 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
   };
 
   // Submit New Invoice
-  const handleSaveInvoice = (e: React.FormEvent) => {
+  const handleSaveInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!invPatientName.trim()) {
+    const trimmedPatientName = invPatientName.trim();
+    if (!trimmedPatientName) {
       alert('يرجى كتابة اسم المريض');
       return;
     }
@@ -160,7 +161,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
       const newTx: TransactionRecord = {
         id: `inv-${Date.now()}`,
         receiptNo: `INV-${Math.floor(Math.random() * 9000) + 1000}`,
-        patientName: invPatientName.trim(),
+        patientName: trimmedPatientName,
         serviceName: invService,
         description: `${invService}${invDiscount > 0 ? ` (خصم ${toEnglishDigits(invDiscount)} ج.م)` : ''}`,
         totalAmount: invAmount,
@@ -177,14 +178,14 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
         category: 'خدمات طبية',
       };
 
-      onAddTransaction(newTx);
+      await onAddTransaction(newTx);
       setShowInvoiceModal(false);
       setInvPatientName('');
       setInvDiscount(0);
       setInvStatus('مدفوعة');
 
       setRefreshKey((k) => k + 1);
-      setToast(`تم إنشاء الفاتورة بنجاح للمريض (${invPatientName})`);
+      setToast(`تم إنشاء الفاتورة بنجاح للمريض (${trimmedPatientName})`);
       setTimeout(() => setToast(null), 3500);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'ليس لديك صلاحية لإنشاء الفواتير.');
@@ -192,7 +193,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
   };
 
   // Submit Quick Expense
-  const handleAddQuickExpense = (e: React.FormEvent) => {
+  const handleAddQuickExpense = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanAmountStr = toEnglishDigits(quickExpenseAmount);
     const amountNum = Number(cleanAmountStr);
@@ -235,7 +236,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
         rawTimestamp: newExp.createdAt,
         category: 'مصروفات العيادة',
       };
-      onAddTransaction(txExp);
+      await onAddTransaction(txExp);
 
       setSelectedExpenseCategory('');
       setQuickExpenseAmount('');
