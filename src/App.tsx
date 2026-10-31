@@ -933,7 +933,7 @@ function ClinicApp() {
           arrivalTime: formatAppTime(v.createdAt),
           elapsedMinutes: Math.max(1, Math.floor((Date.now() - new Date(v.createdAt).getTime()) / 60000)),
           paidAmount: payment?.amount || invoice?.paidAmount || 0,
-          paymentMethod: (payment?.method === 'CARD' ? 'فيزا / كارت' : 'نقدي') as any,
+          paymentMethod: (payment?.method === 'CARD' ? 'فيزا / كارت' : payment?.method === 'TRANSFER' ? 'إنستاباي' : 'نقدي') as any,
           complaint: v.receptionistData?.symptoms || 'كشف عيادة باطنة',
           status: 'waiting',
         };
@@ -2452,7 +2452,7 @@ function ClinicApp() {
         ? 'female'
         : item.gender === 'male'
         ? 'male'
-        : (basePat?.gender || undefined);
+        : (basePat?.gender === 'female' || basePat?.gender === 'male' ? basePat.gender : undefined);
 
       const targetPatientId = basePat?.patientId || item.patientId || `pat-${Date.now()}`;
 
