@@ -195,6 +195,10 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
             ...remoteConfig,
           }));
           safeStorage.setJSON(StorageKeys.PRESCRIPTION_SETTINGS, remoteConfig);
+          if (Array.isArray(remoteConfig.branches)) {
+            safeStorage.setJSON(StorageKeys.CLINIC_BRANCHES, remoteConfig.branches);
+            window.dispatchEvent(new CustomEvent('soli_branches_updated', { detail: remoteConfig.branches }));
+          }
           window.dispatchEvent(new Event('soli_prescription_updated'));
         }
       },
@@ -205,11 +209,15 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
     return () => unsubscribe();
   }, []);
 
-  // Instantly reflect prescription configuration changes (including doctor name) across all screens and auto-sync
+  // Instantly reflect prescription configuration changes (including doctor name and branches) across all screens and auto-sync
   const [autoSaveStatus, setAutoSaveStatus] = useState<'saved' | 'saving'>('saved');
 
   useEffect(() => {
     safeStorage.setJSON(StorageKeys.PRESCRIPTION_SETTINGS, config);
+    if (Array.isArray(config.branches)) {
+      safeStorage.setJSON(StorageKeys.CLINIC_BRANCHES, config.branches);
+      window.dispatchEvent(new CustomEvent('soli_branches_updated', { detail: config.branches }));
+    }
     window.dispatchEvent(new Event('soli_prescription_updated'));
     window.dispatchEvent(new Event('storage'));
 
@@ -337,7 +345,12 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
         });
       }
       safeStorage.setJSON(StorageKeys.PRESCRIPTION_SETTINGS, config);
-      setToastMessage('تم حفظ وتزامن إعدادات الروشتة وبيانات الطبيب بنجاح عبر جميع الحسابات!');
+      if (Array.isArray(config.branches)) {
+        safeStorage.setJSON(StorageKeys.CLINIC_BRANCHES, config.branches);
+        window.dispatchEvent(new CustomEvent('soli_branches_updated', { detail: config.branches }));
+      }
+      window.dispatchEvent(new Event('soli_prescription_updated'));
+      setToastMessage('تم حفظ وتزامن إعدادات الروشتة وفروع العيادة وبيانات الطبيب بنجاح عبر جميع الحسابات!');
       setTimeout(() => setToastMessage(null), 3500);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'تعذر حفظ الإعدادات');

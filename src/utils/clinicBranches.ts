@@ -164,13 +164,14 @@ export function generateBranchTimeSlots(
 
 /**
  * Returns all active branches configured in the clinic.
- * Prioritizes user settings saved in localStorage (`soli_clinic_branches` or `soli_prescription_settings`),
- * falling back to `CLINIC_INFO.branches`.
+ * Prioritizes Prescription Settings (`soli_prescription_settings`) as the Single Source of Truth,
+ * falling back to custom branches (`soli_clinic_branches`) and `CLINIC_INFO.branches`.
  */
 export function getClinicBranches(): ClinicBranchItem[] {
-  const customBranches = safeStorage.getJSON<any[] | null>(StorageKeys.CLINIC_BRANCHES, null);
-  if (Array.isArray(customBranches) && customBranches.length > 0) {
-    return customBranches.map((b: any, index: number) => {
+  // 1. Single Source of Truth: Prescription Settings (فروع العيادة بالتذييل في إعدادات الروشتة)
+  const cachedRx = safeStorage.getJSON<any | null>(StorageKeys.PRESCRIPTION_SETTINGS, null);
+  if (cachedRx && Array.isArray(cachedRx.branches) && cachedRx.branches.length > 0) {
+    return cachedRx.branches.map((b: any, index: number) => {
       const parsed = extractTimesFromWorkingHours(b.workingHours);
       return {
         id: b.id || `branch-${index}`,
@@ -185,9 +186,10 @@ export function getClinicBranches(): ClinicBranchItem[] {
     });
   }
 
-  const cached = safeStorage.getJSON<any | null>(StorageKeys.PRESCRIPTION_SETTINGS, null);
-  if (cached && Array.isArray(cached.branches) && cached.branches.length > 0) {
-    return cached.branches.map((b: any, index: number) => {
+  // 2. Secondary fallback: custom branches if cached
+  const customBranches = safeStorage.getJSON<any[] | null>(StorageKeys.CLINIC_BRANCHES, null);
+  if (Array.isArray(customBranches) && customBranches.length > 0) {
+    return customBranches.map((b: any, index: number) => {
       const parsed = extractTimesFromWorkingHours(b.workingHours);
       return {
         id: b.id || `branch-${index}`,

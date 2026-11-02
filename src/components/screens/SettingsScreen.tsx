@@ -10,7 +10,6 @@ import { MedicalCatalogsManager } from '../settings/MedicalCatalogsManager';
 import { UserManagementPanel } from '../settings/UserManagementPanel';
 import { RecurringTemplatesManager } from '../settings/RecurringTemplatesManager';
 import { ChangePasswordCard } from '../settings/ChangePasswordCard';
-import { ClinicBranchesPanel } from '../settings/ClinicBranchesPanel';
 import { MaintenanceCard } from '../settings/MaintenanceCard';
 import { ReadOptCard } from '../settings/ReadOptCard';
 import { APP_VERSION } from '../../constants/version';
@@ -152,7 +151,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   followUps = [],
 }) => {
   const { hasPermission, assertPermission, role, canDelete, canPerform } = usePermissions();
-  const { language, setLanguage, t, isRTL } = useLanguage();
+  const { language, t, isRTL } = useLanguage();
   const isAdmin = role === 'admin';
   const canDeleteSettings = isAdmin || canDelete('system-settings') || canPerform('system-settings', 'delete');
   const canRunMaintenance = isAdmin || role === 'doctor' || canDeleteSettings;
@@ -162,8 +161,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
   // Accordion Collapsible Open States (All folded/collapsed by default)
   const [openCards, setOpenCards] = useState<Record<string, boolean>>({
-    language: false,
-    branches: false,
     pricing: false,
     password: false,
     services: false,
@@ -572,7 +569,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               }`}
             >
               <span className="material-symbols-outlined text-base">tune</span>
-              <span>{language === 'en' ? 'General Settings & Language' : 'إعدادات النظام واللغة'}</span>
+              <span>{language === 'en' ? 'General System Settings' : 'إعدادات النظام العامة'}</span>
             </button>
 
             <button
@@ -654,161 +651,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       {activeSettingsSection === 'general' && (
         <div className="w-full max-w-4xl mx-auto flex flex-col gap-4">
             
-            {/* ACCORDION CARD 0: System Language & Translation (لغة النظام والواجهة) */}
-            <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
-              <button
-                type="button"
-                onClick={() => toggleCard('language')}
-                className={`w-full p-5 flex items-center justify-between ${isRTL ? 'text-right' : 'text-left'} cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5 transition-colors`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-teal-50 dark:bg-[#00c2cb]/15 text-[#008f97] dark:text-[#00c2cb] flex items-center justify-center font-bold">
-                    <span className="material-symbols-outlined text-xl">translate</span>
-                  </div>
-                  <div>
-                    <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                      <span>{language === 'en' ? '1. System Language & Localization' : '1. لغة النظام والواجهة (Language)'}</span>
-                      <span className="text-[10px] bg-teal-500/10 text-[#008f97] dark:text-[#00c2cb] px-2 py-0.5 rounded-full border border-teal-500/20 font-bold">
-                        {language === 'en' ? 'English' : 'العربية'}
-                      </span>
-                    </h2>
-                    <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
-                      {language === 'en'
-                        ? 'Switch interface language between Arabic and English with instant RTL/LTR support'
-                        : 'التبديل الفوري بين واجهة اللغة العربية والإنجليزية مع دعم كامل للاتجاه والمصطلحات الطبية'}
-                    </p>
-                  </div>
-                </div>
-                <span
-                  className="material-symbols-outlined text-slate-400 text-2xl transition-transform duration-200"
-                  style={{ transform: openCards.language ? 'rotate(180deg)' : 'rotate(0deg)' }}
-                >
-                  expand_more
-                </span>
-              </button>
-
-              {openCards.language && (
-                <div className="p-5 pt-0 border-t border-slate-100 dark:border-white/5 space-y-4 text-xs">
-                  <div className="pt-3">
-                    <p className="font-bold text-slate-800 dark:text-[#dde2f5] mb-3">
-                      {language === 'en' ? 'Select Active System Language:' : 'اختر لغة واجهة النظام الحالية:'}
-                    </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {/* Arabic Option */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setLanguage('ar');
-                          setSavedToast('تم تحويل لغة النظام إلى العربية بنجاح ✓');
-                          setTimeout(() => setSavedToast(null), 3000);
-                        }}
-                        className={`p-4 rounded-xl border-2 transition-all flex items-start gap-3 cursor-pointer text-right ${
-                          language === 'ar'
-                            ? 'border-[#00c2cb] bg-[#00c2cb]/10 dark:bg-[#00c2cb]/15 shadow-sm'
-                            : 'border-slate-200 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20 bg-slate-50/50 dark:bg-[#18233C]/50'
-                        }`}
-                      >
-                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 ${
-                          language === 'ar' ? 'border-[#00c2cb] bg-[#00c2cb]' : 'border-slate-400'
-                        }`}>
-                          {language === 'ar' && <span className="w-2 h-2 rounded-full bg-white"></span>}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="font-bold text-sm text-slate-900 dark:text-[#dde2f5]">العربية (Arabic)</span>
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-700 dark:text-[#45dee7] font-bold">الافتراضية RTL</span>
-                          </div>
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                            واجهة النظام باللغة العربية مع دعم كامل للاتجاه من اليمين لليسار.
-                          </p>
-                        </div>
-                      </button>
-
-                      {/* English Option */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setLanguage('en');
-                          setSavedToast('System language switched to English successfully ✓');
-                          setTimeout(() => setSavedToast(null), 3000);
-                        }}
-                        className={`p-4 rounded-xl border-2 transition-all flex items-start gap-3 cursor-pointer text-left ${
-                          language === 'en'
-                            ? 'border-[#00c2cb] bg-[#00c2cb]/10 dark:bg-[#00c2cb]/15 shadow-sm'
-                            : 'border-slate-200 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20 bg-slate-50/50 dark:bg-[#18233C]/50'
-                        }`}
-                      >
-                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 ${
-                          language === 'en' ? 'border-[#00c2cb] bg-[#00c2cb]' : 'border-slate-400'
-                        }`}>
-                          {language === 'en' && <span className="w-2 h-2 rounded-full bg-white"></span>}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="font-bold text-sm text-slate-900 dark:text-[#dde2f5]">English (الإنجليزية)</span>
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 font-bold">LTR Layout</span>
-                          </div>
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                            Professional English interface with standardized clinical terminology and LTR layout.
-                          </p>
-                        </div>
-                      </button>
-                    </div>
-
-                    <div className="mt-3 p-3 rounded-xl bg-slate-50 dark:bg-[#18233C] border border-slate-200 dark:border-white/5 text-[11px] text-slate-600 dark:text-slate-300 flex items-center gap-2">
-                      <span className="material-symbols-outlined text-[#00c2cb] text-base shrink-0">info</span>
-                      <span>
-                        {language === 'en'
-                          ? 'Note: Switching languages updates navigation, buttons, titles, and system screens immediately. Patient data and clinical notes remain in their original recorded text.'
-                          : 'ملاحظة: تغيير لغة النظام يغير فوراً كافة القوائم والأزرار والعناوين في النظام مع الحفاظ التام على بيانات المرضى والملاحظات الطبية المدخلة كما هي.'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* ACCORDION CARD: Clinic Branches & Contact Details (فروع العيادة والعناوين وأرقام التواصل) */}
-            <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
-              <button
-                type="button"
-                onClick={() => toggleCard('branches')}
-                className={`w-full p-5 flex items-center justify-between ${isRTL ? 'text-right' : 'text-left'} cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5 transition-colors`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-teal-50 dark:bg-[#00c2cb]/15 text-[#008f97] dark:text-[#00c2cb] flex items-center justify-center font-bold">
-                    <span className="material-symbols-outlined text-xl">apartment</span>
-                  </div>
-                  <div>
-                    <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                      <span>{language === 'en' ? '2. Clinic Branches & Official Contacts' : '2. فروع العيادة والعناوين وأرقام التواصل'}</span>
-                      <span className="text-[10px] bg-teal-500/10 text-[#008f97] dark:text-[#00c2cb] px-2 py-0.5 rounded-full border border-teal-500/20 font-bold">
-                        {language === 'en' ? 'Branches & WhatsApp' : 'الفروع والواتساب'}
-                      </span>
-                    </h2>
-                    <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
-                      {language === 'en'
-                        ? 'Manage clinic branches, addresses, reservation phone numbers, and working hours used in reminders & Rx'
-                        : 'إدارة وتعديل فروع العيادة، العناوين الحقيقية، أرقام هواتف تأكيد الحجز ومواعيد العمل المستخدمة في رسائل الواتساب والروشتة'}
-                    </p>
-                  </div>
-                </div>
-                <span
-                  className="material-symbols-outlined text-slate-400 text-2xl transition-transform duration-200"
-                  style={{ transform: openCards.branches ? 'rotate(180deg)' : 'rotate(0deg)' }}
-                >
-                  expand_more
-                </span>
-              </button>
-
-              {openCards.branches && (
-                <div className="p-5 pt-2 border-t border-slate-100 dark:border-white/5">
-                  <ClinicBranchesPanel />
-                </div>
-              )}
-            </div>
-
-            {/* ACCORDION CARD 2: Visit Pricing & Types (تسعير الكشوفات وأنواع الزيارات) */}
+            {/* ACCORDION CARD 1: Visit Pricing & Types (تسعير الكشوفات وأنواع الزيارات) */}
             <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
               <button
                 type="button"
@@ -821,7 +664,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                      <span>{language === 'en' ? '2. Visit Pricing & Types' : '2. تسعير الكشوفات وأنواع الزيارات'}</span>
+                      <span>{language === 'en' ? '1. Visit Pricing & Types' : '1. تسعير الكشوفات وأنواع الزيارات'}</span>
                       <span className="text-[10px] bg-teal-500/10 text-[#008f97] dark:text-[#00c2cb] px-2 py-0.5 rounded-full border border-teal-500/20 font-bold">
                         {visitTypesList.length} {language === 'en' ? 'types' : 'أنواع زيارات'}
                       </span>
@@ -947,14 +790,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               )}
             </div>
 
-            {/* ACCORDION CARD 3: Change Password Card */}
+            {/* ACCORDION CARD 2: Change Password Card */}
             <ChangePasswordCard
-              cardNumber={3}
+              cardNumber={2}
               isOpen={!!openCards.password}
               onToggle={() => toggleCard('password')}
             />
 
-            {/* ACCORDION CARD 4: Medical Services & Pricing */}
+            {/* ACCORDION CARD 3: Medical Services & Pricing */}
             <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
               <button
                 type="button"
@@ -967,7 +810,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                      <span>4. خدمات وبنود الوارد (الخدمات الطبية والتسعير)</span>
+                      <span>3. خدمات وبنود الوارد (الخدمات الطبية والتسعير)</span>
                       <span className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20 font-bold">
                         {medicalServicesList.length} خدمة طبية
                       </span>
@@ -1142,7 +985,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                      <span>5. بنود المنصرف (مصروفات العيادة)</span>
+                      <span>4. بنود المنصرف (مصروفات العيادة)</span>
                       <span className="text-[10px] bg-rose-500/10 text-rose-600 dark:text-rose-400 px-2 py-0.5 rounded-full border border-rose-500/20 font-bold">
                         {expenseCategoriesList.length} بنود مصروفات
                       </span>
@@ -1269,7 +1112,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                      <span>6. نظام التنبيهات والأصوات المتقدم</span>
+                      <span>5. نظام التنبيهات والأصوات المتقدم</span>
                       <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20 font-bold">
                         {alertConfig.audioEnabled ? 'الصوت يعمل ✓' : 'الصوت صامت'}
                       </span>
@@ -1496,7 +1339,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">
-                      7. تخصيص أقسام شاشة الكشف الطبي (عرض وإخفاء)
+                      6. تخصيص أقسام شاشة الكشف الطبي (عرض وإخفاء)
                     </h2>
                     <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
                       إظهار أو إخفاء أقسام العلامات الحيوية والتحاليل والأشعة بغرفة الكشف (تحفظ تلقائياً)
@@ -1648,7 +1491,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                      <span>8. القوائم المتكررة وبروتوكولات الروشتة</span>
+                      <span>7. القوائم المتكررة وبروتوكولات الروشتة</span>
                       <span className="px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-bold text-[10px]">
                         {savedTemplates.length} قائمة وبروتوكول
                       </span>
@@ -1693,7 +1536,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                      <span>9. إدارة البيانات والبيانات التجريبية</span>
+                      <span>8. إدارة البيانات والبيانات التجريبية</span>
                       <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-[#F59E0B] px-2 py-0.5 rounded-full border border-amber-500/20 font-bold">
                         أدوات المطورين والتهيئة
                       </span>
@@ -1861,7 +1704,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               )}
             </div>
 
-            {/* ACCORDION CARD 10: Cloud Backup & Data Export */}
+            {/* ACCORDION CARD 9: Cloud Backup & Data Export */}
             <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
               <button
                 type="button"
@@ -1874,7 +1717,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
-                      <span>10. النسخ الاحتياطي السحابي وتصدير واستيراد البيانات</span>
+                      <span>9. النسخ الاحتياطي السحابي وتصدير واستيراد البيانات</span>
                       <span className="text-[10px] bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 px-2 py-0.5 rounded-full border border-cyan-500/20 font-bold">
                         Firestore Cloud Sync
                       </span>
