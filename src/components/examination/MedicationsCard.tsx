@@ -1,4 +1,4 @@
-import React, { useState, useTransition, useMemo } from 'react';
+import React, { useState, useTransition, useMemo, useEffect, useRef } from 'react';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { DrugCatalogItem, PrescriptionItem } from '../../types';
 import {
@@ -54,9 +54,53 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
   const [newNotes, setNewNotes] = useState('');
   const [saveToFavorites, setSaveToFavorites] = useState(false);
 
-  // Search results
-  const searchResults = useMemo(() => {
-    return searchClinicalDrugs(searchQuery, drugCatalog);
+  // Search results with live online API support
+  const [searchResults, setSearchResults] = useState<{
+    clinicMatches: ClinicalSearchResult<DrugCatalogItem>[];
+    archiveMatches: ClinicalSearchResult<StandardDrugRecord>[];
+    apiMatches: ClinicalSearchResult<StandardDrugRecord>[];
+  }>({
+    clinicMatches: [],
+    archiveMatches: [],
+    apiMatches: [],
+  });
+  const [isSearchingOnline, setIsSearchingOnline] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    if (!searchQuery.trim()) {
+      setSearchResults({
+        clinicMatches: [],
+        archiveMatches: [],
+        apiMatches: [],
+      });
+      setIsSearchingOnline(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    setIsSearchingOnline(true);
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await searchClinicalDrugs(searchQuery, drugCatalog, controller.signal);
+        setSearchResults(res);
+      } catch (_e) {
+        // Aborted or error
+      } finally {
+        setIsSearchingOnline(false);
+      }
+    }, 150);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [searchQuery, drugCatalog]);
 
   const favoriteDrugs = useMemo(() => {
@@ -214,7 +258,9 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
   };
 
   const totalResultsCount =
-    searchResults.clinicMatches.length + searchResults.archiveMatches.length;
+    searchResults.clinicMatches.length +
+    searchResults.archiveMatches.length +
+    (searchResults.apiMatches?.length || 0);
 
   return (
     <div className="bg-white dark:bg-[#111A2E] p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm space-y-5">
@@ -366,13 +412,13 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
 
       {/* TOP SEARCH BAR */}
       <div className="p-3 bg-teal-50/40 dark:bg-[#080e1b]/80 rounded-2xl border border-[#00c2cb]/30 space-y-3 shadow-xs">
-        <div className="relative">
+        <div className="relative flex items-center">
           <input
             type="text"
             placeholder={
               language === 'en'
-                ? 'Search by trade or generic name (e.g. Concor, Panadol, أوجمنتين, كونكور)...'
-                : 'ابحث بالاسم التجاري أو العلمي أو بالعربية (مثل كونكور، بنادول، أوجمنتين، كتافلام)...'
+                ? 'Search by trade or generic name (e.g. Concor, Panadol, Augmentin, Cataflam, Betaserc)...'
+                : 'ابحث بالاسم التجاري أو العلمي أو بالعربية (مثل كونكور، بنادول، أوجمنتين، كتافلام، بيتاسيرك)...'
             }
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -382,13 +428,23 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
                 handleQuickAdd();
               }
             }}
-            className="w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-sm p-3.5 pr-11 pl-28 rounded-xl border border-slate-200 dark:border-white/10 focus:border-[#00c2cb] focus:outline-none focus:ring-2 focus:ring-[#00c2cb]/20 font-bold transition-all"
+            className={`w-full bg-white dark:bg-[#111A2E] text-slate-900 dark:text-[#dde2f5] text-sm p-3.5 rounded-xl border border-slate-200 dark:border-white/10 focus:border-[#00c2cb] focus:outline-none focus:ring-2 focus:ring-[#00c2cb]/20 font-bold transition-all ${
+              language === 'en' ? 'pl-11 pr-28' : 'pr-11 pl-28'
+            }`}
           />
-          <span className="material-symbols-outlined absolute right-3.5 top-3.5 text-teal-600 dark:text-[#00c2cb] text-xl">
+          <span
+            className={`material-symbols-outlined absolute ${
+              language === 'en' ? 'left-3.5' : 'right-3.5'
+            } text-teal-600 dark:text-[#00c2cb] text-xl pointer-events-none`}
+          >
             medication
           </span>
 
-          <div className="absolute left-2 top-2 flex items-center gap-1">
+          <div
+            className={`absolute ${
+              language === 'en' ? 'right-2' : 'left-2'
+            } top-2 flex items-center gap-1`}
+          >
             {searchQuery && (
               <button
                 type="button"
@@ -422,18 +478,35 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
                 </span>
               </span>
               <span className="font-mono text-teal-600 dark:text-[#00c2cb] font-bold">
-                {language === 'en'
-                  ? `${totalResultsCount} matching drugs`
-                  : `${totalResultsCount} دواء مطابق`}
+                {isSearchingOnline
+                  ? language === 'en'
+                    ? 'Searching Egyptian Drug Archive...'
+                    : 'جاري البحث في أرشيف الدواء...'
+                  : `${totalResultsCount} ${
+                      language === 'en'
+                        ? totalResultsCount === 1
+                          ? 'matching drug'
+                          : 'matching drugs'
+                        : 'دواء مطابق'
+                    }`}
               </span>
             </div>
 
-            {totalResultsCount === 0 ? (
+            {isSearchingOnline && totalResultsCount === 0 ? (
+              <div className="py-4 text-center text-xs text-[#00c2cb] font-bold flex items-center justify-center gap-2">
+                <span className="w-4 h-4 border-2 border-[#00c2cb] border-t-transparent rounded-full animate-spin"></span>
+                <span>
+                  {language === 'en'
+                    ? 'Searching Egyptian Drug Authority database...'
+                    : 'جاري البحث في قاعدة بيانات الدواء المصري...'}
+                </span>
+              </div>
+            ) : totalResultsCount === 0 ? (
               <div className="py-4 text-center text-xs text-slate-500 space-y-2">
                 <p>
                   {language === 'en'
-                    ? `No medications found in clinic or EDA archive matching "${searchQuery}".`
-                    : `لم يتم العثور على أدوية في دليلي أو الأرشيف المصري مطابقة لـ "${searchQuery}".`}
+                    ? `No medications found matching "${searchQuery}".`
+                    : `لم يتم العثور على أدوية مطابقة لـ "${searchQuery}".`}
                 </p>
                 <div className="flex items-center justify-center gap-2">
                   <button
@@ -441,7 +514,9 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
                     onClick={handleQuickAdd}
                     className="px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs cursor-pointer shadow-xs"
                   >
-                    + إضافة &quot;{searchQuery}&quot; للروشتة مباشرة
+                    {language === 'en'
+                      ? `+ Add "${searchQuery}" to prescription directly`
+                      : `+ إضافة "${searchQuery}" للروشتة مباشرة`}
                   </button>
                   <button
                     type="button"
@@ -451,7 +526,9 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
                     }}
                     className="px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-white/10 hover:bg-slate-200 text-slate-700 dark:text-slate-200 font-bold text-xs cursor-pointer"
                   >
-                    + تخصيص وحفظ في دليلي
+                    {language === 'en'
+                      ? '+ Customize & Save to Catalog'
+                      : '+ تخصيص وحفظ في دليلي'}
                   </button>
                 </div>
               </div>
@@ -461,7 +538,11 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
                 {searchResults.clinicMatches.length > 0 && (
                   <div className="space-y-1.5">
                     <div className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                      <span>🏥 من دليلي (دليل العيادة)</span>
+                      <span>
+                        {language === 'en'
+                          ? '🏥 From My Catalog (Clinic)'
+                          : '🏥 من دليلي (دليل العيادة)'}
+                      </span>
                       <span>({searchResults.clinicMatches.length})</span>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -469,7 +550,7 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
                         <div
                           key={`cl-res-${item.id}`}
                           onClick={() => handleAddFromCatalog(item)}
-                          className="p-3 rounded-xl text-right text-xs bg-emerald-50/40 dark:bg-[#080e1b] hover:border-emerald-500 border border-emerald-200 dark:border-emerald-800/40 text-slate-800 dark:text-[#dde2f5] flex items-start justify-between cursor-pointer group transition-all"
+                          className="p-3 rounded-xl text-start text-xs bg-emerald-50/40 dark:bg-[#080e1b] hover:border-emerald-500 border border-emerald-200 dark:border-emerald-800/40 text-slate-800 dark:text-[#dde2f5] flex items-start justify-between cursor-pointer group transition-all"
                         >
                           <div className="space-y-1 flex-1">
                             <div className="flex items-center gap-1.5 flex-wrap">
@@ -477,7 +558,7 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
                                 {item.brandName}
                               </span>
                               <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">
-                                من دليلي ✓
+                                {language === 'en' ? 'In My Catalog ✓' : 'من دليلي ✓'}
                               </span>
                             </div>
                             {item.genericName && (
@@ -489,10 +570,10 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
                               </span>
                             )}
                             <span className="text-[10px] text-teal-600 dark:text-[#45dee7] block font-bold">
-                              {item.defaultDosage || 'قرص واحد يومياً'}
+                              {item.defaultDosage || (language === 'en' ? '1 tablet daily' : 'قرص واحد يومياً')}
                             </span>
                           </div>
-                          <span className="material-symbols-outlined text-emerald-600 text-base group-hover:scale-110 transition-transform mr-1">
+                          <span className="material-symbols-outlined text-emerald-600 text-base group-hover:scale-110 transition-transform ms-1">
                             add_circle
                           </span>
                         </div>
@@ -501,11 +582,15 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
                   </div>
                 )}
 
-                {/* 2. Standard Archive Matches */}
+                {/* 2. Standard Egyptian Archive Matches */}
                 {searchResults.archiveMatches.length > 0 && (
                   <div className="space-y-1.5">
                     <div className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
-                      <span>🇪🇬 الأرشيف الطبي القياسي (هيئة الدواء المصرية)</span>
+                      <span>
+                        {language === 'en'
+                          ? '🇪🇬 Egyptian Drug Archive (EDA)'
+                          : '🇪🇬 الأرشيف الطبي القياسي (هيئة الدواء المصرية)'}
+                      </span>
                       <span>({searchResults.archiveMatches.length})</span>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -513,7 +598,7 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
                         <div
                           key={`arch-res-${item.id}`}
                           onClick={() => handleAddFromCatalog(item)}
-                          className="p-3 rounded-xl text-right text-xs bg-slate-50 dark:bg-[#080e1b] hover:border-indigo-400 border border-slate-200 dark:border-white/5 text-slate-800 dark:text-[#dde2f5] flex items-start justify-between cursor-pointer group transition-all"
+                          className="p-3 rounded-xl text-start text-xs bg-slate-50 dark:bg-[#080e1b] hover:border-indigo-400 border border-slate-200 dark:border-white/5 text-slate-800 dark:text-[#dde2f5] flex items-start justify-between cursor-pointer group transition-all"
                         >
                           <div className="space-y-1 flex-1">
                             <div className="flex items-center gap-1.5 flex-wrap">
@@ -526,7 +611,7 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
                                 </span>
                               )}
                               <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">
-                                الأرشيف 🇪🇬
+                                {language === 'en' ? 'Egyptian Archive 🇪🇬' : 'الأرشيف 🇪🇬'}
                               </span>
                             </div>
                             <span
@@ -540,7 +625,7 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
                             </span>
                           </div>
 
-                          <div className="flex flex-col items-end gap-1.5 mr-1">
+                          <div className="flex flex-col items-end gap-1.5 ms-1">
                             <span className="material-symbols-outlined text-indigo-600 text-base group-hover:scale-110 transition-transform">
                               add_circle
                             </span>
@@ -548,9 +633,62 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
                               type="button"
                               onClick={(e) => handleSaveToClinicCatalog(e, item)}
                               className="px-2 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/80 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold border border-indigo-200 dark:border-indigo-800/40 cursor-pointer transition-colors whitespace-nowrap"
-                              title="حفظ في دليل العيادة للاستدعاء الدائم السريع"
+                              title={language === 'en' ? 'Save to Clinic Catalog' : 'حفظ في دليل العيادة للاستدعاء الدائم السريع'}
                             >
-                              + حفظ في دليلي
+                              {language === 'en' ? '+ Save to Catalog' : '+ حفظ في دليلي'}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. Verified Online API / RxNorm Matches */}
+                {searchResults.apiMatches.length > 0 && (
+                  <div className="space-y-1.5">
+                    <div className="text-[10px] font-bold text-cyan-600 dark:text-cyan-400 flex items-center gap-1">
+                      <span>
+                        {language === 'en'
+                          ? '🌐 Standard Drug Database (RxNorm / NIH)'
+                          : '🌐 الدليل الدوائي المعتمد (RxNorm)'}
+                      </span>
+                      <span>({searchResults.apiMatches.length})</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                      {searchResults.apiMatches.map(({ item }) => (
+                        <div
+                          key={`api-res-${item.id}`}
+                          onClick={() => handleAddFromCatalog(item)}
+                          className="p-3 rounded-xl text-start text-xs bg-cyan-50/30 dark:bg-cyan-950/20 hover:border-cyan-400 border border-cyan-200 dark:border-cyan-800/40 text-slate-800 dark:text-[#dde2f5] flex items-start justify-between cursor-pointer group transition-all"
+                        >
+                          <div className="space-y-1 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-bold text-slate-900 dark:text-[#dde2f5] group-hover:text-cyan-600">
+                                {item.brandName}
+                              </span>
+                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300">
+                                RxNorm 🌐
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-mono block" dir="ltr">
+                              {item.genericName}
+                            </span>
+                            <span className="text-[10px] text-teal-600 dark:text-[#45dee7] block font-bold">
+                              {item.defaultDosage}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-col items-end gap-1.5 ms-1">
+                            <span className="material-symbols-outlined text-cyan-600 text-base group-hover:scale-110 transition-transform">
+                              add_circle
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => handleSaveToClinicCatalog(e, item)}
+                              className="px-2 py-0.5 rounded bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-950/60 dark:hover:bg-cyan-900/80 text-cyan-700 dark:text-cyan-300 text-[10px] font-bold border border-cyan-200 dark:border-cyan-800/40 cursor-pointer transition-colors whitespace-nowrap"
+                            >
+                              {language === 'en' ? '+ Save to Catalog' : '+ حفظ في دليلي'}
                             </button>
                           </div>
                         </div>
@@ -729,7 +867,11 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/10 pb-3">
               <h3 className="font-bold text-slate-900 dark:text-[#dde2f5] text-sm flex items-center gap-2">
                 <span className="material-symbols-outlined text-[#00c2cb]">add_circle</span>
-                <span>إضافة دواء جديد وتخصيص الجرعة</span>
+                <span>
+                  {language === 'en'
+                    ? 'Add Custom Medication & Customize Dosage'
+                    : 'إضافة دواء جديد وتخصيص الجرعة'}
+                </span>
               </h3>
               <button
                 type="button"
@@ -744,26 +886,26 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
-                    الاسم التجاري للدواء *
+                    {language === 'en' ? 'Brand Name *' : 'الاسم التجاري للدواء *'}
                   </label>
                   <input
                     type="text"
                     required
                     value={newBrandName}
                     onChange={(e) => setNewBrandName(e.target.value)}
-                    placeholder="مثال: كونكور"
+                    placeholder={language === 'en' ? 'e.g. Concor' : 'مثال: كونكور'}
                     className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/10"
                   />
                 </div>
                 <div>
                   <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
-                    التركيز
+                    {language === 'en' ? 'Strength' : 'التركيز'}
                   </label>
                   <input
                     type="text"
                     value={newStrength}
                     onChange={(e) => setNewStrength(e.target.value)}
-                    placeholder="مثال: 5 ملجم"
+                    placeholder={language === 'en' ? 'e.g. 5 mg' : 'مثال: 5 ملجم'}
                     className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/10"
                   />
                 </div>
@@ -771,7 +913,9 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
 
               <div>
                 <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
-                  الاسم العلمي (المادة الفعالة)
+                  {language === 'en'
+                    ? 'Generic Name (Active Ingredient)'
+                    : 'الاسم العلمي (المادة الفعالة)'}
                 </label>
                 <input
                   type="text"
@@ -786,32 +930,48 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
-                    الشكل الصيدلي
+                    {language === 'en' ? 'Dosage Form' : 'الشكل الصيدلي'}
                   </label>
                   <select
                     value={newForm}
                     onChange={(e) => setNewForm(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/10"
                   >
-                    <option value="أقراص (Tablets)">أقراص (Tablets)</option>
-                    <option value="كبسولات (Capsules)">كبسولات (Capsules)</option>
-                    <option value="شراب (Syrup)">شراب (Syrup)</option>
-                    <option value="أمبول حقن (Ampoules)">أمبول حقن (Ampoules)</option>
-                    <option value="نقط (Drops)">نقط (Drops)</option>
-                    <option value="مرهم / كريم (Ointment/Cream)">مرهم / كريم (Cream)</option>
-                    <option value="بخاخ (Inhaler/Spray)">بخاخ (Spray)</option>
-                    <option value="فوار (Effervescent)">فوار (Effervescent)</option>
+                    <option value="أقراص (Tablets)">
+                      {language === 'en' ? 'Tablets' : 'أقراص (Tablets)'}
+                    </option>
+                    <option value="كبسولات (Capsules)">
+                      {language === 'en' ? 'Capsules' : 'كبسولات (Capsules)'}
+                    </option>
+                    <option value="شراب (Syrup)">
+                      {language === 'en' ? 'Syrup' : 'شراب (Syrup)'}
+                    </option>
+                    <option value="أمبول حقن (Ampoules)">
+                      {language === 'en' ? 'Ampoules' : 'أمبول حقن (Ampoules)'}
+                    </option>
+                    <option value="نقط (Drops)">
+                      {language === 'en' ? 'Oral Drops' : 'نقط (Drops)'}
+                    </option>
+                    <option value="مرهم / كريم (Ointment/Cream)">
+                      {language === 'en' ? 'Cream / Ointment' : 'مرهم / كريم (Cream)'}
+                    </option>
+                    <option value="بخاخ (Inhaler/Spray)">
+                      {language === 'en' ? 'Inhaler / Spray' : 'بخاخ (Spray)'}
+                    </option>
+                    <option value="فوار (Effervescent)">
+                      {language === 'en' ? 'Effervescent Sachets' : 'فوار (Effervescent)'}
+                    </option>
                   </select>
                 </div>
                 <div>
                   <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
-                    الجرعة الافتراضية
+                    {language === 'en' ? 'Default Dosage' : 'الجرعة الافتراضية'}
                   </label>
                   <input
                     type="text"
                     value={newDosage}
                     onChange={(e) => setNewDosage(e.target.value)}
-                    placeholder="قرص واحد يومياً"
+                    placeholder={language === 'en' ? '1 tablet daily' : 'قرص واحد يومياً'}
                     className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/10"
                   />
                 </div>
@@ -830,7 +990,9 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
                     htmlFor="saveToFavMed"
                     className="text-xs font-bold text-slate-800 dark:text-slate-200 cursor-pointer"
                   >
-                    حفظ الدواء في دليلي (دليل العيادة) لاستدعائه مستقبلاً بنقرة واحدة
+                    {language === 'en'
+                      ? 'Save medication to My Clinic Catalog for 1-click future orders'
+                      : 'حفظ الدواء في دليلي (دليل العيادة) لاستدعائه مستقبلاً بنقرة واحدة'}
                   </label>
                 </div>
               </div>
@@ -841,13 +1003,13 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
                   onClick={() => setShowAddCustomModal(false)}
                   className="px-4 py-2 rounded-xl text-xs font-bold text-slate-500 hover:text-slate-700"
                 >
-                  إلغاء
+                  {language === 'en' ? 'Cancel' : 'إلغاء'}
                 </button>
                 <button
                   type="submit"
                   className="px-5 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs font-bold shadow-xs cursor-pointer"
                 >
-                  إضافة للروشتة
+                  {language === 'en' ? 'Add to Prescription' : 'إضافة للروشتة'}
                 </button>
               </div>
             </form>

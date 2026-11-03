@@ -2994,6 +2994,9 @@ function ClinicApp() {
                   currentVisitId={
                     visitsCanonical.find(
                       (v) => v.patientId === activeExamPatient?.id && (v.status === 'IN_PROGRESS' || v.status === 'WAITING'),
+                    )?.visitId ||
+                    visitsCanonical.find(
+                      (v) => v.patientId === activeExamPatient?.id,
                     )?.visitId
                   }
                 />

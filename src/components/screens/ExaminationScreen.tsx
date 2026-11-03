@@ -355,13 +355,13 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
     setEditablePatientBloodType(patient?.bloodType || 'غير محدد');
   }, [patient?.id, patient?.chiefComplaint, patient?.chronicConditions, patient?.name, patient?.phone, patient?.age, patient?.gender, patient?.address, patient?.bloodType]);
 
-  // EMR-01: Strictly isolate clinical exam state whenever switching to a different patient or visit
-  const prevPatientVisitKeyRef = React.useRef<string>(`${patient?.id || ''}:${currentVisitId || ''}`);
+  // EMR-01: Strictly isolate clinical exam state whenever switching to a different patient
+  const prevPatientIdRef = React.useRef<string>(patient?.id || '');
   useEffect(() => {
-    const nextKey = `${patient?.id || ''}:${currentVisitId || ''}`;
-    if (prevPatientVisitKeyRef.current !== nextKey) {
-      const prevPatientId = prevPatientVisitKeyRef.current.split(':')[0];
-      prevPatientVisitKeyRef.current = nextKey;
+    const currentPatientId = patient?.id || '';
+    if (prevPatientIdRef.current !== currentPatientId) {
+      const prevPatientId = prevPatientIdRef.current;
+      prevPatientIdRef.current = currentPatientId;
 
       setExamVitals(initialExamVitals || {});
       setPhysicalExam('');
@@ -379,11 +379,11 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
       setCustomSymptomInput('');
 
       // If switching to a different patient, clear active prescription pad items from previous patient
-      if (prevPatientId && prevPatientId !== (patient?.id || '') && onChangeActivePrescription) {
+      if (prevPatientId && prevPatientId !== currentPatientId && onChangeActivePrescription) {
         onChangeActivePrescription([]);
       }
     }
-  }, [patient?.id, currentVisitId, initialExamVitals, onChangeActivePrescription]);
+  }, [patient?.id, initialExamVitals, onChangeActivePrescription]);
 
   // Derive previous visit details for the current patient
   const {
@@ -1830,16 +1830,18 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                    تم اعتماد وإنهاء الكشف الطبي بنجاح
+                    {language === 'en'
+                      ? 'Clinical Examination Approved & Completed Successfully'
+                      : 'تم اعتماد وإنهاء الكشف الطبي بنجاح'}
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-[#859394]">
-                    المريض: {patient?.name || 'مريض غير محدد'} • #{patient?.fileNumber || '-'} • الطبيب المعالج: {CLINIC_INFO.doctorName}
+                    {language === 'en' ? 'Patient:' : 'المريض:'} {patient?.name || (language === 'en' ? 'Unspecified' : 'مريض غير محدد')} • #{patient?.fileNumber || '-'} • {language === 'en' ? 'Attending Physician:' : 'الطبيب المعالج:'} {CLINIC_INFO.doctorName}
                   </p>
                 </div>
               </div>
 
               <span className="px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold text-xs border border-emerald-500/20">
-                حالة الزيارة: مكتملة ✓
+                {language === 'en' ? 'Visit Status: Completed ✓' : 'حالة الزيارة: مكتملة ✓'}
               </span>
             </div>
 
@@ -1847,42 +1849,60 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 space-y-1">
                 <span className="text-[11px] font-bold text-slate-500 dark:text-[#859394] block">
-                  التشخيص المعتمد:
+                  {language === 'en' ? 'Approved Diagnosis:' : 'التشخيص المعتمد:'}
                 </span>
                 <p className="text-xs font-bold text-slate-900 dark:text-white">
-                  {patientDiagnoses.find((d) => d.isPrimary)?.nameAr || patientDiagnoses[0]?.nameAr || 'كشف واستشارة'}
+                  {language === 'en' && patientDiagnoses.find((d) => d.isPrimary)?.nameEn
+                    ? patientDiagnoses.find((d) => d.isPrimary)?.nameEn
+                    : patientDiagnoses.find((d) => d.isPrimary)?.nameAr ||
+                      patientDiagnoses[0]?.nameAr ||
+                      (language === 'en' ? 'Consultation & Examination' : 'كشف واستشارة')}
                 </p>
                 {complaint && (
                   <p className="text-[11px] text-slate-500 dark:text-[#859394] line-clamp-1">
-                    الشكوى: {complaint}
+                    {language === 'en' ? 'Complaint:' : 'الشكوى:'} {complaint}
                   </p>
                 )}
               </div>
 
               <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 space-y-1">
                 <span className="text-[11px] font-bold text-slate-500 dark:text-[#859394] block">
-                  الأدوية الموصوفة ({activePrescription.length}):
+                  {language === 'en'
+                    ? `Prescribed Medications (${activePrescription.length}):`
+                    : `الأدوية الموصوفة (${activePrescription.length}):`}
                 </span>
                 <p className="text-xs text-slate-900 dark:text-white truncate">
                   {activePrescription.length > 0
                     ? activePrescription.map((m) => m.drugName).join('، ')
+                    : language === 'en'
+                    ? 'No medications prescribed'
                     : 'لم تُحرر أدوية'}
                 </p>
               </div>
 
               <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 space-y-1">
                 <span className="text-[11px] font-bold text-slate-500 dark:text-[#859394] block">
-                  الفحوصات والاستشارة القادمة:
+                  {language === 'en' ? 'Tests & Follow-up:' : 'الفحوصات والاستشارة القادمة:'}
                 </span>
                 <p className="text-xs text-slate-700 dark:text-[#dde2f5]">
-                  التحاليل: {labOrders.length > 0 ? labOrders.map((l) => l.testName).join('، ') : 'لا يوجد'}
+                  {language === 'en' ? 'Labs:' : 'التحاليل:'}{' '}
+                  {labOrders.length > 0
+                    ? labOrders.map((l) => l.testName).join('، ')
+                    : language === 'en'
+                    ? 'None'
+                    : 'لا يوجد'}
                 </p>
                 <p className="text-xs text-slate-700 dark:text-[#dde2f5]">
-                  الأشعة: {radiologyOrders.length > 0 ? radiologyOrders.map((r) => r.name).join('، ') : 'لا يوجد'}
+                  {language === 'en' ? 'Radiology:' : 'الأشعة:'}{' '}
+                  {radiologyOrders.length > 0
+                    ? radiologyOrders.map((r) => r.name).join('، ')
+                    : language === 'en'
+                    ? 'None'
+                    : 'لا يوجد'}
                 </p>
                 {followupDate && (
                   <p className="text-xs font-bold text-amber-600 dark:text-amber-400">
-                    موعد الاستشارة القادمة: {followupDate}
+                    {language === 'en' ? 'Next Consultation Date:' : 'موعد الاستشارة القادمة:'} {followupDate}
                   </p>
                 )}
               </div>
@@ -1891,18 +1911,20 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
             {/* Bottom buttons inside the completed card */}
             <div className="pt-4 border-t border-slate-100 dark:border-white/5 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
               <span className="text-xs text-slate-500 dark:text-[#859394]">
-                تم حفظ بيانات الزيارة وتحديث رصيد العيادة وقائمة الانتظار بنجاح.
+                {language === 'en'
+                  ? 'Visit data, clinic balance, and queue updated successfully.'
+                  : 'تم حفظ بيانات الزيارة وتحديث رصيد العيادة وقائمة الانتظار بنجاح.'}
               </span>
               <div className="flex flex-wrap items-center gap-2">
                 {/* WhatsApp Button */}
                 <button
                   type="button"
                   onClick={() => setShowWhatsAppModal(true)}
-                  className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
-                  title="إرسال عبر الواتساب"
+                  className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+                  title={language === 'en' ? 'Send via WhatsApp' : 'إرسال عبر الواتساب'}
                 >
                   <span className="material-symbols-outlined text-base">chat</span>
-                  <span>واتساب الروشتة</span>
+                  <span>{language === 'en' ? 'WhatsApp Rx' : 'واتساب الروشتة'}</span>
                 </button>
 
                 {/* Direct Print Button */}
@@ -1910,10 +1932,10 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                   type="button"
                   onClick={handleDirectPrint}
                   className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95 dark:bg-slate-700 dark:hover:bg-slate-600"
-                  title="الطباعة الفورية على الطابعة الموصلة"
+                  title={language === 'en' ? 'Print Directly' : 'الطباعة الفورية على الطابعة الموصلة'}
                 >
                   <span className="material-symbols-outlined text-base">print</span>
-                  <span>طباعة مباشرة</span>
+                  <span>{language === 'en' ? 'Direct Print' : 'طباعة مباشرة'}</span>
                 </button>
 
                 {/* Preview Button */}
@@ -1921,10 +1943,10 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                   type="button"
                   onClick={() => setShowPrintPreviewModal(true)}
                   className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] hover:bg-slate-200 dark:hover:bg-[#242a38] text-xs font-bold transition-all cursor-pointer border border-slate-200 dark:border-white/5"
-                  title="معاينة شكل التنسيق والهوامش للروشتة"
+                  title={language === 'en' ? 'Preview prescription' : 'معاينة شكل التنسيق والهوامش للروشتة'}
                 >
                   <span className="material-symbols-outlined text-base">visibility</span>
-                  <span>معاينة الروشتة</span>
+                  <span>{language === 'en' ? 'Preview Rx' : 'معاينة الروشتة'}</span>
                 </button>
 
                 {/* Export PDF Button */}
@@ -1932,10 +1954,10 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                   type="button"
                   onClick={handleExportPDF}
                   className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-950 text-white text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95 dark:bg-slate-800 dark:hover:bg-slate-900"
-                  title="تصدير كملف PDF بقياس A5 وأبعاد دقيقة"
+                  title={language === 'en' ? 'Export as A5 PDF' : 'تصدير كملف PDF بقياس A5 وأبعاد دقيقة'}
                 >
                   <span className="material-symbols-outlined text-base text-red-400">picture_as_pdf</span>
-                  <span>تصدير PDF</span>
+                  <span>{language === 'en' ? 'Export PDF' : 'تصدير PDF'}</span>
                 </button>
 
                 {/* Next Patient Button */}
@@ -1945,7 +1967,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                   className="flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs font-bold transition-all cursor-pointer shadow-md"
                 >
                   <span className="material-symbols-outlined text-base">arrow_forward</span>
-                  <span>الانتقال للمريض التالي</span>
+                  <span>{language === 'en' ? 'Next Patient' : 'الانتقال للمريض التالي'}</span>
                 </button>
               </div>
             </div>
@@ -1956,26 +1978,50 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
       {/* Floating Bottom Action Bar */}
       <div className={`fixed bottom-0 ${isRTL ? 'right-0 lg:right-72 left-0' : 'left-0 lg:left-72 right-0'} z-40 bg-white/95 dark:bg-[#080e1b]/95 backdrop-blur-md border-t border-slate-200 dark:border-white/10 p-3 sm:p-4 shadow-2xl transition-all`}>
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center gap-3 text-right w-full sm:w-auto">
+          <div className="flex items-center gap-3 text-start w-full sm:w-auto">
             <span className="text-xs font-bold text-slate-800 dark:text-[#dde2f5] shrink-0">
-              {isExamFinished ? '✅ الكشف مكتمل ومعتمد:' : 'جلسة الكشف الحالية:'}
+              {isExamFinished
+                ? language === 'en'
+                  ? '✅ Exam Completed & Verified:'
+                  : '✅ الكشف مكتمل ومعتمد:'
+                : language === 'en'
+                ? 'Current Examination Session:'
+                : 'جلسة الكشف الحالية:'}
             </span>
             <span className="text-xs text-slate-500 dark:text-[#859394] truncate">
-              {patient?.name || 'كشف حر'} • {patientDiagnoses.find((d) => d.isPrimary)?.nameAr || 'في انتظار اختيار التشخيص'}
+              {patient?.name || (language === 'en' ? 'Walk-in' : 'كشف حر')} •{' '}
+              {patientDiagnoses.find((d) => d.isPrimary)
+                ? (language === 'en' && patientDiagnoses.find((d) => d.isPrimary)?.nameEn
+                    ? patientDiagnoses.find((d) => d.isPrimary)?.nameEn
+                    : patientDiagnoses.find((d) => d.isPrimary)?.nameAr)
+                : language === 'en'
+                ? 'Awaiting diagnosis selection'
+                : 'في انتظار اختيار التشخيص'}
             </span>
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto">
             {/* Finish or Next Patient Button */}
             {isExamFinished ? (
-              <button
-                type="button"
-                onClick={() => onNavigate('waiting-queue')}
-                className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-6 py-3 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs sm:text-sm font-bold shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95"
-              >
-                <span className="material-symbols-outlined text-lg">arrow_forward</span>
-                <span>المريض التالي (الانتظار)</span>
-              </button>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={handleFinish}
+                  className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs sm:text-sm font-bold shadow-md transition-all cursor-pointer active:scale-95"
+                  title={language === 'en' ? 'Save Changes' : 'حفظ التعديلات'}
+                >
+                  <span className="material-symbols-outlined text-base">save</span>
+                  <span>{language === 'en' ? 'Save Changes' : 'حفظ التعديلات'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onNavigate('waiting-queue')}
+                  className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs sm:text-sm font-bold shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95"
+                >
+                  <span className="material-symbols-outlined text-base">arrow_forward</span>
+                  <span>{language === 'en' ? 'Next Patient (Queue)' : 'المريض التالي (الانتظار)'}</span>
+                </button>
+              </div>
             ) : (
               <PermissionGate permission="clinical.complete">
                 <button
@@ -1984,7 +2030,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                   className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-6 py-3 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs sm:text-sm font-bold shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95"
                 >
                   <span className="material-symbols-outlined text-lg">task_alt</span>
-                  <span>إنهاء الكشف وحفظ الزيارة</span>
+                  <span>{language === 'en' ? 'Complete Exam & Save Visit' : 'إنهاء الكشف وحفظ الزيارة'}</span>
                 </button>
               </PermissionGate>
             )}

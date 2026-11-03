@@ -127,6 +127,51 @@ const PHONETIC_MEDICAL_MAP: Record<string, string[]> = {
   'التهاب اعصاب': ['peripheral neuropathy', 'neuropathy'],
   'غضروف': ['disc prolapse', 'sciatica'],
   'عرق النسا': ['sciatica'],
+
+  // Egyptian Medications & Common Brands
+  'بيتاك': ['betaserc', 'betaloc', 'betac', 'بيتاسيرك', 'بيتالوك'],
+  'بيتاسيرك': ['betaserc', 'betac'],
+  'بيتالوك': ['betaloc', 'betac'],
+  'كونكور': ['concor', 'bisoprolol'],
+  'بنادول': ['panadol', 'paracetamol'],
+  'باراسيتامول': ['paracetamol', 'panadol', 'cetal'],
+  'سيتال': ['cetal', 'paracetamol'],
+  'كتافلام': ['cataflam', 'diclofenac'],
+  'فولتارين': ['voltaren', 'diclofenac'],
+  'بروفين': ['brufen', 'ibuprofen'],
+  'ايبوبروفين': ['ibuprofen', 'brufen'],
+  'كيتوفان': ['ketofan', 'ketoprofen'],
+  'اوجمنتين': ['augmentin', 'amoxicillin'],
+  'أوجمنتين': ['augmentin', 'curam', 'hibiotic'],
+  'كيورام': ['curam', 'augmentin'],
+  'هاي بيوتك': ['hibiotic', 'augmentin'],
+  'زيثروكان': ['zithrokan', 'azithromycin', 'zithromax'],
+  'سيبروفار': ['ciprofar', 'ciprofloxacin'],
+  'سيدوفاج': ['cidophage', 'glucophage', 'metformin'],
+  'جلوكوفاج': ['glucophage', 'cidophage', 'metformin'],
+  'اماريل': ['amaryl', 'glimepiride'],
+  'أماريل': ['amaryl'],
+  'فوركسيجا': ['forxiga', 'dapagliflozin'],
+  'نيكسيوم': ['nexium', 'esomeprazole'],
+  'كونترولوك': ['controloc', 'pantoprazole'],
+  'دوسباتالين': ['duspatalin', 'mebeverine'],
+  'انتينال': ['antinal', 'nifuroxazide'],
+  'أنتينال': ['antinal'],
+  'فلاجيل': ['flagyl', 'metronidazole'],
+  'فيسرالجين': ['visceralgine'],
+  'زيرتك': ['zyrtec', 'cetirizine'],
+  'تلفاست': ['telfast', 'fexofenadine'],
+  'فنتولين': ['ventolin', 'salbutamol'],
+  'كونجستال': ['congestal'],
+  'وان تو ثري': ['123', 'one two three'],
+  'ميلجا': ['milga', 'milga advance'],
+  'نيوروفيت': ['neurovit', 'vitamin b'],
+  'رواتينكس': ['rowatinex'],
+  'دافلون': ['daflon', 'diosmin'],
+  'دافلو': ['daflon'],
+  'الفانترن': ['alphintern'],
+  'ألفانترن': ['alphintern'],
+  'ريباريل': ['reparil'],
 };
 
 // ---------------------------------------------------------------------------
@@ -193,16 +238,17 @@ function getPhoneticEquivalents(query: string): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// 4. Medications Search (Local Clinic Catalog + Egyptian Drug Authority Archive)
-// Strictly NO external drug API to protect accuracy and meet user requirements
+// 4. Medications Search (Local Clinic Catalog + Egyptian Drug Authority Archive + Online API Fallback)
 // ---------------------------------------------------------------------------
-export function searchClinicalDrugs(
+export async function searchClinicalDrugs(
   query: string,
-  clinicDrugs: DrugCatalogItem[] = []
-): {
+  clinicDrugs: DrugCatalogItem[] = [],
+  signal?: AbortSignal
+): Promise<{
   clinicMatches: ClinicalSearchResult<DrugCatalogItem>[];
   archiveMatches: ClinicalSearchResult<StandardDrugRecord>[];
-} {
+  apiMatches: ClinicalSearchResult<StandardDrugRecord>[];
+}> {
   const cleanQ = normalizeClinicalText(query);
   if (!cleanQ) {
     return {
@@ -212,16 +258,17 @@ export function searchClinicalDrugs(
         isFavorite: !!d.isFavorite,
         score: d.isFavorite ? 10 : 1,
       })),
-      archiveMatches: STANDARD_DRUGS_ARCHIVE.slice(0, 30).map((d) => ({
+      archiveMatches: STANDARD_DRUGS_ARCHIVE.slice(0, 35).map((d) => ({
         item: d,
         source: 'archive',
         isFavorite: !!d.isFavorite,
         score: 1,
       })),
+      apiMatches: [],
     };
   }
 
-  const queryTokens = cleanQ.split(' ').filter(Boolean);
+  const queryEquivalents = getPhoneticEquivalents(query);
   const clinicIds = new Set(clinicDrugs.map((d) => d.id));
   const clinicNames = new Set(clinicDrugs.map((d) => normalizeClinicalText(d.brandName)));
 
@@ -229,7 +276,10 @@ export function searchClinicalDrugs(
   const clinicMatches: ClinicalSearchResult<DrugCatalogItem>[] = [];
   for (const drug of clinicDrugs) {
     const searchable = `${drug.brandName} ${drug.genericName || ''} ${drug.category || ''} ${drug.form || ''} ${drug.strength || ''}`;
-    if (matchesTokens(queryTokens, searchable)) {
+    const matches = queryEquivalents.some((term) =>
+      matchesTokens(term.split(' ').filter(Boolean), searchable)
+    );
+    if (matches) {
       let score = 50;
       if (normalizeClinicalText(drug.brandName).startsWith(cleanQ)) score += 30;
       if (drug.isFavorite) score += 20;
@@ -247,7 +297,10 @@ export function searchClinicalDrugs(
     const aliasesStr = (drug.aliases || []).join(' ');
     const searchable = `${drug.brandName} ${drug.arabicBrand || ''} ${drug.genericName || ''} ${drug.arabicGeneric || ''} ${drug.category || ''} ${aliasesStr}`;
 
-    if (matchesTokens(queryTokens, searchable)) {
+    const matches = queryEquivalents.some((term) =>
+      matchesTokens(term.split(' ').filter(Boolean), searchable)
+    );
+    if (matches) {
       let score = 20;
       if (
         normalizeClinicalText(drug.brandName).startsWith(cleanQ) ||
@@ -261,7 +314,64 @@ export function searchClinicalDrugs(
   }
   archiveMatches.sort((a, b) => b.score - a.score);
 
-  return { clinicMatches, archiveMatches };
+  // 3. Online Live Search Fallback (RxNav / OpenFDA) with Client Caching
+  const apiMatches: ClinicalSearchResult<StandardDrugRecord>[] = [];
+  const totalLocalMatches = clinicMatches.length + archiveMatches.length;
+
+  if (totalLocalMatches < 2 && cleanQ.length >= 3) {
+    const cacheKey = `drug_api_cache_${cleanQ}`;
+    const cached = getCachedData<StandardDrugRecord[]>(cacheKey);
+
+    if (cached) {
+      cached.forEach((item) => {
+        apiMatches.push({ item, source: 'api', score: 10 });
+      });
+    } else {
+      try {
+        const searchKeyword = queryEquivalents[1] || query.trim();
+        const url = `https://rxnav.nlm.nih.gov/REST/drugs.json?name=${encodeURIComponent(searchKeyword)}`;
+        const res = await fetch(url, { signal });
+        if (res.ok) {
+          const data = await res.json();
+          const conceptGroup = data?.drugGroup?.conceptGroup;
+          if (Array.isArray(conceptGroup)) {
+            const fetched: StandardDrugRecord[] = [];
+            for (const group of conceptGroup) {
+              if (Array.isArray(group.conceptProperties)) {
+                for (const prop of group.conceptProperties.slice(0, 4)) {
+                  fetched.push({
+                    id: `rxnorm-${prop.rxcui}`,
+                    brandName: prop.name,
+                    arabicBrand: prop.name,
+                    genericName: prop.synonym || prop.name,
+                    arabicGeneric: prop.synonym || prop.name,
+                    strength: '',
+                    form: 'أقراص / كبسولات',
+                    category: 'الدليل الدوائي المعتمد (RxNorm)',
+                    defaultDosage: 'قرص واحد يومياً أو حسب الإرشاد الطبي',
+                    defaultDuration: 'لمدة شهر',
+                    defaultTiming: 'بعد الأكل',
+                    isFavorite: false,
+                    aliases: [prop.name],
+                  });
+                }
+              }
+            }
+            if (fetched.length > 0) {
+              setCachedData(cacheKey, fetched);
+              fetched.forEach((item) => {
+                apiMatches.push({ item, source: 'api', score: 10 });
+              });
+            }
+          }
+        }
+      } catch (_e) {
+        // Silently catch fetch or abort errors
+      }
+    }
+  }
+
+  return { clinicMatches, archiveMatches, apiMatches };
 }
 
 // ---------------------------------------------------------------------------
