@@ -31,7 +31,7 @@ interface DashboardScreenProps {
   onStartIntakeFromAppointment?: (appointment: AppointmentListItem) => void;
   patients?: PatientListItem[];
   patientsCanonical?: Patient[];
-  onAddTransaction?: (tx: TransactionRecord) => void;
+  onAddTransaction?: (tx: TransactionRecord) => void | Promise<void>;
 }
 
 export const DashboardScreen: React.FC<DashboardScreenProps> = ({
@@ -52,7 +52,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   patientsCanonical = [],
   onAddTransaction,
 }) => {
-  const { canAccess } = usePermissions();
+  const { canAccess, assertPermission } = usePermissions();
   const doctorInfo = usePrescriptionDoctor();
   const { language, isRTL, t } = useLanguage();
 
@@ -179,53 +179,67 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
   // Quick invoice submission
   const handleQuickInvoiceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (invIsSubmitting) return;
     if (!invPatientName.trim()) {
-      alert('يرجى كتابة أو اختيار اسم المريض');
+      setCheckInNotice('يرجى كتابة أو اختيار اسم المريض');
+      setTimeout(() => setCheckInNotice(null), 4000);
       return;
     }
-    if (invAmount <= 0) {
-      alert('يرجى تحديد قيمة الفاتورة');
+    const cleanAmount = Number(invAmount);
+    const cleanDiscount = Number(invDiscount);
+    if (!Number.isFinite(cleanAmount) || cleanAmount <= 0) {
+      setCheckInNotice('يرجى تحديد قيمة فاتورة صحيحة أكبر من الصفر');
+      setTimeout(() => setCheckInNotice(null), 4000);
+      return;
+    }
+    if (!Number.isFinite(cleanDiscount) || cleanDiscount < 0 || cleanDiscount > cleanAmount) {
+      setCheckInNotice('يرجى التأكد من أن الخصم غير سالب ولا يتجاوز قيمة الخدمة');
+      setTimeout(() => setCheckInNotice(null), 4000);
       return;
     }
 
     setInvIsSubmitting(true);
     try {
-      const finalPaid = invStatus === 'مدفوعة' ? Math.max(0, invAmount - invDiscount) : 0;
+      assertPermission('billing.create', 'إنشاء فاتورة سريعة');
+      const netTotal = Math.max(0, cleanAmount - cleanDiscount);
+      const finalPaid = invStatus === 'مدفوعة' ? netTotal : 0;
       const receiptNo = `INV-${Math.floor(Math.random() * 9000) + 1000}`;
       const now = new Date();
+      const localDayKey = todayKey();
 
       const newTx: TransactionRecord = {
         id: `inv-${Date.now()}`,
         receiptNo,
         patientName: invPatientName.trim(),
         serviceName: invSelectedService,
-        description: `${invSelectedService}${invDiscount > 0 ? ` (خصم ${invDiscount} ج.م)` : ''}`,
-        totalAmount: invAmount,
-        discountAmount: invDiscount,
+        description: `${invSelectedService}${cleanDiscount > 0 ? ` (خصم ${cleanDiscount} ج.م)` : ''}`,
+        totalAmount: cleanAmount,
+        discountAmount: cleanDiscount,
         paidAmount: finalPaid,
-        amount: finalPaid > 0 ? finalPaid : invAmount,
+        amount: netTotal,
         type: 'in',
         method: invPaymentMethod,
         paymentMethod: invPaymentMethod,
         status: invStatus,
         time: now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
-        date: now.toISOString().split('T')[0],
+        date: localDayKey,
         timestamp: now.toISOString(),
         category: 'خدمات طبية',
       };
 
       if (onAddTransaction) {
-        onAddTransaction(newTx);
+        await onAddTransaction(newTx);
       }
 
       setShowQuickInvoiceModal(false);
       setInvPatientName('');
       setInvDiscount(0);
       setInvStatus('مدفوعة');
-      setCheckInNotice(`تم إنشاء وحفظ الفاتورة (${receiptNo}) بنجاح للمريض (${newTx.patientName}) بمبلغ ${finalPaid} ج.م ومزامنتها سحابياً`);
+      setCheckInNotice(`تم إنشاء وحفظ الفاتورة (${receiptNo}) بنجاح للمريض (${newTx.patientName}) بمبلغ ${netTotal} ج.م ومزامنتها سحابياً`);
       setTimeout(() => setCheckInNotice(null), 5000);
     } catch (err) {
-      alert('حدث خطأ أثناء حفظ الفاتورة');
+      setCheckInNotice(err instanceof Error ? err.message : 'حدث خطأ أثناء حفظ الفاتورة');
+      setTimeout(() => setCheckInNotice(null), 4500);
     } finally {
       setInvIsSubmitting(false);
     }

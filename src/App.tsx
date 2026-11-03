@@ -310,7 +310,7 @@ const VALID_SCREENS: ScreenType[] = [
 ];
 
 function ClinicApp() {
-  const { canAccess, allowedScreens, userProfile } = usePermissions();
+  const { canAccess, allowedScreens, userProfile, assertPermission, canDelete } = usePermissions();
   const { language, dir, isRTL, t } = useLanguage();
 
   const [activeScreen, setActiveScreen] = useState<ScreenType>(() => {
@@ -1611,7 +1611,8 @@ function ClinicApp() {
     // 2. Also include any doctor-scheduled follow-up appointments
     appointmentsCanonical.forEach((app) => {
       if (app.status !== 'SCHEDULED') return;
-      if (!app.visitType.includes('متابعة') && !app.visitType.includes('استشارة')) return;
+      const visitTypeStr = app.visitType || '';
+      if (!visitTypeStr.includes('متابعة') && !visitTypeStr.includes('استشارة')) return;
       if (list.some((item) => item.id === app.appointmentId || (item.patientName === patientsCanonical.find(p => p.patientId === app.patientId)?.fullName && item.dueDate === app.scheduledDate))) return;
 
       const patient = patientsCanonical.find((p) => p.patientId === app.patientId);
@@ -2055,6 +2056,11 @@ function ClinicApp() {
 
   // Delete queue item / visit & associated invoices/payments
   const handleRemoveFromQueue = async (ticket: string) => {
+    try {
+      assertPermission('queue.manage', 'إزالة مريض من قائمة الانتظار');
+    } catch {
+      return;
+    }
     const targetQueueNum = parseInt(ticket.replace(/\D/g, ''), 10);
     const targetVisit =
       visitsCanonical.find((v) => v.visitId === ticket) ||
@@ -2069,53 +2075,61 @@ function ClinicApp() {
           const pid = targetVisit.patientId;
 
           // 2/3: الفواتير والمدفوعات المرتبطة بالزيارة (بالاستعلام المباشر من الخادم، لا بالنافذة)
-          const [invSnap, paySnap] = await Promise.all([
-            getDocs(query(collection(db, 'invoices'), where('visitId', '==', vid))),
-            getDocs(query(collection(db, 'payments'), where('visitId', '==', vid))),
-          ]);
-          for (const d of invSnap.docs) await deleteDoc(d.ref).catch(() => {});
-          for (const d of paySnap.docs) await deleteDoc(d.ref).catch(() => {});
+          if (canDelete('billing-payments')) {
+            const [invSnap, paySnap] = await Promise.all([
+              getDocs(query(collection(db, 'invoices'), where('visitId', '==', vid))),
+              getDocs(query(collection(db, 'payments'), where('visitId', '==', vid))),
+            ]);
+            for (const d of invSnap.docs) await deleteDoc(d.ref).catch(() => {});
+            for (const d of paySnap.docs) await deleteDoc(d.ref).catch(() => {});
+          }
 
-          // 4: لا تحذف ملف المريض إلا بعد التأكد من الخادم، ومع أي شك لا تحذف
-          try {
-            const patientDoc = patientsCanonical.find((p) => p.patientId === pid);
-            if (!patientDoc?.hasClinicalFile) {
-              const [vSnap, aSnap] = await Promise.all([
-                getDocs(query(collection(db, 'visits'), where('patientId', '==', pid), limit(2))),
-                getDocs(query(collection(db, 'appointments'), where('patientId', '==', pid), limit(1))),
-              ]);
-              const otherVisits = vSnap.docs.filter((d) => d.id !== vid);
-              if (otherVisits.length === 0 && aSnap.empty) {
-                await deleteDoc(doc(db, 'patients', pid)).catch(() => {});
+          // 4: لا تحذف ملف المريض إلا بعد التأكد من الخادم وصلاحية الحذف، ومع أي شك لا تحذف
+          if (canDelete('patient-records')) {
+            try {
+              const patientDoc = patientsCanonical.find((p) => p.patientId === pid);
+              if (!patientDoc?.hasClinicalFile) {
+                const [vSnap, aSnap] = await Promise.all([
+                  getDocs(query(collection(db, 'visits'), where('patientId', '==', pid), limit(2))),
+                  getDocs(query(collection(db, 'appointments'), where('patientId', '==', pid), limit(1))),
+                ]);
+                const otherVisits = vSnap.docs.filter((d) => d.id !== vid);
+                if (otherVisits.length === 0 && aSnap.empty) {
+                  await deleteDoc(doc(db, 'patients', pid)).catch(() => {});
+                }
               }
+            } catch (e) {
+              console.warn('تخطي حذف المريض بسبب فشل التحقق:', e); // الفشل = لا حذف
             }
-          } catch (e) {
-            console.warn('تخطي حذف المريض بسبب فشل التحقق:', e); // الفشل = لا حذف
           }
           return;
         }
 
         // 2. Delete linked invoice(s) (المنطق القديم عند تعطيل READ_OPT)
-        const matchingInvoices = invoicesCanonical.filter(
-          (inv) => inv.visitId === targetVisit.visitId || (inv.patientId === targetVisit.patientId && inv.createdAt === targetVisit.createdAt)
-        );
-        for (const inv of matchingInvoices) {
-          await deleteDoc(doc(db, 'invoices', inv.invoiceId)).catch(() => {});
-        }
+        if (canDelete('billing-payments')) {
+          const matchingInvoices = invoicesCanonical.filter(
+            (inv) => inv.visitId === targetVisit.visitId || (inv.patientId === targetVisit.patientId && inv.createdAt === targetVisit.createdAt)
+          );
+          for (const inv of matchingInvoices) {
+            await deleteDoc(doc(db, 'invoices', inv.invoiceId)).catch(() => {});
+          }
 
-        // 3. Delete linked payment(s)
-        const matchingPayments = paymentsCanonical.filter(
-          (p) => p.visitId === targetVisit.visitId || matchingInvoices.some((inv) => inv.invoiceId === p.invoiceId)
-        );
-        for (const pm of matchingPayments) {
-          await deleteDoc(doc(db, 'payments', pm.paymentId)).catch(() => {});
+          // 3. Delete linked payment(s)
+          const matchingPayments = paymentsCanonical.filter(
+            (p) => p.visitId === targetVisit.visitId || matchingInvoices.some((inv) => inv.invoiceId === p.invoiceId)
+          );
+          for (const pm of matchingPayments) {
+            await deleteDoc(doc(db, 'payments', pm.paymentId)).catch(() => {});
+          }
         }
 
         // 4. Clean up patient profile if no other visits or appointments exist
-        const otherVisits = visitsCanonical.filter((v) => v.patientId === targetVisit.patientId && v.visitId !== targetVisit.visitId);
-        const otherAppts = appointmentsCanonical.filter((a) => a.patientId === targetVisit.patientId);
-        if (otherVisits.length === 0 && otherAppts.length === 0) {
-          await deleteDoc(doc(db, 'patients', targetVisit.patientId)).catch(() => {});
+        if (canDelete('patient-records')) {
+          const otherVisits = visitsCanonical.filter((v) => v.patientId === targetVisit.patientId && v.visitId !== targetVisit.visitId);
+          const otherAppts = appointmentsCanonical.filter((a) => a.patientId === targetVisit.patientId);
+          if (otherVisits.length === 0 && otherAppts.length === 0) {
+            await deleteDoc(doc(db, 'patients', targetVisit.patientId)).catch(() => {});
+          }
         }
       } catch (err) {
         console.error('Error removing visit and associated payments/invoices from Firestore:', err);
@@ -2125,12 +2139,9 @@ function ClinicApp() {
 
   // Delete patient record
   const handleDeletePatient = async (patientId: string) => {
+    assertPermission('patients.delete', 'حذف ملف المريض');
     if (db) {
-      try {
-        await deleteDoc(doc(db, 'patients', patientId));
-      } catch (err) {
-        console.warn('Error deleting patient from Firestore:', err);
-      }
+      await deleteDoc(doc(db, 'patients', patientId));
     }
   };
 
@@ -2139,24 +2150,21 @@ function ClinicApp() {
     patientIdOrUpdated: string | (Partial<Patient> & { patientId: string }),
     maybeFields?: Partial<Patient>
   ) => {
+    assertPermission('patients.edit', 'تحديث بيانات المريض');
     const timestamp = new Date().toISOString();
     const patientId = typeof patientIdOrUpdated === 'string' ? patientIdOrUpdated : patientIdOrUpdated.patientId;
     const fields = typeof patientIdOrUpdated === 'string' ? maybeFields || {} : patientIdOrUpdated;
 
     if (db && patientId) {
-      try {
-        await setDoc(
-          doc(db, 'patients', patientId),
-          {
-            ...fields,
-            patientId,
-            updatedAt: timestamp,
-          },
-          { merge: true }
-        );
-      } catch (err) {
-        console.warn('Error updating patient in Firestore:', err);
-      }
+      await setDoc(
+        doc(db, 'patients', patientId),
+        {
+          ...fields,
+          patientId,
+          updatedAt: timestamp,
+        },
+        { merge: true }
+      );
     }
   };
 
@@ -2167,9 +2175,20 @@ function ClinicApp() {
       return;
     }
 
-    const txKey = `tx:${newTx.id || `${normalizeArabicName(newTx.patientName)}-${newTx.amount}`}`;
-    if (inFlightActionsRef.current.has(txKey)) return;
+    assertPermission('billing.create', 'إنشاء فاتورة جديدة');
+
+    const rawTotal = Number(newTx.totalAmount ?? newTx.amount ?? 0);
+    const rawDiscount = Number(newTx.discountAmount ?? 0);
+    if (!Number.isFinite(rawTotal) || rawTotal <= 0 || !Number.isFinite(rawDiscount) || rawDiscount < 0 || rawDiscount > rawTotal) {
+      throw new Error('بيانات الفاتورة غير صالحة: يرجى التحقق من المبلغ والخصم.');
+    }
+
+    // Deduplicate rapid double-clicks using both ID and transaction signature (FIN-04)
+    const txKey = `tx:${newTx.id || ''}`;
+    const sigKey = `tx-sig:${normalizeArabicName(newTx.patientName || '')}:${rawTotal}:${rawDiscount}:${newTx.serviceName || newTx.description || ''}`;
+    if (inFlightActionsRef.current.has(txKey) || inFlightActionsRef.current.has(sigKey)) return;
     inFlightActionsRef.current.add(txKey);
+    inFlightActionsRef.current.add(sigKey);
 
     try {
       // 1. Find or resolve patient using normalized Arabic name matching
@@ -2194,10 +2213,16 @@ function ClinicApp() {
 
       const invoiceId = newTx.id && newTx.id.startsWith('inv-') ? newTx.id : `inv-${Date.now()}`;
       const paymentId = `pay-${invoiceId.replace(/^inv-/, '')}`;
-      const totalAmount = newTx.totalAmount ?? newTx.amount ?? 0;
-      const discountAmount = newTx.discountAmount ?? 0;
+      const totalAmount = Math.max(0, rawTotal);
+      const discountAmount = Math.min(totalAmount, Math.max(0, rawDiscount));
       const finalTotal = Math.max(0, totalAmount - discountAmount);
-      const paidAmount = newTx.paidAmount ?? (newTx.status === 'مدفوعة' ? finalTotal : (newTx.amount ?? 0));
+
+      // FIN-01: Unpaid invoices must keep paidAmount = 0 and must NOT create a PAID payment record
+      const isPaidStatus = newTx.status === 'مدفوعة' || (newTx.status !== 'غير مدفوعة' && newTx.status !== 'مؤجلة' && (newTx.paidAmount ?? 0) > 0);
+      const actualPaidAmount = isPaidStatus
+        ? (typeof newTx.paidAmount === 'number' && newTx.paidAmount > 0 ? Math.min(finalTotal, newTx.paidAmount) : finalTotal)
+        : 0;
+
       const txDateIso = newTx.date
         ? `${newTx.date}T${new Date().toISOString().split('T')[1] || '12:00:00.000Z'}`
         : new Date().toISOString();
@@ -2227,12 +2252,12 @@ function ClinicApp() {
         subtotal: totalAmount,
         discount: discountAmount,
         total: finalTotal,
-        paidAmount: paidAmount > 0 ? paidAmount : (newTx.status === 'مدفوعة' ? finalTotal : 0),
-        remainingAmount: Math.max(0, finalTotal - (paidAmount > 0 ? paidAmount : (newTx.status === 'مدفوعة' ? finalTotal : 0))),
-        status: (newTx.status === 'مدفوعة' || paidAmount >= finalTotal) ? 'PAID' : 'UNPAID',
+        paidAmount: actualPaidAmount,
+        remainingAmount: Math.max(0, finalTotal - actualPaidAmount),
+        status: actualPaidAmount >= finalTotal && finalTotal > 0 ? 'PAID' : actualPaidAmount > 0 ? 'PARTIALLY_PAID' : 'UNPAID',
         createdAt: txDateIso,
         updatedAt: txDateIso,
-        dayKey: toDayKey(txDateIso),
+        dayKey: newTx.date && /^\d{4}-\d{2}-\d{2}$/.test(newTx.date) ? newTx.date : toDayKey(txDateIso),
       };
 
       const newPayment: Payment = {
@@ -2241,35 +2266,34 @@ function ClinicApp() {
         visitId: '',
         invoiceId,
         clinicLocationId: 'loc-main',
-        amount: newInvoice.paidAmount > 0 ? newInvoice.paidAmount : finalTotal,
+        amount: actualPaidAmount,
         method: resolvedPaymentMethod,
         status: 'PAID',
         receiptNumber: newTx.receiptNo || `REC-${Math.floor(10000 + Math.random() * 90000)}`,
         paidAt: txDateIso,
         receivedBy: userProfile?.username || userProfile?.displayName || 'receptionist',
-        dayKey: toDayKey(txDateIso),
+        dayKey: newTx.date && /^\d{4}-\d{2}-\d{2}$/.test(newTx.date) ? newTx.date : toDayKey(txDateIso),
       };
 
       if (db) {
-        try {
-          const tasks: Promise<unknown>[] = [
-            setDoc(doc(db, 'invoices', invoiceId), newInvoice),
-          ];
-          if (newInvoice.status === 'PAID' || newPayment.amount > 0) {
-            tasks.push(setDoc(doc(db, 'payments', paymentId), newPayment));
-          }
-          await Promise.allSettled(tasks);
-        } catch (err) {
-          console.warn('Error saving transaction to Firestore:', err);
+        const tasks: Promise<unknown>[] = [
+          setDoc(doc(db, 'invoices', invoiceId), newInvoice),
+        ];
+        if (actualPaidAmount > 0) {
+          tasks.push(setDoc(doc(db, 'payments', paymentId), newPayment));
         }
+        await Promise.all(tasks);
       }
     } finally {
       inFlightActionsRef.current.delete(txKey);
+      inFlightActionsRef.current.delete(sigKey);
     }
   };
 
   // Delete invoice / transaction safely (UI Action -> Firestore Delete -> onSnapshot -> UI)
   const handleDeleteTransaction = async (txId: string) => {
+    assertPermission('billing.delete', 'حذف الفاتورة');
+
     const inMemory = paymentsCanonical.find((p) => p.paymentId === txId || p.invoiceId === txId || p.visitId === txId);
     let targetPaymentId = inMemory?.paymentId;
     let targetInvoiceId = inMemory?.invoiceId;
@@ -2288,23 +2312,16 @@ function ClinicApp() {
     targetPaymentId = targetPaymentId || txId;
     targetInvoiceId = targetInvoiceId || txId;
 
-    // Cloud Firestore deletion
+    // Cloud Firestore deletion — propagate permission/network errors to caller (FINDING-006)
     if (db) {
-      try {
-        const deleteTasks: Promise<unknown>[] = [];
-        if (targetPaymentId) {
-          deleteTasks.push(deleteDoc(doc(db, 'payments', targetPaymentId)).catch((e) => console.warn('Payment delete fallback:', e)));
-        }
-        if (targetInvoiceId) {
-          deleteTasks.push(deleteDoc(doc(db, 'invoices', targetInvoiceId)).catch((e) => console.warn('Invoice delete fallback:', e)));
-        }
-        // Also clean up any standalone transaction entry if registered
-        deleteTasks.push(deleteDoc(doc(db, 'transactions', txId)).catch((e) => console.warn('Transaction delete fallback:', e)));
-
-        await Promise.allSettled(deleteTasks);
-      } catch (err) {
-        console.warn('Error deleting transaction from Firestore:', err);
+      const deleteTasks: Promise<unknown>[] = [];
+      if (targetPaymentId) {
+        deleteTasks.push(deleteDoc(doc(db, 'payments', targetPaymentId)));
       }
+      if (targetInvoiceId) {
+        deleteTasks.push(deleteDoc(doc(db, 'invoices', targetInvoiceId)));
+      }
+      await Promise.all(deleteTasks);
     }
   };
 
@@ -2484,10 +2501,11 @@ function ClinicApp() {
             updatedAt: timestamp,
             createdBy: userProfile?.username || 'receptionist',
           };
+      const rawPayMethod = item.paymentMethod || 'نقدي';
       const paymentMethodEnum =
-        item.paymentMethod.includes('فيزا') || item.paymentMethod.includes('كارت')
+        rawPayMethod.includes('فيزا') || rawPayMethod.includes('كارت')
           ? 'CARD'
-          : item.paymentMethod.includes('إنستا')
+          : rawPayMethod.includes('إنستا')
           ? 'TRANSFER'
           : 'CASH';
 
@@ -2638,10 +2656,13 @@ function ClinicApp() {
       return;
     }
 
-    const activeWaiting =
-      visitsCanonical.find((v) => v.patientId === activeExamPatient?.id && (v.status === 'IN_PROGRESS' || v.status === 'WAITING')) ||
-      visitsCanonical.find((v) => v.status === 'IN_PROGRESS') ||
-      visitsCanonical.find((v) => v.status === 'WAITING');
+    // EMR-02: Never fall back to another patient's waiting visit if activeExamPatient is set
+    const activeWaiting = activeExamPatient?.id
+      ? visitsCanonical.find(
+          (v) => v.patientId === activeExamPatient.id && (v.status === 'IN_PROGRESS' || v.status === 'WAITING')
+        )
+      : (visitsCanonical.find((v) => v.status === 'IN_PROGRESS') ||
+         visitsCanonical.find((v) => v.status === 'WAITING'));
 
     const rxItems = examData ? examData.prescriptionItems : activePrescription;
 
@@ -2717,7 +2738,9 @@ function ClinicApp() {
           } : undefined,
         });
       } catch (error) {
-        console.warn('Firestore sync notice:', error);
+        console.error('Firestore completeVisitTransaction error:', error);
+        alert(error instanceof Error ? error.message : 'تعذر حفظ بيانات الزيارة الطبية في قاعدة البيانات. يرجى المحاولة مرة أخرى.');
+        return;
       }
       invalidatePatientHistory(activeWaiting?.patientId || activeExamPatient?.id);
     }

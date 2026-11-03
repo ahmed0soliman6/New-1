@@ -235,9 +235,8 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
     };
   }, []);
 
-  // Vital signs state for exam
-  const [examVitals, setExamVitals] = useState<Partial<VitalsData>>({});
-  const [initialExamVitals] = useState<Partial<VitalsData> | undefined>(() => {
+  // Vital signs state for exam (re-evaluated per patient/visit to prevent cross-patient bleed - EMR-01)
+  const initialExamVitals = React.useMemo<Partial<VitalsData> | undefined>(() => {
     const activeVisit = visits.find(
       (v) =>
         (currentVisitId && v.visitId === currentVisitId) ||
@@ -255,7 +254,8 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
       spo2: vs.oxygenSaturation != null ? String(vs.oxygenSaturation) : '',
     };
     return hasAnyVital(mapped) ? mapped : undefined;
-  });
+  }, [visits, currentVisitId, patient?.id]);
+  const [examVitals, setExamVitals] = useState<Partial<VitalsData>>(() => initialExamVitals || {});
 
   // Consultation state - only loads registered data from visit registration if present
   const [complaint, setComplaint] = useState(patient?.chiefComplaint || '');
@@ -343,7 +343,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
     }
   };
 
-  // Keep in sync if patient prop changes
+  // Keep basic demographic fields in sync if patient prop updates
   useEffect(() => {
     setComplaint(patient?.chiefComplaint || '');
     setPatientChronicConditions(patient?.chronicConditions || []);
@@ -354,6 +354,36 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
     setEditablePatientAddress(patient?.address || '');
     setEditablePatientBloodType(patient?.bloodType || 'غير محدد');
   }, [patient?.id, patient?.chiefComplaint, patient?.chronicConditions, patient?.name, patient?.phone, patient?.age, patient?.gender, patient?.address, patient?.bloodType]);
+
+  // EMR-01: Strictly isolate clinical exam state whenever switching to a different patient or visit
+  const prevPatientVisitKeyRef = React.useRef<string>(`${patient?.id || ''}:${currentVisitId || ''}`);
+  useEffect(() => {
+    const nextKey = `${patient?.id || ''}:${currentVisitId || ''}`;
+    if (prevPatientVisitKeyRef.current !== nextKey) {
+      const prevPatientId = prevPatientVisitKeyRef.current.split(':')[0];
+      prevPatientVisitKeyRef.current = nextKey;
+
+      setExamVitals(initialExamVitals || {});
+      setPhysicalExam('');
+      setRadiologyOrders([]);
+      setLabOrders([]);
+      setPatientDiagnoses([]);
+      setFollowupDate('');
+      setLifestyleAdvice('');
+      setIsExamFinished(false);
+      setIsEditingPatientInfo(false);
+      setIsEditingIntakeCard(false);
+      setIsAddingChronic(false);
+      setNewChronicInput('');
+      setDoctorSymptomInput('');
+      setCustomSymptomInput('');
+
+      // If switching to a different patient, clear active prescription pad items from previous patient
+      if (prevPatientId && prevPatientId !== (patient?.id || '') && onChangeActivePrescription) {
+        onChangeActivePrescription([]);
+      }
+    }
+  }, [patient?.id, currentVisitId, initialExamVitals, onChangeActivePrescription]);
 
   // Derive previous visit details for the current patient
   const {
@@ -671,13 +701,12 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
         updatedAt: new Date().toISOString(),
       };
 
-      // 1. Update Firestore
+      // 1. Update Firestore safely with setDoc merge: true (EMR-03)
       const { db } = await import('../../services/firebase');
-      const { doc, updateDoc } = await import('firebase/firestore');
+      const { doc, setDoc } = await import('firebase/firestore');
       if (db) {
         const patientRef = doc(db, 'patients', patient.id);
-        await updateDoc(patientRef, updatedData);
-        console.log('Patient basic details successfully updated in Firestore!');
+        await setDoc(patientRef, updatedData, { merge: true });
       }
 
       // 2. Propagate to App state
@@ -708,13 +737,12 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
         updatedAt: new Date().toISOString(),
       };
 
-      // 1. Update Firestore
+      // 1. Update Firestore safely with setDoc merge: true (EMR-03)
       const { db } = await import('../../services/firebase');
-      const { doc, updateDoc } = await import('firebase/firestore');
+      const { doc, setDoc } = await import('firebase/firestore');
       if (db) {
         const patientRef = doc(db, 'patients', patient.id);
-        await updateDoc(patientRef, updatedData);
-        console.log('Patient chief complaint and chronic conditions updated in Firestore!');
+        await setDoc(patientRef, updatedData, { merge: true });
       }
 
       // 2. Propagate to App state

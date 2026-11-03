@@ -433,6 +433,7 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
   // Submit Booking Action (Atomic Batch Write to Firestore)
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
+    if (submitting) return;
     setSubmitError(null);
 
     const cleanedName = cleanName(patientName);
@@ -455,6 +456,11 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
 
     if (!scheduledDate) {
       validation.date = 'التاريخ المطلوب - الإلزامي';
+    }
+
+    const chosenSlotMins = normalizeTimeToMins(selectedTimeSlot);
+    if (chosenSlotMins !== null && bookedMinsSet.has(chosenSlotMins)) {
+      validation.time = 'هذا الموعد تم حجزه بالفعل، يرجى اختيار موعد آخر متاح';
     }
 
     setErrors(validation);

@@ -22,7 +22,7 @@ import {
 import { toEnglishDigits, formatAppTime } from '../../utils/numberUtils';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { todayKey } from '../../utils/dayKey';
-import { fetchTotal } from '../../services/financePaged';
+import { fetchShiftBreakdown, type ShiftBreakdown } from '../../services/financePaged';
 import { InflowPage } from '../finance/InflowPage';
 import { ExpensesPage } from '../finance/ExpensesPage';
 import type { Patient } from '../../types/database';
@@ -40,8 +40,9 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
   onDeleteTransaction,
   patientsCanonical = [],
 }) => {
-  const { assertPermission, userProfile } = usePermissions();
+  const { assertPermission, canDelete, userProfile } = usePermissions();
   const { language } = useLanguage();
+  const allowFinanceDelete = canDelete('billing-payments');
 
   // Main Tab: Inflow ('in') vs Outflow ('out')
   const [financeTab, setFinanceTab] = useState<'in' | 'out'>('in');
@@ -120,6 +121,13 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
   const [selectedReceipt, setSelectedReceipt] = useState<TransactionRecord | null>(null);
   const [txToDelete, setTxToDelete] = useState<TransactionRecord | null>(null);
   const [expenseToDelete, setExpenseToDelete] = useState<ClinicExpenseRecord | null>(null);
+  const [shiftSummaryModal, setShiftSummaryModal] = useState<(ShiftBreakdown & { date: string }) | null>(null);
+
+  // Submission locks to prevent duplicate writes on double-click (FIN-04)
+  const [isSavingInvoice, setIsSavingInvoice] = useState(false);
+  const [isSavingExpense, setIsSavingExpense] = useState(false);
+  const [isClosingShift, setIsClosingShift] = useState(false);
+  const [isDeletingRecord, setIsDeletingRecord] = useState(false);
 
   // New Invoice Modal States
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
@@ -130,50 +138,75 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
   const [invStatus, setInvStatus] = useState<'مدفوعة' | 'غير مدفوعة' | 'مؤجلة'>('مدفوعة');
   const [invPaymentMethod, setInvPaymentMethod] = useState<'نقدي' | 'فيزا / كارت' | 'إنستاباي'>('نقدي');
 
-  // Quick Expense Input States
+  // Quick Expense Input States (FIN-05: use local todayKey instead of UTC toISOString)
   const [selectedExpenseCategory, setSelectedExpenseCategory] = useState<string>('');
   const [quickExpenseAmount, setQuickExpenseAmount] = useState<string>('');
-  const [quickExpenseDate, setQuickExpenseDate] = useState<string>(
-    new Date().toISOString().split('T')[0]
-  );
+  const [quickExpenseDate, setQuickExpenseDate] = useState<string>(() => todayKey());
   const [quickExpenseNotes, setQuickExpenseNotes] = useState<string>('');
+
+  const showToastMessage = (msg: string, ms = 3500) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), ms);
+  };
 
   // Auto-fill price when medical service is selected
   const handleServiceChange = (serviceName: string) => {
     setInvService(serviceName);
     const matchedService = medicalServices.find((s) => s.name === serviceName);
     if (matchedService) {
-      setInvAmount(matchedService.price);
+      setInvAmount(Math.max(0, Number(matchedService.price) || 0));
     }
   };
 
   // Submit New Invoice
   const handleSaveInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSavingInvoice) return;
+
     const trimmedPatientName = invPatientName.trim();
     if (!trimmedPatientName) {
-      alert('يرجى كتابة اسم المريض');
+      showToastMessage('يرجى كتابة اسم المريض');
       return;
     }
+
+    const cleanAmount = Number(invAmount);
+    const cleanDiscount = Number(invDiscount);
+
+    if (!Number.isFinite(cleanAmount) || cleanAmount <= 0) {
+      showToastMessage('يرجى إدخال قيمة خدمة صحيحة أكبر من الصفر.');
+      return;
+    }
+    if (!Number.isFinite(cleanDiscount) || cleanDiscount < 0) {
+      showToastMessage('لا يمكن إدخال قيمة خصم سالبة.');
+      return;
+    }
+    if (cleanDiscount > cleanAmount) {
+      showToastMessage('لا يمكن أن تتجاوز قيمة الخصم إجمالي قيمة الخدمة.');
+      return;
+    }
+
+    setIsSavingInvoice(true);
     try {
       assertPermission('billing.create', 'إنشاء فاتورة جديدة');
-      const finalPaid = invStatus === 'مدفوعة' ? Math.max(0, invAmount - invDiscount) : 0;
+      const netAmount = Math.max(0, cleanAmount - cleanDiscount);
+      const finalPaid = invStatus === 'مدفوعة' ? netAmount : 0;
+      const localDate = todayKey();
       const newTx: TransactionRecord = {
         id: `inv-${Date.now()}`,
         receiptNo: `INV-${Math.floor(Math.random() * 9000) + 1000}`,
         patientName: trimmedPatientName,
         serviceName: invService,
-        description: `${invService}${invDiscount > 0 ? ` (خصم ${toEnglishDigits(invDiscount)} ج.م)` : ''}`,
-        totalAmount: invAmount,
-        discountAmount: invDiscount,
+        description: `${invService}${cleanDiscount > 0 ? ` (خصم ${toEnglishDigits(cleanDiscount)} ج.م)` : ''}`,
+        totalAmount: cleanAmount,
+        discountAmount: cleanDiscount,
         paidAmount: finalPaid,
-        amount: finalPaid > 0 ? finalPaid : invAmount,
+        amount: netAmount,
         type: 'in',
         method: invPaymentMethod,
         paymentMethod: invPaymentMethod,
         status: invStatus,
         time: formatAppTime(new Date()),
-        date: new Date().toISOString().split('T')[0],
+        date: localDate,
         rawTimestamp: new Date().toISOString(),
         category: 'خدمات طبية',
       };
@@ -185,35 +218,40 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
       setInvStatus('مدفوعة');
 
       setRefreshKey((k) => k + 1);
-      setToast(`تم إنشاء الفاتورة بنجاح للمريض (${trimmedPatientName})`);
-      setTimeout(() => setToast(null), 3500);
+      showToastMessage(`تم إنشاء الفاتورة بنجاح للمريض (${trimmedPatientName})`);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'ليس لديك صلاحية لإنشاء الفواتير.');
+      showToastMessage(err instanceof Error ? err.message : 'حدث خطأ أثناء حفظ الفاتورة.');
+    } finally {
+      setIsSavingInvoice(false);
     }
   };
 
   // Submit Quick Expense
   const handleAddQuickExpense = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSavingExpense) return;
+
     const cleanAmountStr = toEnglishDigits(quickExpenseAmount);
     const amountNum = Number(cleanAmountStr);
     if (!selectedExpenseCategory) {
-      alert('يرجى اختيار بند المصروف');
+      showToastMessage('يرجى اختيار بند المصروف');
       return;
     }
-    if (!amountNum || amountNum <= 0) {
-      alert('يرجى إدخال مبلغ صحيح للمصروف');
+    if (!Number.isFinite(amountNum) || amountNum <= 0) {
+      showToastMessage('يرجى إدخال مبلغ موجب صحيح للمصروف (أكبر من الصفر)');
       return;
     }
 
+    setIsSavingExpense(true);
     try {
       assertPermission('billing.expenses', 'تسجيل مصروف للعيادة');
       const now = new Date();
+      const validDate = quickExpenseDate && /^\d{4}-\d{2}-\d{2}$/.test(quickExpenseDate) ? quickExpenseDate : todayKey();
       const newExp: ClinicExpenseRecord = {
         id: `exp-${Date.now()}`,
         category: selectedExpenseCategory,
         amount: amountNum,
-        date: quickExpenseDate,
+        date: validDate,
         time: formatAppTime(now),
         notes: quickExpenseNotes.trim() || undefined,
         createdAt: now.toISOString(),
@@ -243,30 +281,27 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
       setQuickExpenseNotes('');
 
       setRefreshKey((k) => k + 1);
-      setToast(`تم تسجيل مصروف "${selectedExpenseCategory}" بمبلغ ${amountNum} ج.م بنجاح ✓`);
-      setTimeout(() => setToast(null), 3500);
+      showToastMessage(`تم تسجيل مصروف "${selectedExpenseCategory}" بمبلغ ${amountNum} ج.م بنجاح ✓`);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'ليس لديك صلاحية لتسجيل المصروفات.');
+      showToastMessage(err instanceof Error ? err.message : 'ليس لديك صلاحية لتسجيل المصروفات.');
+    } finally {
+      setIsSavingExpense(false);
     }
   };
 
-  // Handle Close Shift: Asynchronously queries today's net cash from server
+  // Handle Close Shift: Asynchronously queries today's breakdown (Total, Cash, Electronic, Expenses)
   const handleCloseShift = async () => {
+    if (isClosingShift) return;
+    setIsClosingShift(true);
     try {
       assertPermission('billing.closeShift', 'تقفيل الوردية وتسليم النقدية');
       const t = todayKey();
-      const [inc, exp] = await Promise.all([
-        fetchTotal('payments', { from: t, to: t }),
-        fetchTotal('expenses', { from: t, to: t }),
-      ]);
-      const net = inc.total - exp.total;
-      const formatted = `${toEnglishDigits(
-        net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-      )} ج.م`;
-      setToast(`تم إغلاق وردية الاستقبال بنجاح! صافي النقدية بالخزينة: ${formatted}`);
-      setTimeout(() => setToast(null), 4500);
+      const breakdown = await fetchShiftBreakdown({ from: t, to: t });
+      setShiftSummaryModal({ ...breakdown, date: t });
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'ليس لديك صلاحية لتقفيل الوردية.');
+      showToastMessage(err instanceof Error ? err.message : 'ليس لديك صلاحية لتقفيل الوردية.');
+    } finally {
+      setIsClosingShift(false);
     }
   };
 
@@ -300,10 +335,11 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
           <PermissionGate permission="billing.closeShift">
             <button
               onClick={handleCloseShift}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-100 dark:bg-[#18233C] hover:bg-slate-200 dark:hover:bg-[#223254] text-slate-800 dark:text-[#dde2f5] text-xs font-bold border border-slate-200 dark:border-white/10 transition-all cursor-pointer"
+              disabled={isClosingShift}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-100 dark:bg-[#18233C] hover:bg-slate-200 dark:hover:bg-[#223254] disabled:opacity-60 text-slate-800 dark:text-[#dde2f5] text-xs font-bold border border-slate-200 dark:border-white/10 transition-all cursor-pointer"
             >
               <span className="material-symbols-outlined text-base text-[#00c2cb]">lock_clock</span>
-              <span>تقفيل الوردية وتسليم النقدية</span>
+              <span>{isClosingShift ? 'جارٍ حساب الوردية...' : 'تقفيل الوردية وتسليم النقدية'}</span>
             </button>
           </PermissionGate>
         </div>
@@ -344,7 +380,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
           patientsCanonical={patientsCanonical}
           refreshKey={refreshKey}
           onPrint={setSelectedReceipt}
-          onDelete={onDeleteTransaction ? setTxToDelete : undefined}
+          onDelete={allowFinanceDelete && onDeleteTransaction ? setTxToDelete : undefined}
           onCreateInvoice={() => setShowInvoiceModal(true)}
         />
       ) : (
@@ -432,10 +468,11 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
                 <div className="flex justify-end pt-1">
                   <button
                     type="submit"
-                    className="px-6 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-xs transition-all cursor-pointer flex items-center gap-1.5 active:scale-98"
+                    disabled={isSavingExpense}
+                    className="px-6 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-white font-bold text-xs shadow-xs transition-all cursor-pointer flex items-center gap-1.5 active:scale-98"
                   >
                     <span className="material-symbols-outlined text-base">add_circle</span>
-                    <span>تسجيل المصروف</span>
+                    <span>{isSavingExpense ? 'جارٍ الحفظ...' : 'تسجيل المصروف'}</span>
                   </button>
                 </div>
               </form>
@@ -443,7 +480,10 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
           </div>
 
           {/* Expenses Paginated Table from Server */}
-          <ExpensesPage refreshKey={refreshKey} onDelete={setExpenseToDelete} />
+          <ExpensesPage
+            refreshKey={refreshKey}
+            onDelete={allowFinanceDelete ? setExpenseToDelete : undefined}
+          />
         </div>
       )}
 
@@ -456,14 +496,14 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/10 pb-3">
               <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
                 <span className="material-symbols-outlined text-[#00c2cb]">receipt</span>
-                <span>إنشاء فاتورة كشف / خدمة طبية جديدة</span>
+                <span>إنشاء فاتورة كشف أو خدمة طبية</span>
               </h3>
               <button
                 type="button"
                 onClick={() => setShowInvoiceModal(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-white"
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
               >
-                <span className="material-symbols-outlined">close</span>
+                <span className="material-symbols-outlined text-lg">close</span>
               </button>
             </div>
 
@@ -477,7 +517,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
                   required
                   value={invPatientName}
                   onChange={(e) => setInvPatientName(e.target.value)}
-                  placeholder="اكتب اسم المريض كاملاً..."
+                  placeholder="أدخل اسم المريض..."
                   className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-white text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
                 />
               </div>
@@ -506,10 +546,10 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
                   </label>
                   <input
                     type="number"
-                    min="0"
+                    min="1"
                     required
                     value={invAmount}
-                    onChange={(e) => setInvAmount(Number(e.target.value))}
+                    onChange={(e) => setInvAmount(Math.max(0, Number(e.target.value) || 0))}
                     className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-white text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/10 font-mono font-bold focus:outline-none"
                   />
                 </div>
@@ -523,7 +563,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
                     min="0"
                     max={invAmount}
                     value={invDiscount}
-                    onChange={(e) => setInvDiscount(Number(e.target.value))}
+                    onChange={(e) => setInvDiscount(Math.min(invAmount, Math.max(0, Number(e.target.value) || 0)))}
                     className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-white text-xs p-2.5 rounded-xl border border-slate-200 dark:border-white/10 font-mono focus:outline-none"
                   />
                 </div>
@@ -577,9 +617,10 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold text-xs shadow-md transition-all cursor-pointer"
+                  disabled={isSavingInvoice}
+                  className="px-5 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] disabled:opacity-60 text-slate-950 font-bold text-xs shadow-md transition-all cursor-pointer"
                 >
-                  حفظ الفاتورة
+                  {isSavingInvoice ? 'جارٍ الحفظ...' : 'حفظ الفاتورة'}
                 </button>
               </div>
             </form>
@@ -693,24 +734,35 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
               <button
                 type="button"
                 onClick={() => setTxToDelete(null)}
+                disabled={isDeletingRecord}
                 className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] text-xs font-bold transition-all cursor-pointer"
               >
                 إلغاء
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  if (onDeleteTransaction && txToDelete) {
-                    onDeleteTransaction(txToDelete.id);
-                    setToast(`تم حذف الفاتورة بنجاح`);
-                    setTimeout(() => setToast(null), 3000);
+                disabled={isDeletingRecord}
+                onClick={async () => {
+                  if (!onDeleteTransaction || !txToDelete || isDeletingRecord) return;
+                  setIsDeletingRecord(true);
+                  try {
+                    assertPermission('billing.delete', 'حذف الفاتورة');
+                    await onDeleteTransaction(txToDelete.id);
+                    showToastMessage('تم حذف الفاتورة بنجاح', 3000);
                     setRefreshKey((k) => k + 1);
+                  } catch (err) {
+                    showToastMessage(
+                      err instanceof Error ? err.message : 'تعذر حذف الفاتورة لعدم توفر الصلاحية.',
+                      4000
+                    );
+                  } finally {
+                    setIsDeletingRecord(false);
                     setTxToDelete(null);
                   }
                 }}
-                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md transition-all cursor-pointer"
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-white text-xs font-bold shadow-md transition-all cursor-pointer"
               >
-                تأكيد الحذف
+                {isDeletingRecord ? 'جارٍ الحذف...' : 'تأكيد الحذف'}
               </button>
             </div>
           </div>
@@ -742,22 +794,193 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
               <button
                 type="button"
                 onClick={() => setExpenseToDelete(null)}
+                disabled={isDeletingRecord}
                 className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] text-xs font-bold transition-all cursor-pointer"
               >
                 إلغاء
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  removeClinicExpense(expenseToDelete.id);
-                  setToast(`تم حذف مصروف ${expenseToDelete.category} بنجاح`);
-                  setTimeout(() => setToast(null), 3000);
-                  setRefreshKey((k) => k + 1);
-                  setExpenseToDelete(null);
+                disabled={isDeletingRecord}
+                onClick={async () => {
+                  if (!expenseToDelete || isDeletingRecord) return;
+                  setIsDeletingRecord(true);
+                  try {
+                    assertPermission('billing.delete', 'حذف المصروف');
+                    await removeClinicExpense(expenseToDelete.id);
+                    showToastMessage(`تم حذف مصروف ${expenseToDelete.category} بنجاح`, 3000);
+                    setRefreshKey((k) => k + 1);
+                  } catch (err) {
+                    showToastMessage(
+                      err instanceof Error ? err.message : 'تعذر حذف المصروف لعدم توفر الصلاحية.',
+                      4000
+                    );
+                  } finally {
+                    setIsDeletingRecord(false);
+                    setExpenseToDelete(null);
+                  }
                 }}
-                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md transition-all cursor-pointer"
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-white text-xs font-bold shadow-md transition-all cursor-pointer"
               >
-                تأكيد الحذف
+                {isDeletingRecord ? 'جارٍ الحذف...' : 'تأكيد الحذف'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: تقفيل الوردية وتسليم النقدية (SHIFT CLOSING BREAKDOWN MODAL) */}
+      {/* ========================================================================= */}
+      {shiftSummaryModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#111A2E] border border-slate-200 dark:border-white/10 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/10 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-[#00c2cb]/15 text-[#008f97] dark:text-[#00c2cb] flex items-center justify-center">
+                  <span className="material-symbols-outlined text-xl">lock_clock</span>
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    ملخص تقفيل الوردية وتسليم النقدية
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-[#859394] font-mono">
+                    تاريخ الوردية: {toEnglishDigits(shiftSummaryModal.date)}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShiftSummaryModal(null)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-lg">close</span>
+              </button>
+            </div>
+
+            {/* الإجمالي الكلي للتحصيل */}
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#18233C] border border-slate-200 dark:border-white/5 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-700 dark:text-[#dde2f5]">
+                  الإجمالي الكلي للتحصيل ({toEnglishDigits(shiftSummaryModal.paymentsCount)} عملية)
+                </span>
+                <span className="text-base font-black font-mono tabular-nums text-slate-900 dark:text-white">
+                  {toEnglishDigits(
+                    shiftSummaryModal.totalInflow.toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
+                  )}{' '}
+                  ج.م
+                </span>
+              </div>
+
+              {/* سطر تفصيلي للنقدي والإلكتروني والمصروفات */}
+              <div className="pt-2.5 border-t border-slate-200/70 dark:border-white/10 space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-600 dark:text-[#859394] flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    <span>التحصيل النقدي (كاش بالدرج)</span>
+                  </span>
+                  <span className="font-mono font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+                    {toEnglishDigits(
+                      shiftSummaryModal.cashInflow.toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })
+                    )}{' '}
+                    ج.م
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-600 dark:text-[#859394] flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+                    <span>التحصيل الإلكتروني (فيزا / إنستاباي)</span>
+                  </span>
+                  <span className="font-mono font-bold tabular-nums text-indigo-600 dark:text-indigo-400">
+                    {toEnglishDigits(
+                      shiftSummaryModal.electronicInflow.toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })
+                    )}{' '}
+                    ج.م
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-600 dark:text-[#859394] flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+                    <span>إجمالي المصروفات ({toEnglishDigits(shiftSummaryModal.expensesCount)} بند)</span>
+                  </span>
+                  <span className="font-mono font-bold tabular-nums text-rose-600 dark:text-rose-400">
+                    -{' '}
+                    {toEnglishDigits(
+                      shiftSummaryModal.expensesTotal.toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })
+                    )}{' '}
+                    ج.م
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* صافي النقدية بالدرج وصافي الإيراد الكلي */}
+            <div className="p-4 rounded-2xl bg-teal-50/80 dark:bg-[#00c2cb]/10 border border-teal-200 dark:border-[#00c2cb]/30 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-teal-900 dark:text-[#45dee7]">
+                  صافي النقدية الفعلي بالدرج (النقدي - المصروفات):
+                </span>
+                <span className="text-base font-black font-mono tabular-nums text-[#008f97] dark:text-[#00c2cb]">
+                  {toEnglishDigits(
+                    shiftSummaryModal.netDrawerCash.toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
+                  )}{' '}
+                  ج.م
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-slate-600 dark:text-[#859394]">
+                <span>صافي الإيراد الكلي (شاملاً الإلكتروني):</span>
+                <span className="font-mono font-bold tabular-nums">
+                  {toEnglishDigits(
+                    shiftSummaryModal.netTotalRevenue.toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
+                  )}{' '}
+                  ج.م
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShiftSummaryModal(null)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] text-xs font-bold transition-all cursor-pointer"
+              >
+                إغلاق
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const formattedCash = `${toEnglishDigits(
+                    shiftSummaryModal.netDrawerCash.toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
+                  )} ج.م`;
+                  setShiftSummaryModal(null);
+                  showToastMessage(`تم اعتماد تقفيل الوردية بنجاح! صافي النقدية المسلمة: ${formattedCash}`, 4500);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs font-bold shadow-md transition-all cursor-pointer"
+              >
+                اعتماد وتسليم الوردية
               </button>
             </div>
           </div>

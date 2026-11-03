@@ -6,6 +6,8 @@ export async function exportPrescriptionToPdf(
   target: string | PrintPrescriptionData,
   patientName: string = 'مريض'
 ) {
+  const safeFileName = (patientName || 'مريض').replace(/[<>:"/\\|?*\s]+/g, '_');
+
   // If structured data is passed, render directly from the verified print prescription HTML engine
   if (typeof target === 'object' && target !== null && 'config' in target) {
     let sandbox: HTMLDivElement | null = null;
@@ -65,7 +67,7 @@ export async function exportPrescriptionToPdf(
 
       // A5 dimensions in mm: 148 x 210
       pdf.addImage(imgData, 'PNG', 0, 0, 148, 210, undefined, 'FAST');
-      pdf.save(`روشتة_${patientName || 'مريض'}.pdf`);
+      pdf.save(`روشتة_${safeFileName}.pdf`);
       return;
     } catch (error) {
       console.error('Failed to export prescription PDF via HTML engine, fallback to DOM element:', error);
@@ -131,7 +133,7 @@ export async function exportPrescriptionToPdf(
 
     // A5 dimensions in mm: 148 x 210
     pdf.addImage(imgData, 'PNG', 0, 0, 148, 210, undefined, 'FAST');
-    pdf.save(`روشتة_${patientName || 'مريض'}.pdf`);
+    pdf.save(`روشتة_${safeFileName}.pdf`);
   } catch (error) {
     console.error('Failed to export prescription PDF, fallback to window.print():', error);
     window.print();
@@ -145,4 +147,3 @@ export async function exportPrescriptionToPdf(
     }
   }
 }
-

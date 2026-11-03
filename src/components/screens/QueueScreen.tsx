@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { QueueItem, ScreenType } from '../../types';
 import { useLanguage } from '../../i18n/LanguageContext';
+import { usePermissions } from '../../context/AuthContext';
 
 interface QueueScreenProps {
   queue: QueueItem[];
@@ -18,6 +19,9 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({
   onOpenNewVisit,
 }) => {
   const { t } = useLanguage();
+  const { canDelete, canUpdate } = usePermissions();
+  const canRemove = canDelete('waiting-queue') || canUpdate('waiting-queue');
+
   const [patientToRemove, setPatientToRemove] = useState<QueueItem | null>(null);
   const [notification, setNotification] = useState<{
     id: string;
@@ -86,82 +90,92 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({
             </p>
           </div>
         ) : (
-          queue.map((item) => (
-            <div
-              key={item.id}
-              className="w-full bg-white dark:bg-[#111A2E] p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all hover:border-[#00c2cb]/50"
-            >
-              {/* Patient Info Block */}
-              <div className="flex items-start gap-3.5 min-w-0">
-                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-teal-50 dark:bg-[#00c2cb]/15 text-[#008f97] dark:text-[#00c2cb] flex items-center justify-center font-bold text-lg shrink-0">
-                  {item.patientName ? item.patientName.charAt(0) : 'P'}
-                </div>
-
-                <div className="min-w-0 space-y-1 flex-1">
-                  <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white break-words">
-                    {item.patientName}
-                  </h2>
-
-                  <p className="text-xs text-slate-500 dark:text-[#859394] font-medium">
-                    {item.visitType || t('intake.newExam')}
-                  </p>
-
-                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                    <span className="px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-[#B45309] dark:text-amber-300 text-[11px] font-bold">
-                      {t('queue.waiting')}
-                    </span>
-                    <span className="text-xs text-slate-500 dark:text-[#859394] font-mono">
-                      {item.phone || '—'}
-                    </span>
+          queue.map((item) => {
+            const isInExam = item.status === 'in-progress';
+            return (
+              <div
+                key={item.id}
+                className="w-full bg-white dark:bg-[#111A2E] p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all hover:border-[#00c2cb]/50"
+              >
+                {/* Patient Info Block */}
+                <div className="flex items-start gap-3.5 min-w-0">
+                  <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-teal-50 dark:bg-[#00c2cb]/15 text-[#008f97] dark:text-[#00c2cb] flex items-center justify-center font-bold text-lg shrink-0">
+                    {item.patientName ? item.patientName.charAt(0) : 'P'}
                   </div>
 
-                  <p className="text-[11px] text-slate-500 dark:text-[#859394] font-mono flex items-center gap-2 pt-0.5">
-                    <span className="font-bold">{t('queue.ticketShort')}{item.ticketNumber}</span>
-                    <span>•</span>
-                    <span className="flex items-center gap-1 text-[#008f97] dark:text-[#00c2cb] font-bold">
-                      <span className="material-symbols-outlined text-[13px]">schedule</span>
-                      <span>{t('queue.arrivalLabel')} {item.arrivalTime || '—'}</span>
-                    </span>
-                  </p>
+                  <div className="min-w-0 space-y-1 flex-1">
+                    <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white break-words">
+                      {item.patientName}
+                    </h2>
+
+                    <p className="text-xs text-slate-500 dark:text-[#859394] font-medium">
+                      {item.visitType || t('intake.newExam')}
+                    </p>
+
+                    <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                          isInExam
+                            ? 'bg-teal-100 dark:bg-[#00c2cb]/20 text-[#008f97] dark:text-[#00c2cb]'
+                            : 'bg-amber-100 dark:bg-amber-950/60 text-[#B45309] dark:text-amber-300'
+                        }`}
+                      >
+                        {isInExam ? t('queue.inConsultation') : t('queue.waiting')}
+                      </span>
+                      <span className="text-xs text-slate-500 dark:text-[#859394] font-mono">
+                        {item.phone || '—'}
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-slate-500 dark:text-[#859394] font-mono flex items-center gap-2 pt-0.5">
+                      <span className="font-bold">{t('queue.ticketShort')}{item.ticketNumber}</span>
+                      <span>•</span>
+                      <span className="flex items-center gap-1 text-[#008f97] dark:text-[#00c2cb] font-bold">
+                        <span className="material-symbols-outlined text-[13px]">schedule</span>
+                        <span>{t('queue.arrivalLabel')} {item.arrivalTime || '—'}</span>
+                      </span>
+                    </p>
+                  </div>
                 </div>
-              </div>
 
-              {/* Action Buttons Block */}
-              <div className="flex flex-wrap items-center gap-2.5 self-stretch md:self-center justify-start md:justify-end shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100 dark:border-white/5">
-                <button
-                  type="button"
-                  onClick={() => setPatientToRemove(item)}
-                  className="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 dark:bg-[#18233C] dark:hover:bg-rose-950/40 dark:text-[#bbc9ca] dark:hover:text-rose-400 text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
-                >
-                  <span className="text-sm">✕</span>
-                  <span>{t('queue.removeFromQueue')}</span>
-                </button>
+                {/* Action Buttons Block */}
+                <div className="flex flex-wrap items-center gap-2.5 self-stretch md:self-center justify-start md:justify-end shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100 dark:border-white/5">
+                  {canRemove && onRemoveFromQueue && (
+                    <button
+                      type="button"
+                      onClick={() => setPatientToRemove(item)}
+                      className="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 dark:bg-[#18233C] dark:hover:bg-rose-950/40 dark:text-[#bbc9ca] dark:hover:text-rose-400 text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                    >
+                      <span className="text-sm">✕</span>
+                      <span>{t('queue.removeFromQueue')}</span>
+                    </button>
+                  )}
 
-                <div className="relative inline-block">
-                  <select
-                    defaultValue="waiting"
-                    className="appearance-none bg-amber-50 dark:bg-amber-950/40 text-[#B45309] dark:text-amber-300 border border-amber-200 dark:border-amber-800/40 text-xs font-bold py-2.5 pr-3 pl-8 rounded-xl focus:outline-none cursor-pointer"
+                  <div
+                    className={`inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border text-xs font-bold ${
+                      isInExam
+                        ? 'bg-teal-50 dark:bg-[#00c2cb]/15 text-[#008f97] dark:text-[#00c2cb] border-teal-200 dark:border-[#00c2cb]/30'
+                        : 'bg-amber-50 dark:bg-amber-950/40 text-[#B45309] dark:text-amber-300 border-amber-200 dark:border-amber-800/40'
+                    }`}
                   >
-                    <option value="waiting">{t('queue.waiting')}</option>
-                    <option value="in-exam">{t('queue.inConsultation')}</option>
-                    <option value="completed">{t('queue.completed')}</option>
-                  </select>
-                  <span className="material-symbols-outlined text-sm absolute left-2 top-3 pointer-events-none text-amber-700 dark:text-amber-400">
-                    expand_more
-                  </span>
-                </div>
+                    <span className="material-symbols-outlined text-sm">
+                      {isInExam ? 'vital_signs' : 'hourglass_top'}
+                    </span>
+                    <span>{isInExam ? t('queue.inConsultation') : t('queue.waiting')}</span>
+                  </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleOpenExam(item)}
-                  className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold text-xs sm:text-sm shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95"
-                >
-                  <span className="material-symbols-outlined text-lg">stethoscope</span>
-                  <span>{t('queue.startExam')}</span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenExam(item)}
+                    className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold text-xs sm:text-sm shadow-md shadow-[#00c2cb]/20 transition-all cursor-pointer active:scale-95"
+                  >
+                    <span className="material-symbols-outlined text-lg">stethoscope</span>
+                    <span>{t('queue.startExam')}</span>
+                  </button>
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 

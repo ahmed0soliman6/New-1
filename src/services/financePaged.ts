@@ -67,7 +67,58 @@ export async function fetchTotal(
     { total: sum('amount'), n: count() }
   );
   const d = snap.data();
-  return { total: Number(d.total) || 0, count: Number(d.n) || 0 };
+  return { total: Math.max(0, Number(d.total) || 0), count: Number(d.n) || 0 };
+}
+
+export interface ShiftBreakdown {
+  totalInflow: number;
+  cashInflow: number;
+  electronicInflow: number;
+  expensesTotal: number;
+  netDrawerCash: number;
+  netTotalRevenue: number;
+  paymentsCount: number;
+  expensesCount: number;
+}
+
+/** تفصيل تقفيل الوردية اليومي: يفصل النقدي عن الإلكتروني (فيزا / إنستاباي) والمصروفات */
+export async function fetchShiftBreakdown(r: KeyRange): Promise<ShiftBreakdown> {
+  if (!db) throw new Error('Firestore غير مهيأ');
+  const [paymentsSnap, expensesAgg] = await Promise.all([
+    getDocs(query(collection(db, 'payments'), ...rangeConstraints('dayKey', r))),
+    fetchTotal('expenses', r),
+  ]);
+  meterQuery('financeShift:payments', paymentsSnap);
+
+  let cashInflow = 0;
+  let electronicInflow = 0;
+  let paymentsCount = 0;
+
+  paymentsSnap.docs.forEach((docSnap) => {
+    const p = mapDoc<Payment>('payments', docSnap);
+    const amt = Number(p.amount) || 0;
+    if (amt <= 0 || (p.status && p.status !== 'PAID')) return;
+    paymentsCount += 1;
+    const methodStr = String(p.method || 'CASH').toUpperCase();
+    if (methodStr === 'CARD' || methodStr === 'TRANSFER' || methodStr.includes('فيزا') || methodStr.includes('إنستا')) {
+      electronicInflow += amt;
+    } else {
+      cashInflow += amt;
+    }
+  });
+
+  const totalInflow = cashInflow + electronicInflow;
+  const expensesTotal = Math.max(0, expensesAgg.total);
+  return {
+    totalInflow,
+    cashInflow,
+    electronicInflow,
+    expensesTotal,
+    netDrawerCash: cashInflow - expensesTotal,
+    netTotalRevenue: totalInflow - expensesTotal,
+    paymentsCount,
+    expensesCount: expensesAgg.count,
+  };
 }
 
 /** صفحة واحدة من الدفعات + فواتير هذه الصفحة فقط */

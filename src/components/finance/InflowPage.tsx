@@ -14,6 +14,7 @@ import { usePagedList } from './usePagedList';
 import { PeriodPicker, periodLabel } from './PeriodPicker';
 import { Pager } from './Pager';
 import { toEnglishDigits } from '../../utils/numberUtils';
+import { usePermissions } from '../../context/AuthContext';
 import type { DocumentSnapshot } from 'firebase/firestore';
 
 interface InflowPageProps {
@@ -31,6 +32,10 @@ export const InflowPage: React.FC<InflowPageProps> = ({
   onDelete,
   onCreateInvoice,
 }) => {
+  const { canDelete, canCreate } = usePermissions();
+  const effectiveOnDelete = canDelete('billing-payments') ? onDelete : undefined;
+  const allowCreate = canCreate('billing-payments');
+
   const [period, setPeriod] = useState<PeriodSel>(currentPeriod);
   const [view, setView] = useState<'received' | 'unpaid'>('received');
   const [totalData, setTotalData] = useState<{ total: number; count: number }>({ total: 0, count: 0 });
@@ -224,14 +229,16 @@ export const InflowPage: React.FC<InflowPageProps> = ({
           </button>
         </div>
 
-        <button
-          type="button"
-          onClick={onCreateInvoice}
-          className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer self-start sm:self-auto"
-        >
-          <span className="material-symbols-outlined text-base">add_circle</span>
-          <span>إنشاء فاتورة كشف</span>
-        </button>
+        {allowCreate && (
+          <button
+            type="button"
+            onClick={onCreateInvoice}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer self-start sm:self-auto"
+          >
+            <span className="material-symbols-outlined text-base">add_circle</span>
+            <span>إنشاء فاتورة كشف</span>
+          </button>
+        )}
       </div>
 
       {/* Table Container */}
@@ -293,7 +300,7 @@ export const InflowPage: React.FC<InflowPageProps> = ({
                     </td>
                   </tr>
                 ) : (
-                  receivedItems.map((tx) => renderRow(tx, onPrint, onDelete))
+                  receivedItems.map((tx) => renderRow(tx, onPrint, effectiveOnDelete))
                 )
               ) : unpaidLoading ? (
                 <tr>
@@ -317,7 +324,7 @@ export const InflowPage: React.FC<InflowPageProps> = ({
                   </td>
                 </tr>
               ) : (
-                unpaidRecords.map((tx) => renderRow(tx, onPrint, onDelete))
+                unpaidRecords.map((tx) => renderRow(tx, onPrint, effectiveOnDelete))
               )}
             </tbody>
           </table>

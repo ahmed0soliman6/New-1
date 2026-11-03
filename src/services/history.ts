@@ -19,9 +19,14 @@ const TTL_MS = 60_000;
 const cache = new Map<string, { at: number; data: PatientHistory }>();
 
 async function byPatient<T>(d: Firestore, name: string, patientId: string): Promise<T[]> {
-  const snap = await getDocs(query(collection(d, name), where('patientId', '==', patientId)));
-  meterQuery(`history:${name}`, snap);
-  return mapDocs<T>(name, snap);
+  try {
+    const snap = await getDocs(query(collection(d, name), where('patientId', '==', patientId)));
+    meterQuery(`history:${name}`, snap);
+    return mapDocs<T>(name, snap);
+  } catch (err) {
+    console.warn(`[fetchPatientHistory] Skipped collection "${name}" for patient "${patientId}":`, err);
+    return [];
+  }
 }
 
 export async function fetchPatientHistory(patientId: string, force = false): Promise<PatientHistory> {

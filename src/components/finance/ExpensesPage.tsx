@@ -11,14 +11,18 @@ import { usePagedList } from './usePagedList';
 import { PeriodPicker, periodLabel } from './PeriodPicker';
 import { Pager } from './Pager';
 import { toEnglishDigits, formatAppDate } from '../../utils/numberUtils';
+import { usePermissions } from '../../context/AuthContext';
 import type { DocumentSnapshot } from 'firebase/firestore';
 
 interface ExpensesPageProps {
   refreshKey: number;
-  onDelete: (exp: ClinicExpenseRecord) => void;
+  onDelete?: (exp: ClinicExpenseRecord) => void;
 }
 
 export const ExpensesPage: React.FC<ExpensesPageProps> = ({ refreshKey, onDelete }) => {
+  const { canDelete } = usePermissions();
+  const allowDelete = canDelete('billing-payments') && Boolean(onDelete);
+
   const [period, setPeriod] = useState<PeriodSel>(currentPeriod);
   const [totalData, setTotalData] = useState<{ total: number; count: number }>({ total: 0, count: 0 });
   const [totalLoading, setTotalLoading] = useState(false);
@@ -217,14 +221,18 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ refreshKey, onDelete
                       {formatArabicDate(exp.date)}
                     </td>
                     <td className="p-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => onDelete(exp)}
-                        className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900 text-rose-600 dark:text-rose-400 transition-colors cursor-pointer"
-                        title="حذف المصروف"
-                      >
-                        <span className="material-symbols-outlined text-base">delete</span>
-                      </button>
+                      {allowDelete && onDelete ? (
+                        <button
+                          type="button"
+                          onClick={() => onDelete(exp)}
+                          className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900 text-rose-600 dark:text-rose-400 transition-colors cursor-pointer"
+                          title="حذف المصروف"
+                        >
+                          <span className="material-symbols-outlined text-base">delete</span>
+                        </button>
+                      ) : (
+                        <span className="text-slate-300 dark:text-slate-600">—</span>
+                      )}
                     </td>
                   </tr>
                 ))

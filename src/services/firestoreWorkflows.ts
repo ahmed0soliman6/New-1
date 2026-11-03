@@ -1,22 +1,15 @@
 import {
-  collection,
   doc,
   deleteDoc,
-  getDoc,
   runTransaction,
   serverTimestamp,
-  Timestamp,
   type Firestore,
 } from 'firebase/firestore';
 import type {
   Appointment,
-  FollowUp,
-  LabOrder,
   Patient,
   PaymentMethod,
-  Prescription,
   PrescriptionItemSnapshot,
-  RadiologyOrder,
   OrderStatus,
   Visit,
 } from '../types/database';
@@ -102,17 +95,18 @@ export async function checkInAppointmentTransaction(params: {
     const paymentId = id('pay');
     const receiptNumber = id('REC');
     const timestamp = now();
+    const safePayment = Math.max(0, Number(params.paymentAmount) || 0);
 
     const visit: Visit = {
       visitId,
       patientId: appointment.patientId,
       appointmentId: appointment.appointmentId,
       clinicLocationId: appointment.clinicLocationId || 'loc-mohandessin',
-      visitType: params.paymentAmount === 0 ? 'FOLLOW_UP' : 'NEW',
+      visitType: safePayment === 0 ? 'FOLLOW_UP' : 'NEW',
       source: 'APPOINTMENT',
       status: 'WAITING',
       queueNumber: assignedQueueNumber,
-      receptionistData: params.receptionistData,
+      receptionistData: removeUndefined(params.receptionistData || ({} as any)) as Visit['receptionistData'],
       clinicalData: emptyClinicalData,
       vitalSigns: emptyVitals,
       startedAt: null,
@@ -136,30 +130,34 @@ export async function checkInAppointmentTransaction(params: {
       visitId,
       clinicLocationId: appointment.clinicLocationId || 'loc-mohandessin',
       items: [],
-      subtotal: params.paymentAmount,
+      subtotal: safePayment,
       discount: 0,
-      total: params.paymentAmount,
-      paidAmount: params.paymentAmount,
+      total: safePayment,
+      paidAmount: safePayment,
       remainingAmount: 0,
-      status: 'PAID',
+      status: safePayment > 0 ? 'PAID' : 'UNPAID',
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       dayKey: today,
     });
-    tx.set(paymentRef, {
-      paymentId,
-      patientId: appointment.patientId,
-      visitId,
-      invoiceId,
-      clinicLocationId: appointment.clinicLocationId || 'loc-mohandessin',
-      amount: params.paymentAmount,
-      method: params.paymentMethod,
-      status: 'PAID',
-      receiptNumber,
-      paidAt: serverTimestamp(),
-      receivedBy: params.receivedBy,
-      dayKey: today,
-    });
+
+    if (safePayment > 0) {
+      tx.set(paymentRef, {
+        paymentId,
+        patientId: appointment.patientId,
+        visitId,
+        invoiceId,
+        clinicLocationId: appointment.clinicLocationId || 'loc-mohandessin',
+        amount: safePayment,
+        method: params.paymentMethod,
+        status: 'PAID',
+        receiptNumber,
+        paidAt: serverTimestamp(),
+        receivedBy: params.receivedBy,
+        dayKey: today,
+      });
+    }
+
     tx.set(visitRef, { ...visit, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), dayKey: today });
 
     return { appointment: { ...appointment, status: 'ARRIVED', updatedAt: timestamp }, visit };
@@ -193,50 +191,55 @@ export async function registerWalkInTransaction(params: {
     const visitId = id('vis');
     const invoiceId = id('inv');
     const paymentId = id('pay');
+    const safePayment = Math.max(0, Number(params.paymentAmount) || 0);
+    const sanitizedPatient = removeUndefined(params.patient);
 
     tx.set(counterRef, { lastNumber: assignedQueueNumber, date: today }, { merge: true });
-    tx.set(doc(params.db, 'patients', params.patient.patientId), { ...params.patient, updatedAt: serverTimestamp() }, { merge: true });
+    tx.set(doc(params.db, 'patients', params.patient.patientId), { ...sanitizedPatient, updatedAt: serverTimestamp() }, { merge: true });
     tx.set(doc(params.db, 'invoices', invoiceId), {
       invoiceId,
       patientId: params.patient.patientId,
       visitId,
       clinicLocationId: params.clinicLocationId,
       items: [],
-      subtotal: params.paymentAmount,
+      subtotal: safePayment,
       discount: 0,
-      total: params.paymentAmount,
-      paidAmount: params.paymentAmount,
+      total: safePayment,
+      paidAmount: safePayment,
       remainingAmount: 0,
-      status: 'PAID',
+      status: safePayment > 0 ? 'PAID' : 'UNPAID',
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       dayKey: today,
     });
-    tx.set(doc(params.db, 'payments', paymentId), {
-      paymentId,
-      patientId: params.patient.patientId,
-      visitId,
-      invoiceId,
-      clinicLocationId: params.clinicLocationId,
-      amount: params.paymentAmount,
-      method: params.paymentMethod,
-      status: 'PAID',
-      receiptNumber: id('REC'),
-      paidAt: serverTimestamp(),
-      receivedBy: params.receivedBy,
-      dayKey: today,
-    });
+
+    if (safePayment > 0) {
+      tx.set(doc(params.db, 'payments', paymentId), {
+        paymentId,
+        patientId: params.patient.patientId,
+        visitId,
+        invoiceId,
+        clinicLocationId: params.clinicLocationId,
+        amount: safePayment,
+        method: params.paymentMethod,
+        status: 'PAID',
+        receiptNumber: id('REC'),
+        paidAt: serverTimestamp(),
+        receivedBy: params.receivedBy,
+        dayKey: today,
+      });
+    }
 
     const visit: Visit = {
       visitId,
       patientId: params.patient.patientId,
       appointmentId: params.appointmentId || null,
       clinicLocationId: params.clinicLocationId,
-      visitType: params.paymentAmount === 0 ? 'FOLLOW_UP' : 'NEW',
+      visitType: safePayment === 0 ? 'FOLLOW_UP' : 'NEW',
       source: 'WALK_IN',
       status: 'WAITING',
       queueNumber: assignedQueueNumber,
-      receptionistData: params.receptionistData,
+      receptionistData: removeUndefined(params.receptionistData || ({} as any)) as Visit['receptionistData'],
       clinicalData: emptyClinicalData,
       vitalSigns: emptyVitals,
       startedAt: null,
@@ -304,8 +307,8 @@ export async function completeVisitTransaction(params: {
     tx.update(visitRef, {
       status: 'COMPLETED',
       doctorId: params.doctorId,
-      clinicalData: params.clinicalData,
-      vitalSigns: params.vitalSigns,
+      clinicalData: removeUndefined(params.clinicalData || ({} as any)),
+      vitalSigns: removeUndefined(params.vitalSigns || ({} as any)),
       completedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -321,88 +324,104 @@ export async function completeVisitTransaction(params: {
       });
     }
 
-    // Save Prescription document in prescriptions collection atomically
+    // Save Prescription document deterministically per visitId so re-saving updates rather than duplicates (FINDING-005)
     if (params.prescriptionItems && params.prescriptionItems.length > 0) {
-      const rxId = id('rx');
+      const rxId = `rx-${visitData.visitId}`;
       const rxRef = doc(params.db, 'prescriptions', rxId);
-      tx.set(rxRef, {
-        prescriptionId: rxId,
-        patientId: visitData.patientId,
-        visitId: visitData.visitId,
-        doctorId: params.doctorId,
-        clinicLocationId: visitData.clinicLocationId || 'loc-mohandessin',
-        items: params.prescriptionItems,
-        notes: params.prescriptionNotes || '',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        dayKey: day,
-      });
+      tx.set(
+        rxRef,
+        {
+          prescriptionId: rxId,
+          patientId: visitData.patientId,
+          visitId: visitData.visitId,
+          doctorId: params.doctorId,
+          clinicLocationId: visitData.clinicLocationId || 'loc-mohandessin',
+          items: params.prescriptionItems.map((it) => removeUndefined(it as any)),
+          notes: params.prescriptionNotes || '',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          dayKey: day,
+        },
+        { merge: true }
+      );
     }
 
-    // Save Lab Orders atomically with actual clinical results
+    // Save Lab Orders deterministically per visitId + index
     if (params.labOrders && params.labOrders.length > 0) {
-      for (const lab of params.labOrders) {
-        const labOrderId = id('lab-ord');
+      params.labOrders.forEach((lab, idx) => {
+        const labOrderId = `lab-ord-${visitData.visitId}-${idx}`;
         const labRef = doc(params.db, 'labOrders', labOrderId);
         const resolvedStatus = lab.status || (lab.result ? 'RESULT' : 'ORDERED');
-        tx.set(labRef, {
-          labOrderId,
-          patientId: visitData.patientId,
-          visitId: visitData.visitId,
-          testId: lab.testId || null,
-          testName: lab.testName,
-          status: resolvedStatus,
-          result: lab.result || '',
-          notes: lab.notes || '',
-          orderedAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          dayKey: day,
-        });
-      }
+        tx.set(
+          labRef,
+          {
+            labOrderId,
+            patientId: visitData.patientId,
+            visitId: visitData.visitId,
+            testId: lab.testId || null,
+            testName: lab.testName,
+            status: resolvedStatus,
+            result: lab.result || '',
+            notes: lab.notes || '',
+            orderedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            dayKey: day,
+          },
+          { merge: true }
+        );
+      });
     }
 
-    // Save Radiology Orders atomically with actual clinical reports
+    // Save Radiology Orders deterministically per visitId + index
     if (params.radiologyOrders && params.radiologyOrders.length > 0) {
-      for (const rad of params.radiologyOrders) {
-        const radOrderId = id('rad-ord');
+      params.radiologyOrders.forEach((rad, idx) => {
+        const radOrderId = `rad-ord-${visitData.visitId}-${idx}`;
         const radRef = doc(params.db, 'radiologyOrders', radOrderId);
         const resolvedStatus = rad.status || (rad.report ? 'REPORT' : rad.result ? 'RESULT' : 'ORDERED');
-        tx.set(radRef, {
-          radiologyOrderId: radOrderId,
-          patientId: visitData.patientId,
-          visitId: visitData.visitId,
-          radiologyTypeId: rad.radiologyTypeId || null,
-          radiologyName: rad.radiologyName,
-          status: resolvedStatus,
-          result: rad.result || '',
-          report: rad.report || '',
-          notes: rad.notes || '',
-          orderedAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          dayKey: day,
-        });
-      }
+        tx.set(
+          radRef,
+          {
+            radiologyOrderId: radOrderId,
+            patientId: visitData.patientId,
+            visitId: visitData.visitId,
+            radiologyTypeId: rad.radiologyTypeId || null,
+            radiologyName: rad.radiologyName,
+            status: resolvedStatus,
+            result: rad.result || '',
+            report: rad.report || '',
+            notes: rad.notes || '',
+            orderedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            dayKey: day,
+          },
+          { merge: true }
+        );
+      });
     }
 
-    // Save Follow-Up atomically
+    // Save Follow-Up deterministically per visitId
     if (params.followUp) {
-      const followUpId = id('fol');
+      const followUpId = `fol-${visitData.visitId}`;
       const followUpRef = doc(params.db, 'followUps', followUpId);
-      tx.set(followUpRef, {
-        followUpId,
-        patientId: visitData.patientId,
-        sourceVisitId: visitData.visitId,
-        clinicLocationId: visitData.clinicLocationId || 'loc-mohandessin',
-        scheduledDate: params.followUp.scheduledDate,
-        scheduledTime: null,
-        status: 'UPCOMING',
-        fee: params.followUp.fee,
-        isFree: params.followUp.isFree,
-        notes: params.followUp.notes || '',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        dayKey: day,
-      });
+      tx.set(
+        followUpRef,
+        {
+          followUpId,
+          patientId: visitData.patientId,
+          sourceVisitId: visitData.visitId,
+          clinicLocationId: visitData.clinicLocationId || 'loc-mohandessin',
+          scheduledDate: params.followUp.scheduledDate,
+          scheduledTime: null,
+          status: 'UPCOMING',
+          fee: params.followUp.fee,
+          isFree: params.followUp.isFree,
+          notes: params.followUp.notes || '',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          dayKey: day,
+        },
+        { merge: true }
+      );
     }
   });
 }

@@ -5,7 +5,7 @@
  * for admin password recovery without storing cleartext tokens anywhere.
  */
 
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, getFirestore, serverTimestamp } from 'firebase/firestore';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, signInWithEmailAndPassword, updatePassword, signOut } from 'firebase/auth';
 import { requireFirebase, firebaseConfig } from './firebase';
@@ -302,8 +302,9 @@ export async function recoverAdminPasswordWithCode(params: {
     });
     const { ciphertext, iv } = await encryptWithCode(params.recoveryCode, salt, updatedPayload);
 
+    const secondaryDb = getFirestore(secondary);
     await setDoc(
-      recoveryDocRef,
+      doc(secondaryDb, '_system', 'recovery'),
       {
         envelope: ciphertext,
         iv: iv,

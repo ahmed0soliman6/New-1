@@ -7,6 +7,8 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const getEnv = (key: string) => process.env[key] || env[key] || '';
 
+  const MAX_BODY_BYTES = 64 * 1024; // 64KB limit for API dev middleware
+
   const apiDevMiddleware = () => ({
     name: 'api-dev-middleware',
     configureServer(server: any) {
@@ -14,10 +16,22 @@ export default defineConfig(({ mode }) => {
         if (req.url?.startsWith('/api/users/delete')) {
           try {
             let rawBody = '';
+            let bodyBytes = 0;
+            let aborted = false;
             req.on('data', (chunk: any) => {
+              if (aborted) return;
+              bodyBytes += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(String(chunk));
+              if (bodyBytes > MAX_BODY_BYTES) {
+                aborted = true;
+                res.statusCode = 413;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(JSON.stringify({ error: 'حجم الطلب يتجاوز الحد المسموح به (64KB).' }));
+                return;
+              }
               rawBody += chunk;
             });
             req.on('end', async () => {
+              if (aborted) return;
               try {
                 req.body = rawBody ? JSON.parse(rawBody) : {};
               } catch {
@@ -48,7 +62,7 @@ export default defineConfig(({ mode }) => {
     base: './',
     plugins: [react(), tailwindcss(), apiDevMiddleware()],
     resolve: { alias: { '@': path.resolve(__dirname, '.') } },
-    envPrefix: ['VITE_', 'FIREBASE_'],
+    envPrefix: ['VITE_'],
     define: {
       'import.meta.env.VITE_FIREBASE_API_KEY': JSON.stringify(getEnv('VITE_FIREBASE_API_KEY') || getEnv('FIREBASE_API_KEY')),
       'import.meta.env.VITE_FIREBASE_AUTH_DOMAIN': JSON.stringify(getEnv('VITE_FIREBASE_AUTH_DOMAIN') || getEnv('FIREBASE_AUTH_DOMAIN')),
@@ -79,4 +93,3 @@ export default defineConfig(({ mode }) => {
     },
   };
 });
-

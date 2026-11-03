@@ -249,13 +249,11 @@ export function addClinicExpense(expense: ClinicExpenseRecord): ClinicExpenseRec
   return cachedClinicExpenses;
 }
 
-export function removeClinicExpense(id: string): ClinicExpenseRecord[] {
+export async function removeClinicExpense(id: string): Promise<ClinicExpenseRecord[]> {
+  if (db) {
+    await deleteDoc(doc(db, 'expenses', id));
+  }
   cachedClinicExpenses = cachedClinicExpenses.filter((e) => e.id !== id);
   saveClinicExpenses(cachedClinicExpenses);
-  if (db) {
-    deleteDoc(doc(db, 'expenses', id)).catch((err) =>
-      console.warn('Firestore expense delete error:', err)
-    );
-  }
   return cachedClinicExpenses;
 }

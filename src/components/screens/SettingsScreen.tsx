@@ -379,6 +379,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
+        assertPermission('settings.edit', 'استيراد واستعادة نسخة احتياطية للنظام');
         const content = event.target?.result as string;
         const data = JSON.parse(content);
 
@@ -392,7 +393,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           });
         }
 
-        if (typeof data.freeFollowupDays === 'number') {
+        if (typeof data.freeFollowupDays === 'number' && data.freeFollowupDays >= 0) {
           setFreeFollowupDays(data.freeFollowupDays);
           safeStorage.setItem(StorageKeys.FREE_FOLLOWUP_DAYS, String(data.freeFollowupDays));
         }
@@ -445,56 +446,61 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
         let restoredRecordsCount = 0;
         if (db && (Array.isArray(data.patients) || Array.isArray(data.visits) || Array.isArray(data.appointments))) {
-          const batch = writeBatch(db);
+          const pendingWrites: Array<{ col: string; id: string; payload: any }> = [];
           if (Array.isArray(data.patients)) {
             data.patients.forEach((p: any) => {
-              if (p.patientId) {
-                batch.set(doc(db, 'patients', p.patientId), p, { merge: true });
-                restoredRecordsCount++;
+              if (p && typeof p.patientId === 'string' && p.patientId.trim()) {
+                pendingWrites.push({ col: 'patients', id: p.patientId, payload: p });
               }
             });
           }
           if (Array.isArray(data.appointments)) {
             data.appointments.forEach((a: any) => {
-              if (a.appointmentId) {
-                batch.set(doc(db, 'appointments', a.appointmentId), a, { merge: true });
-                restoredRecordsCount++;
+              if (a && typeof a.appointmentId === 'string' && a.appointmentId.trim()) {
+                pendingWrites.push({ col: 'appointments', id: a.appointmentId, payload: a });
               }
             });
           }
           if (Array.isArray(data.visits)) {
             data.visits.forEach((v: any) => {
-              if (v.visitId) {
-                batch.set(doc(db, 'visits', v.visitId), v, { merge: true });
-                restoredRecordsCount++;
+              if (v && typeof v.visitId === 'string' && v.visitId.trim()) {
+                pendingWrites.push({ col: 'visits', id: v.visitId, payload: v });
               }
             });
           }
           if (Array.isArray(data.invoices)) {
             data.invoices.forEach((inv: any) => {
-              if (inv.invoiceId) {
-                batch.set(doc(db, 'invoices', inv.invoiceId), inv, { merge: true });
-                restoredRecordsCount++;
+              if (inv && typeof inv.invoiceId === 'string' && inv.invoiceId.trim()) {
+                pendingWrites.push({ col: 'invoices', id: inv.invoiceId, payload: inv });
               }
             });
           }
           if (Array.isArray(data.payments)) {
             data.payments.forEach((pay: any) => {
-              if (pay.paymentId) {
-                batch.set(doc(db, 'payments', pay.paymentId), pay, { merge: true });
-                restoredRecordsCount++;
+              if (pay && typeof pay.paymentId === 'string' && pay.paymentId.trim()) {
+                pendingWrites.push({ col: 'payments', id: pay.paymentId, payload: pay });
               }
             });
           }
           if (Array.isArray(data.prescriptions)) {
             data.prescriptions.forEach((rx: any) => {
-              if (rx.prescriptionId) {
-                batch.set(doc(db, 'prescriptions', rx.prescriptionId), rx, { merge: true });
-                restoredRecordsCount++;
+              if (rx && typeof rx.prescriptionId === 'string' && rx.prescriptionId.trim()) {
+                pendingWrites.push({ col: 'prescriptions', id: rx.prescriptionId, payload: rx });
               }
             });
           }
-          await batch.commit();
+
+          // Commit in chunks of 400 to respect Firestore's 500-operation batch limit (FINDING-007)
+          const CHUNK_SIZE = 400;
+          for (let i = 0; i < pendingWrites.length; i += CHUNK_SIZE) {
+            const chunk = pendingWrites.slice(i, i + CHUNK_SIZE);
+            const batch = writeBatch(db);
+            chunk.forEach((item) => {
+              batch.set(doc(db!, item.col, item.id), item.payload, { merge: true });
+            });
+            await batch.commit();
+            restoredRecordsCount += chunk.length;
+          }
         }
 
         const successMsg = restoredRecordsCount > 0
@@ -505,7 +511,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         setTimeout(() => setSavedToast(null), 3500);
       } catch (err) {
         console.error(err);
-        alert('حدث خطأ أثناء استيراد الملف. يرجى التأكد من اختيار ملف JSON صحيح مسبق تصديره.');
+        setSavedToast(err instanceof Error ? err.message : 'حدث خطأ أثناء استيراد الملف.');
+        setTimeout(() => setSavedToast(null), 4000);
       } finally {
         e.target.value = '';
       }

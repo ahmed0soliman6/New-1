@@ -14,7 +14,6 @@ import {
   checkScreenPermission,
   getDefaultAllowedScreens,
   getDefaultRolePermissions,
-  ALL_SYSTEM_SCREENS,
 } from '../permissions';
 
 export interface UserProfile {
@@ -48,6 +47,22 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function clearCachedUserProfiles(uid?: string) {
+  try {
+    if (uid) {
+      localStorage.removeItem(`soli_cached_profile_${uid}`);
+    }
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('soli_cached_profile_')) {
+        keysToRemove.push(k);
+      }
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
+  } catch {}
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -76,16 +91,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (!db) {
-        // Fallback without Firestore
+        // Least-privilege fallback without Firestore (FINDING-003)
         setUserProfile({
           uid: fbUser.uid,
           username: fbUser.email?.split('@')[0] || 'user',
           displayName: fbUser.displayName || 'مستخدم',
           email: fbUser.email || '',
-          role: 'admin',
+          role: 'secretary',
           active: true,
-          customPermissions: getDefaultRolePermissions('admin'),
-          allowedScreens: ALL_SYSTEM_SCREENS.map((s) => s.id),
+          customPermissions: getDefaultRolePermissions('secretary'),
+          allowedScreens: getDefaultAllowedScreens('secretary'),
         });
         setLoading(false);
         return;
@@ -98,7 +113,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (cachedRaw) {
           const cachedProfile = JSON.parse(cachedRaw) as UserProfile;
           if (cachedProfile && cachedProfile.uid === fbUser.uid && cachedProfile.active !== false) {
-            setUserProfile(cachedProfile);
+            setUserProfile({
+              ...cachedProfile,
+              role: normalizeRole(cachedProfile.role),
+            });
             setLoading(false);
           }
         }
@@ -115,8 +133,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             // Instant enforcement: if account is disabled, sign out immediately
             if (!isActive) {
-              try { localStorage.removeItem(cacheKey); } catch {}
-              alert('تم تعطيل حسابك من قِبل إدارة العيادة. يرجى التواصل مع الإدارة.');
+              clearCachedUserProfiles(fbUser.uid);
+              window.dispatchEvent(
+                new CustomEvent('soli-rbac-denied', {
+                  detail: { message: 'تم تعطيل حسابك من قِبل إدارة العيادة. يرجى التواصل مع الإدارة.' },
+                })
+              );
               void signOut(auth);
               setUserProfile(null);
               setLoading(false);
@@ -149,15 +171,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             try { localStorage.setItem(cacheKey, JSON.stringify(nextProfile)); } catch {}
           } else {
             // User document does not exist in Firestore users collection
-            try { localStorage.removeItem(cacheKey); } catch {}
+            clearCachedUserProfiles(fbUser.uid);
             console.warn('[AuthContext] User document not found in Firestore for UID:', fbUser.uid);
             void signOut(auth);
             setUserProfile(null);
           }
           setLoading(false);
         },
-        (error) => {
+        (error: any) => {
           console.warn('[AuthContext] Error fetching profile:', error);
+          if (error?.code === 'permission-denied') {
+            clearCachedUserProfiles(fbUser.uid);
+            setUserProfile(null);
+          }
           setLoading(false);
         }
       );
@@ -214,10 +240,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const canDelete = (screenId: string) => canPerform(screenId, 'delete');
 
   const assertPermission = (permission: Permission, actionDescription?: string) => {
-    checkAssertPermission(activeRole, permission, actionDescription, userProfile?.customPermissions);
+    checkAssertPermission(
+      activeRole,
+      permission,
+      actionDescription,
+      userProfile?.customPermissions,
+      userProfile?.allowedScreens
+    );
   };
 
   const logout = async () => {
+    clearCachedUserProfiles(currentUser?.uid);
     if (auth) {
       await signOut(auth);
     }
@@ -253,31 +286,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 export const useAuth = (): AuthContextValue => {
   const context = useContext(AuthContext);
   if (!context) {
-    console.warn('[useAuth] called outside of AuthProvider. Using fallback admin context.');
-    const adminPerms = getDefaultRolePermissions('admin');
+    console.warn('[useAuth] called outside of AuthProvider. Using least-privilege fallback context.');
+    const secPerms = getDefaultRolePermissions('secretary');
     return {
       currentUser: null,
-      userProfile: {
-        uid: 'default-admin',
-        username: 'admin',
-        displayName: 'د. حازم القاضي',
-        email: 'admin@soliclinic.com',
-        role: 'admin',
-        active: true,
-        customPermissions: adminPerms,
-      },
-      role: 'admin',
-      allowedScreens: ALL_SYSTEM_SCREENS.map((s) => s.id),
-      customPermissions: adminPerms,
+      userProfile: null,
+      role: 'secretary',
+      allowedScreens: getDefaultAllowedScreens('secretary'),
+      customPermissions: secPerms,
       loading: false,
-      hasPermission: () => true,
-      canAccess: () => true,
-      canPerform: () => true,
-      canView: () => true,
-      canCreate: () => true,
-      canUpdate: () => true,
-      canDelete: () => true,
-      assertPermission: () => {},
+      hasPermission: (perm) => checkHasPermission('secretary', perm, secPerms),
+      canAccess: (screenId) => checkCanAccessRoute('secretary', screenId, undefined, secPerms),
+      canPerform: (screenId, action) => checkScreenPermission('secretary', screenId, action, secPerms),
+      canView: (screenId) => checkScreenPermission('secretary', screenId, 'view', secPerms),
+      canCreate: (screenId) => checkScreenPermission('secretary', screenId, 'create', secPerms),
+      canUpdate: (screenId) => checkScreenPermission('secretary', screenId, 'update', secPerms),
+      canDelete: () => false,
+      assertPermission: (perm, desc) => checkAssertPermission('secretary', perm, desc, secPerms),
       logout: async () => {},
     };
   }
@@ -285,4 +310,3 @@ export const useAuth = (): AuthContextValue => {
 };
 
 export const usePermissions = useAuth;
-

@@ -151,7 +151,6 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'reports.view',
     'reports.clinical',
     'settings.view',
-    'settings.edit',
   ],
 
   // SECRETARY: New visit registration, queue management, appointments, patient files, billing/payments/expenses, printing receipts.
@@ -511,21 +510,24 @@ export function canAccessRoute(
 }
 
 /**
- * Asserts that the role has the permission, otherwise throws an error.
+ * Asserts that the role has the permission, otherwise dispatches UI toast event and throws an error.
  */
 export function assertPermission(
   role: Role | string | undefined | null,
   permission: Permission,
   actionDescription?: string,
-  customPermissions?: CustomPermissionsMap | null
+  customPermissions?: CustomPermissionsMap | null,
+  allowedScreens?: string[] | null
 ): void {
-  if (!hasPermission(role, permission, customPermissions)) {
+  if (!hasPermission(role, permission, customPermissions, allowedScreens)) {
     const norm = normalizeRole(role);
     const label = ROLE_LABELS[norm];
     const desc = actionDescription ? ` (${actionDescription})` : '';
-    throw new Error(
-      `غير مصرح: دورك الحالي (${label}) لا يملك صلاحية تنفيذ هذا الإجراء${desc} [${permission}].`
-    );
+    const message = `غير مصرح: دورك الحالي (${label}) لا يملك صلاحية تنفيذ هذا الإجراء${desc} [${permission}].`;
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('soli-rbac-denied', { detail: { message } }));
+    }
+    throw new Error(message);
   }
 }
 
@@ -536,4 +538,3 @@ export function getRolePermissions(role: Role | string | undefined | null): read
   const norm = normalizeRole(role);
   return ROLE_PERMISSIONS[norm] || [];
 }
-

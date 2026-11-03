@@ -111,18 +111,19 @@ async function verifyCallerToken(projectId: string, accessToken: string, idToken
 }
 
 /**
- * Reads caller's or target user's role and active status from Firestore users collection
+ * Reads caller's or target user's role, active status, and owned username from Firestore users collection
  */
-async function getCallerRole(projectId: string, accessToken: string, callerUid: string): Promise<{ role: string; active: boolean }> {
-  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${callerUid}`;
+async function getCallerRole(projectId: string, accessToken: string, callerUid: string): Promise<{ role: string; active: boolean; username: string }> {
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${encodeURIComponent(callerUid)}`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-  if (res.status === 404) return { role: '', active: false };
+  if (res.status === 404) return { role: '', active: false, username: '' };
   if (!res.ok) throw new Error('تعذّر التحقق من صلاحية المتصل.');
   const doc: any = await res.json();
   const fields = doc.fields || {};
   return {
     role: fields.role?.stringValue || '',
     active: fields.active?.booleanValue !== false,
+    username: fields.username?.stringValue || '',
   };
 }
 
@@ -202,24 +203,26 @@ async function deleteFromFirebaseAuth(projectId: string, accessToken: string, ui
 }
 
 /**
- * Deletes Firestore user document and username mapping using Firestore REST API with the access token
+ * Deletes Firestore user document and verified username mapping using Firestore REST API with the access token
  */
-async function deleteFromFirestore(projectId: string, accessToken: string, uid: string, username?: string) {
+async function deleteFromFirestore(projectId: string, accessToken: string, uid: string, verifiedUsername?: string) {
   const base = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
 
   // Delete users/{uid}
-  await fetch(`${base}/users/${uid}`, {
+  await fetch(`${base}/users/${encodeURIComponent(uid)}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${accessToken}` },
   }).catch(() => {});
 
-  // Delete usernames/{normUsername}
-  if (username) {
-    const norm = username.trim().toLowerCase().replace(/^@+/, '');
-    await fetch(`${base}/usernames/${norm}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${accessToken}` },
-    }).catch(() => {});
+  // Delete usernames/{normUsername} only if it matches a valid username format (SEC-05)
+  if (verifiedUsername) {
+    const norm = verifiedUsername.trim().toLowerCase().replace(/^@+/, '');
+    if (/^[a-z0-9_.-]{2,32}$/.test(norm)) {
+      await fetch(`${base}/usernames/${encodeURIComponent(norm)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }).catch(() => {});
+    }
   }
 }
 
@@ -373,8 +376,9 @@ export default async function handler(req: any, res: any) {
     // 6. Delete from Firebase Authentication
     await deleteFromFirebaseAuth(projectId!, accessToken, uid);
 
-    // 7. Delete from Firestore (users & usernames)
-    await deleteFromFirestore(projectId!, accessToken, uid, username);
+    // 7. Delete from Firestore using the target user's verified username from Firestore (SEC-05)
+    const ownedUsername = targetUser.username || username;
+    await deleteFromFirestore(projectId!, accessToken, uid, ownedUsername);
 
     return sendResponse(res, 200, {
       success: true,

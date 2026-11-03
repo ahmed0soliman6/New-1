@@ -108,6 +108,16 @@ service cloud.firestore {
         && scheduledDateInWindow(d.scheduledDate);
     }
 
+    // FIN-02: Validate that financial amounts/discounts are non-negative numbers
+    function isValidFinancialData(d) {
+      return (!('amount' in d) || (d.amount is number && d.amount >= 0))
+        && (!('total' in d) || (d.total is number && d.total >= 0))
+        && (!('subtotal' in d) || (d.subtotal is number && d.subtotal >= 0))
+        && (!('discount' in d) || (d.discount is number && d.discount >= 0))
+        && (!('paidAmount' in d) || (d.paidAmount is number && d.paidAmount >= 0))
+        && (!('remainingAmount' in d) || (d.remainingAmount is number && d.remainingAmount >= 0));
+    }
+
     // Dynamic Permission Checker: checks customPermissions -> fallback allowedScreens -> fallback role
     function hasPermission(screen, action) {
       let u = getUserDoc();
@@ -231,11 +241,13 @@ service cloud.firestore {
     match /_system/recovery {
       allow get: if true; // Single doc lookup for PBKDF2 verification before login
       allow list: if signedIn();
-      allow create: if isAdmin() || (
-        request.resource.data.keys().hasOnly(['hash', 'salt', 'createdAt', 'updatedAt', 'attempts', 'lockedUntil', 'envelope', 'iv', 'lastRecoveredAt'])
-      );
+      allow create: if isAdmin();
+      // SEC-02: Only Admin can update envelope/iv or reset attempts; unauthenticated failed attempts can only increment attempts by +1
       allow update: if isAdmin() || (
-        resource != null && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attempts', 'lockedUntil', 'envelope', 'iv', 'lastRecoveredAt'])
+        resource != null &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attempts', 'lockedUntil']) &&
+        request.resource.data.attempts is int &&
+        request.resource.data.attempts == resource.data.get('attempts', 0) + 1
       );
       allow delete: if false; // Recovery document should never be deleted
     }
@@ -292,9 +304,10 @@ service cloud.firestore {
     // 7. INVOICES & BILLING STATEMENTS
     // =============================================================
     match /invoices/{invoiceId} {
-      allow read: if hasPermission('billing-payments', 'view') || hasPermission('finance', 'view') || hasPermission('new-visit', 'view');
-      allow create: if hasPermission('billing-payments', 'create') || hasPermission('finance', 'create') || hasPermission('new-visit', 'create');
-      allow update: if hasPermission('billing-payments', 'update') || hasPermission('finance', 'update') || hasPermission('new-visit', 'update');
+      allow read: if hasPermission('billing-payments', 'view') || hasPermission('finance', 'view') || hasPermission('new-visit', 'view') || hasPermission('patient-records', 'view');
+      allow create: if (hasPermission('billing-payments', 'create') || hasPermission('finance', 'create') || hasPermission('new-visit', 'create') || hasPermission('new-visit', 'update')) && isValidFinancialData(request.resource.data);
+      // SEC-04: Only users with billing update permissions or Admin can modify existing invoices
+      allow update: if (isAdmin() || hasPermission('billing-payments', 'update') || hasPermission('finance', 'update')) && isValidFinancialData(request.resource.data);
       allow delete: if hasPermission('billing-payments', 'delete') || hasPermission('finance', 'delete');
     }
 
@@ -302,9 +315,10 @@ service cloud.firestore {
     // 8. PAYMENTS & CASH COLLECTION
     // =============================================================
     match /payments/{paymentId} {
-      allow read: if hasPermission('billing-payments', 'view') || hasPermission('finance', 'view') || hasPermission('new-visit', 'view');
-      allow create: if hasPermission('billing-payments', 'create') || hasPermission('finance', 'create') || hasPermission('new-visit', 'create');
-      allow update: if hasPermission('billing-payments', 'update') || hasPermission('finance', 'update') || hasPermission('new-visit', 'update');
+      allow read: if hasPermission('billing-payments', 'view') || hasPermission('finance', 'view') || hasPermission('new-visit', 'view') || hasPermission('patient-records', 'view');
+      allow create: if (hasPermission('billing-payments', 'create') || hasPermission('finance', 'create') || hasPermission('new-visit', 'create') || hasPermission('new-visit', 'update')) && isValidFinancialData(request.resource.data);
+      // SEC-04: Only users with billing update permissions or Admin can modify existing payments
+      allow update: if (isAdmin() || hasPermission('billing-payments', 'update') || hasPermission('finance', 'update')) && isValidFinancialData(request.resource.data);
       allow delete: if hasPermission('billing-payments', 'delete') || hasPermission('finance', 'delete');
     }
 
@@ -313,15 +327,15 @@ service cloud.firestore {
     // =============================================================
     match /transactions/{transactionId} {
       allow read: if hasPermission('billing-payments', 'view') || hasPermission('finance', 'view') || hasPermission('expenses', 'view');
-      allow create: if hasPermission('billing-payments', 'create') || hasPermission('finance', 'create') || hasPermission('expenses', 'create');
-      allow update: if hasPermission('billing-payments', 'update') || hasPermission('finance', 'update') || hasPermission('expenses', 'update');
+      allow create: if (hasPermission('billing-payments', 'create') || hasPermission('finance', 'create') || hasPermission('expenses', 'create')) && isValidFinancialData(request.resource.data);
+      allow update: if (hasPermission('billing-payments', 'update') || hasPermission('finance', 'update') || hasPermission('expenses', 'update')) && isValidFinancialData(request.resource.data);
       allow delete: if hasPermission('billing-payments', 'delete') || hasPermission('finance', 'delete') || hasPermission('expenses', 'delete');
     }
 
     match /expenses/{expenseId} {
       allow read: if hasPermission('billing-payments', 'view') || hasPermission('finance', 'view') || hasPermission('expenses', 'view');
-      allow create: if hasPermission('billing-payments', 'create') || hasPermission('finance', 'create') || hasPermission('expenses', 'create');
-      allow update: if hasPermission('billing-payments', 'update') || hasPermission('finance', 'update') || hasPermission('expenses', 'update');
+      allow create: if (hasPermission('billing-payments', 'create') || hasPermission('finance', 'create') || hasPermission('expenses', 'create')) && isValidFinancialData(request.resource.data);
+      allow update: if (hasPermission('billing-payments', 'update') || hasPermission('finance', 'update') || hasPermission('expenses', 'update')) && isValidFinancialData(request.resource.data);
       allow delete: if hasPermission('billing-payments', 'delete') || hasPermission('finance', 'delete') || hasPermission('expenses', 'delete');
     }
 
@@ -346,7 +360,7 @@ service cloud.firestore {
     // 11. FOLLOW-UPS & REVIEWS
     // =============================================================
     match /followUps/{followUpId} {
-      allow read: if hasPermission('upcoming-followups', 'view') || hasPermission('clinical-exam', 'view');
+      allow read: if hasPermission('upcoming-followups', 'view') || hasPermission('clinical-exam', 'view') || hasPermission('patient-records', 'view');
       allow create: if hasPermission('clinical-exam', 'create') || hasPermission('upcoming-followups', 'create');
       allow update: if hasPermission('upcoming-followups', 'update') || hasPermission('clinical-exam', 'update');
       allow delete: if hasPermission('upcoming-followups', 'delete') || hasPermission('clinical-exam', 'delete');
@@ -462,9 +476,9 @@ service cloud.firestore {
         // نداءات وتنبيهات: أي شاشة تشغيلية تملك صلاحية تعديلها
         || (settingId == 'latestAlert'
               && (hasPermission('waiting-queue', 'update')
-                  || hasPermission('new-visit', 'update')
-                  || hasPermission('clinical-exam', 'update')
-                  || hasPermission('prescription-pad', 'update')))
+                   || hasPermission('new-visit', 'update')
+                   || hasPermission('clinical-exam', 'update')
+                   || hasPermission('prescription-pad', 'update')))
         // أنواع الزيارة: المالية أو الإعدادات
         || (settingId == 'visitTypes'
               && (hasPermission('billing-payments', 'update')

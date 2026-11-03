@@ -18,71 +18,22 @@ import type { CustomPermissionsMap } from '../permissions';
 const normalizeUsername = (username: string) => username.trim().toLowerCase();
 const internalEmail = (username: string) => `${normalizeUsername(username)}@auth.solimedical.local`;
 
-const DEMO_CREDENTIALS: Record<string, { role: UserRole; displayName: string; defaultPass: string }> = {
-  admin: { role: 'ADMIN', displayName: 'مدير النظام (Admin)', defaultPass: 'admin1234' },
-  doctor: { role: 'DOCTOR', displayName: 'طبيب العيادة (Doctor)', defaultPass: 'doctor1234' },
-  secretary: { role: 'SECRETARY', displayName: 'سارة عبد المنعم (Secretary)', defaultPass: 'secret1234' },
-  dr_hazem: { role: 'DOCTOR', displayName: 'طبيب العيادة', defaultPass: 'doctor1234' },
-  sara_rec: { role: 'SECRETARY', displayName: 'سارة عبد المنعم', defaultPass: 'secret1234' },
-};
-
 export async function loginWithUsername(username: string, password: string): Promise<FirebaseUser> {
   const { auth, db } = requireFirebase();
   const unameLower = normalizeUsername(username);
   const email = internalEmail(unameLower);
 
-  let credential;
-  try {
-    const mapping = await getDoc(doc(db, 'usernames', unameLower));
-    const targetEmail = mapping.exists() ? mapping.data().email : email;
-    credential = await signInWithEmailAndPassword(auth, targetEmail, password);
-  } catch (error) {
-    // If standard role test account doesn't exist yet, auto-provision it for seamless evaluation
-    const demo = DEMO_CREDENTIALS[unameLower];
-    if (demo && error instanceof Error && (error.message.includes('user-not-found') || error.message.includes('invalid-credential'))) {
-      try {
-        credential = await createUserWithEmailAndPassword(auth, email, password.length >= 8 ? password : demo.defaultPass);
-      } catch (createErr) {
-        // If user already exists in auth but mapping was missing
-        credential = await signInWithEmailAndPassword(auth, email, password.length >= 8 ? password : demo.defaultPass);
-      }
-    } else {
-      throw error;
-    }
-  }
+  // SEC-01: Authenticate strictly against existing registered accounts in Firebase Auth (no auto-creation)
+  const mapping = await getDoc(doc(db, 'usernames', unameLower));
+  const targetEmail = mapping.exists() && mapping.data()?.email ? String(mapping.data().email) : email;
+  const credential = await signInWithEmailAndPassword(auth, targetEmail, password);
 
   const userRef = doc(db, 'users', credential.user.uid);
   const profile = await getDoc(userRef);
 
   if (!profile.exists()) {
-    const demo = DEMO_CREDENTIALS[unameLower];
-    if (!demo) {
-      await signOut(auth);
-      throw new Error('هذا الحساب غير مسجل في قاعدة بيانات مستخدمي العيادة. يرجى مراجعة مسؤول النظام (ADMIN).');
-    }
-
-    const now = serverTimestamp();
-    const initialRole: UserRole = demo.role;
-    const initialDisplayName = demo.displayName;
-
-    await setDoc(userRef, {
-      uid: credential.user.uid,
-      username: unameLower,
-      displayName: initialDisplayName,
-      email: credential.user.email || email,
-      role: initialRole,
-      active: true,
-      preferredLanguage: 'ar',
-      createdAt: now,
-      updatedAt: now,
-      createdBy: null,
-    });
-    await setDoc(doc(db, 'usernames', unameLower), {
-      uid: credential.user.uid,
-      email: credential.user.email || email,
-      usernameLower: unameLower,
-      createdAt: now,
-    }, { merge: true });
+    await signOut(auth);
+    throw new Error('هذا الحساب غير مسجل في قاعدة بيانات مستخدمي العيادة. يرجى مراجعة مسؤول النظام (ADMIN).');
   } else if (profile.data().active === false) {
     await signOut(auth);
     throw new Error('هذا الحساب معطل حالياً من قِبل الإدارة. يرجى مراجعة إدارة العيادة.');
@@ -124,6 +75,7 @@ export async function logoutAccount(): Promise<void> {
 
 /**
  * Changes the currently logged in user's password in Firebase Auth.
+ * SEC-03: Strictly requires and verifies currentPassword before allowing password change.
  */
 export async function changeUserPassword(params: {
   currentPassword?: string;
@@ -131,21 +83,22 @@ export async function changeUserPassword(params: {
 }): Promise<void> {
   const { auth } = requireFirebase();
   const user = auth.currentUser;
-  if (!user) throw new Error('لم يتم العثور على جلسة تسجيل دخول نشطة.');
+  if (!user || !user.email) throw new Error('لم يتم العثور على جلسة تسجيل دخول نشطة.');
+  if (!params.currentPassword || !params.currentPassword.trim()) {
+    throw new Error('يرجى إدخال كلمة المرور الحالية للتحقق من هويتك.');
+  }
   if (params.newPassword.length < 8) {
     throw new Error('كلمة المرور الجديدة يجب ألا تقل عن 8 خانات.');
   }
 
-  if (params.currentPassword && user.email) {
-    try {
-      const credential = EmailAuthProvider.credential(user.email, params.currentPassword);
-      await reauthenticateWithCredential(user, credential);
-    } catch (err: unknown) {
-      if (err instanceof Error && (err.message.includes('wrong-password') || err.message.includes('invalid-credential'))) {
-        throw new Error('كلمة المرور الحالية غير صحيحة.');
-      }
-      // If reauth not strictly demanded by Firebase, continue
+  try {
+    const credential = EmailAuthProvider.credential(user.email, params.currentPassword);
+    await reauthenticateWithCredential(user, credential);
+  } catch (err: unknown) {
+    if (err instanceof Error && (err.message.includes('wrong-password') || err.message.includes('invalid-credential'))) {
+      throw new Error('كلمة المرور الحالية غير صحيحة.');
     }
+    throw new Error('فشل التحقق من كلمة المرور الحالية. يرجى التأكد من صحتها أو إعادة تسجيل الدخول والمحاولة مجدداً.');
   }
 
   await updatePassword(user, params.newPassword);
