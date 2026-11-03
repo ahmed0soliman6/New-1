@@ -1,6 +1,6 @@
 {
-  "summary": "تقرير الفحص الأمني الشامل وخطة العمل المرحلية (S0–S11) لمنظومة Soli Medical Clinic وفق منهجية Security Coverage (Assess & Plan) دون تعديل أي ملف مصدري.",
-  "updatedAt": "2026-11-03T11:45:56.549422429Z",
+  "summary": "Comprehensive implementation plan for upgrading the 4 Clinical Cards in the Examination View and Medical Catalogs Manager with a unified Hybrid Search Engine, Arabic/English phonetic normalization, curated Egyptian/Standard reference archives, real NLM ClinicalTables live API fallback (LOINC & ICD-10), browser client-side caching, and zero fake cards.",
+  "updatedAt": "2026-11-03T14:44:13.297039907Z",
   "requestFeedback": true,
   "userFacing": true
 }

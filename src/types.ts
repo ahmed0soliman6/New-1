@@ -170,6 +170,7 @@ export interface LabCatalogItem {
   unit?: string;
   isFavorite: boolean;
   active?: boolean;
+  notes?: string;
 }
 
 export interface LabOrderItem {

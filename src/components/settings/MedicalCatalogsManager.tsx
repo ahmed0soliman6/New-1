@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { usePermissions } from '../../context/AuthContext';
 import {
   RadiologyCatalogItem,
@@ -15,6 +15,8 @@ import {
   removeLifestylePreset,
   subscribeToLifestylePresets,
 } from '../../utils/lifestyleManager';
+import { ArchiveImportModal, ArchiveType } from './ArchiveImportModal';
+import { normalizeClinicalText } from '../../services/clinicalSearchService';
 
 interface MedicalCatalogsManagerProps {
   radiologyCatalog: RadiologyCatalogItem[];
@@ -88,6 +90,87 @@ export const MedicalCatalogsManager: React.FC<MedicalCatalogsManagerProps> = ({
     chronic: false,
     lifestyle: false,
   });
+
+  const [archiveModalType, setArchiveModalType] = useState<ArchiveType | null>(null);
+
+  const handleImportItemFromArchive = (item: any) => {
+    if (archiveModalType === 'drugs') {
+      onAddDrug({
+        id: `med-cat-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        brandName: item.brandName,
+        genericName: item.genericName,
+        strength: item.strength,
+        form: item.form,
+        category: item.category || 'أدوية العيادة',
+        defaultDosage: item.defaultDosage,
+        defaultDuration: item.defaultDuration,
+        defaultTiming: item.defaultTiming,
+        isFavorite: false,
+        notes: item.notes,
+      });
+    } else if (archiveModalType === 'labs') {
+      onAddLab({
+        id: `lab-cat-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        name: item.name,
+        category: item.category || 'فحوصات العيادة',
+        sampleType: item.sampleType,
+        referenceRange: item.referenceRange,
+        unit: item.unit,
+        fastingRequired: !!item.fastingRequired,
+        isFavorite: false,
+        notes: item.notes,
+      });
+    } else if (archiveModalType === 'radiology') {
+      onAddRadiology({
+        id: `rad-cat-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        name: item.name,
+        category: item.category || 'أشعة وتصوير العيادة',
+        isFavorite: false,
+        notes: item.notes,
+      });
+    } else if (archiveModalType === 'diagnoses') {
+      onAddDiagnosis({
+        id: `diag-cat-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        code: item.code,
+        nameAr: item.nameAr,
+        nameEn: item.nameEn,
+        category: item.category || 'تشخيصات العيادة',
+        isFavorite: false,
+      });
+    }
+  };
+
+  const handleBatchImportFromArchive = (items: any[]) => {
+    items.forEach((item) => handleImportItemFromArchive(item));
+  };
+
+  const existingArchiveData = useMemo(() => {
+    if (archiveModalType === 'drugs') {
+      return {
+        ids: new Set(drugCatalog.map((d) => d.id)),
+        names: new Set(drugCatalog.map((d) => normalizeClinicalText(d.brandName))),
+      };
+    }
+    if (archiveModalType === 'labs') {
+      return {
+        ids: new Set(labCatalog.map((l) => l.id)),
+        names: new Set(labCatalog.map((l) => normalizeClinicalText(l.name))),
+      };
+    }
+    if (archiveModalType === 'radiology') {
+      return {
+        ids: new Set(radiologyCatalog.map((r) => r.id)),
+        names: new Set(radiologyCatalog.map((r) => normalizeClinicalText(r.name))),
+      };
+    }
+    if (archiveModalType === 'diagnoses') {
+      return {
+        ids: new Set(diagnosesCatalog.map((d) => d.id)),
+        names: new Set(diagnosesCatalog.map((d) => normalizeClinicalText(d.nameAr))),
+      };
+    }
+    return { ids: new Set<string>(), names: new Set<string>() };
+  }, [archiveModalType, drugCatalog, labCatalog, radiologyCatalog, diagnosesCatalog]);
 
   const [lifestylePresets, setLifestylePresets] = useState<string[]>(loadLifestylePresets);
 
@@ -403,6 +486,16 @@ export const MedicalCatalogsManager: React.FC<MedicalCatalogsManagerProps> = ({
           <div className="flex items-center gap-2 self-end sm:self-center" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
+              onClick={() => setArchiveModalType('radiology')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-xs font-bold transition-all border border-indigo-200 dark:border-indigo-800/40 shadow-xs cursor-pointer"
+              title="استعراض واستيراد الفحوصات من الأرشيف القياسي"
+            >
+              <span className="material-symbols-outlined text-base">cloud_download</span>
+              <span>الأرشيف القياسي 🇪🇬</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => openSectionWithAdd('radiology')}
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
             >
@@ -582,6 +675,16 @@ export const MedicalCatalogsManager: React.FC<MedicalCatalogsManagerProps> = ({
           </div>
 
           <div className="flex items-center gap-2 self-end sm:self-center" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setArchiveModalType('labs')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-xs font-bold transition-all border border-indigo-200 dark:border-indigo-800/40 shadow-xs cursor-pointer"
+              title="استعراض واستيراد التحاليل من الأرشيف المعملي القياسي"
+            >
+              <span className="material-symbols-outlined text-base">cloud_download</span>
+              <span>الأرشيف المعملي 🇪🇬</span>
+            </button>
+
             <button
               type="button"
               onClick={() => openSectionWithAdd('lab')}
@@ -781,6 +884,16 @@ export const MedicalCatalogsManager: React.FC<MedicalCatalogsManagerProps> = ({
           <div className="flex items-center gap-2 self-end sm:self-center" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
+              onClick={() => setArchiveModalType('drugs')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-xs font-bold transition-all border border-indigo-200 dark:border-indigo-800/40 shadow-xs cursor-pointer"
+              title="استعراض واستيراد الأدوية من أرشيف هيئة الدواء المصرية"
+            >
+              <span className="material-symbols-outlined text-base">cloud_download</span>
+              <span>أرشيف هيئة الدواء 🇪🇬</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => openSectionWithAdd('drugs')}
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] text-xs font-bold transition-all shadow-xs cursor-pointer"
             >
@@ -962,6 +1075,16 @@ export const MedicalCatalogsManager: React.FC<MedicalCatalogsManagerProps> = ({
           </div>
 
           <div className="flex items-center gap-2 self-end sm:self-center" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setArchiveModalType('diagnoses')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-xs font-bold transition-all border border-indigo-200 dark:border-indigo-800/40 shadow-xs cursor-pointer"
+              title="استعراض واستيراد التشخيصات من أرشيف ICD-10 القياسي"
+            >
+              <span className="material-symbols-outlined text-base">cloud_download</span>
+              <span>أرشيف ICD-10 🇪🇬</span>
+            </button>
+
             <button
               type="button"
               onClick={() => openSectionWithAdd('diagnoses')}
@@ -1501,6 +1624,18 @@ export const MedicalCatalogsManager: React.FC<MedicalCatalogsManagerProps> = ({
           </div>
         )}
       </div>
+
+      {archiveModalType && (
+        <ArchiveImportModal
+          isOpen={!!archiveModalType}
+          onClose={() => setArchiveModalType(null)}
+          type={archiveModalType}
+          existingIds={existingArchiveData.ids}
+          existingNames={existingArchiveData.names}
+          onImportItem={handleImportItemFromArchive}
+          onBatchImport={handleBatchImportFromArchive}
+        />
+      )}
     </div>
   );
 };
