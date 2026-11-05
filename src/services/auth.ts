@@ -190,11 +190,13 @@ export async function deleteManagedUser(uid: string, username?: string): Promise
   });
 
   let serverError = '';
+  let serverCode = '';
   try {
     const rawText = await response.text();
     try {
       const parsed = JSON.parse(rawText);
-      serverError = parsed.error || parsed.message;
+      serverError = parsed.error || parsed.message || '';
+      serverCode = parsed.code || '';
     } catch {
       serverError = rawText.length < 250 ? rawText : '';
     }
@@ -203,9 +205,9 @@ export async function deleteManagedUser(uid: string, username?: string): Promise
   if (!response.ok) {
     const isConfigError =
       response.status === 404 ||
-      serverError.includes('متغيرات بيئة') ||
-      serverError.includes('غير مكتملة') ||
-      serverError.includes('غير متوفرة');
+      response.status === 503 ||
+      serverCode === 'SERVER_CONFIG_MISSING' ||
+      serverError.includes('غير مفعلة حالياً');
 
     if (isConfigError) {
       await deleteDoc(doc(db, 'users', uid)).catch(() => undefined);
@@ -213,7 +215,7 @@ export async function deleteManagedUser(uid: string, username?: string): Promise
         await deleteDoc(doc(db, 'usernames', normalizeUsername(username))).catch(() => undefined);
       }
       throw new Error(
-        `تم حذف المستخدم من سجلات العيادة بنجاح. لحذفه تلقائياً من صفحة Authentication أيضاً، أضف مفتاح الخدمة في Vercel.`
+        `تم حذف المستخدم من سجلات العيادة بنجاح. لحذفه تلقائياً من صفحة Authentication أيضاً، أضف مفتاح الخدمة في إعدادات الخادم.`
       );
     }
 

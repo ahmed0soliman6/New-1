@@ -18,12 +18,12 @@ service cloud.firestore {
 
     function isUserActive() {
       let u = getUserDoc();
-      return signedIn() && (u == null || u.active != false);
+      return signedIn() && u != null && u.active != false;
     }
 
     function getUserRole() {
       let u = getUserDoc();
-      return u != null && u.role != null ? u.role : 'SECRETARY';
+      return u != null && u.role != null ? u.role : 'NONE';
     }
 
     function isAdmin() {
@@ -143,9 +143,6 @@ service cloud.firestore {
             // Fallback to role-based default permission
             roleDefaultPermission(getUserRole(), screen, action)
           )
-        ) ||
-        (
-          u == null && roleDefaultPermission('secretary', screen, action)
         )
       );
     }
@@ -157,7 +154,7 @@ service cloud.firestore {
       // All authenticated users can read users for profile and collaborator lookups
       allow read: if signedIn() && isUserActive();
 
-      // Creation allowed ONLY by Admin, initial system bootstrap (self-doc only), or unprivileged self-creation
+      // Creation allowed ONLY by Admin or initial system bootstrap (first admin self-doc only)
       allow create: if signedIn() && (
         isAdmin() ||
         (
@@ -168,17 +165,6 @@ service cloud.firestore {
           request.resource.data.active == true &&
           (!('customPermissions' in request.resource.data) || request.resource.data.customPermissions == null) &&
           (!('allowedScreens' in request.resource.data) || request.resource.data.allowedScreens == null)
-        ) ||
-        (
-          request.auth.uid == userId &&
-          request.resource.data.uid == request.auth.uid &&
-          request.resource.data.role != 'ADMIN' &&
-          request.resource.data.role != 'admin' &&
-          request.resource.data.role != 'DOCTOR' &&
-          request.resource.data.role != 'doctor' &&
-          (!('customPermissions' in request.resource.data) || request.resource.data.customPermissions == null) &&
-          (!('allowedScreens' in request.resource.data) || request.resource.data.allowedScreens == null) &&
-          (!('active' in request.resource.data) || request.resource.data.active == true)
         )
       );
 
@@ -239,16 +225,11 @@ service cloud.firestore {
     }
 
     match /_system/recovery {
-      allow get: if true; // Single doc lookup for PBKDF2 verification before login
-      allow list: if signedIn();
-      allow create: if isAdmin();
-      // SEC-02: Only Admin can update envelope/iv or reset attempts; unauthenticated failed attempts can only increment attempts by +1
-      allow update: if isAdmin() || (
-        resource != null &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attempts', 'lockedUntil']) &&
-        request.resource.data.attempts is int &&
-        request.resource.data.attempts == resource.data.get('attempts', 0) + 1
-      );
+      // SEC-CRITICAL: Never allow public unauthenticated reads of recovery hashes or salts.
+      // Only authenticated Admins can configure recovery; unauthenticated recovery verification runs server-side via /api/auth/recover.
+      allow get: if isAdmin();
+      allow list: if false;
+      allow create, update: if isAdmin();
       allow delete: if false; // Recovery document should never be deleted
     }
 
@@ -501,6 +482,10 @@ service cloud.firestore {
         hasPermission('waiting-queue', 'update')
       );
       allow delete: if isAdmin();
+    }
+
+    match /backups/{backupId} {
+      allow read, write: if isAdmin();
     }
 
     // =============================================================

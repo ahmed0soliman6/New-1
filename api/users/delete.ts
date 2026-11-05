@@ -5,6 +5,56 @@ interface DeleteRequest {
   username?: string;
 }
 
+// Server-side in-memory IP rate limiter (10 requests per minute)
+const ipRateLimits = new Map<string, { count: number; resetAt: number }>();
+const RATE_WINDOW_MS = 60 * 1000;
+const MAX_REQUESTS_PER_WINDOW = 10;
+
+function getClientIp(req: any): string {
+  const forwarded = req.headers?.['x-forwarded-for'];
+  if (typeof forwarded === 'string' && forwarded.trim()) {
+    return forwarded.split(',')[0].trim();
+  }
+  return req.socket?.remoteAddress || 'unknown';
+}
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = ipRateLimits.get(ip);
+  if (!entry || now > entry.resetAt) {
+    ipRateLimits.set(ip, { count: 1, resetAt: now + RATE_WINDOW_MS });
+    return true;
+  }
+  if (entry.count >= MAX_REQUESTS_PER_WINDOW) {
+    return false;
+  }
+  entry.count += 1;
+  return true;
+}
+
+function applyCorsHeaders(req: any, res: any) {
+  const origin = req.headers?.origin || '';
+  const appUrl = process.env.APP_URL || '';
+  const vercelUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '';
+
+  const isAllowedOrigin =
+    Boolean(origin) &&
+    (origin === appUrl ||
+      origin === vercelUrl ||
+      /^https:\/\/[a-z0-9-]+\.run\.app$/i.test(origin) ||
+      /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin) ||
+      /^http:\/\/localhost:(3000|5173)$/i.test(origin));
+
+  if (isAllowedOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  } else if (appUrl) {
+    res.setHeader('Access-Control-Allow-Origin', appUrl);
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+}
+
 function cleanPrivateKey(raw?: string): string | null {
   if (!raw) return null;
   let key = raw.trim();
@@ -62,9 +112,8 @@ async function getGoogleAccessToken(clientEmail: string, privateKeyPem: string):
     signer.update(unsignedToken);
     signature = signer.sign(privateKeyPem, 'base64url');
   } catch (err: any) {
-    throw new Error(
-      `صيغة المفتاح الخاص (FIREBASE_PRIVATE_KEY) غير صالحة: ${err?.message || 'خطأ في التشفير'}. تأكد من نسخ المفتاح الخاص كاملاً من ملف serviceAccountKey.json.`
-    );
+    console.error('[Auth Service Account] Invalid private key format:', err?.message);
+    throw new Error('SERVICE_ACCOUNT_AUTH_FAILED');
   }
 
   const jwt = `${unsignedToken}.${signature}`;
@@ -80,9 +129,8 @@ async function getGoogleAccessToken(clientEmail: string, privateKeyPem: string):
 
   const data = await tokenRes.json().catch(() => ({}));
   if (!tokenRes.ok) {
-    throw new Error(
-      `فشل مصادقة حساب الخدمة من Google: ${data.error_description || data.error || tokenRes.status}. تحقق من صحة FIREBASE_CLIENT_EMAIL و FIREBASE_PRIVATE_KEY.`
-    );
+    console.error('[Auth Service Account] OAuth token exchange error:', data.error || tokenRes.status);
+    throw new Error('SERVICE_ACCOUNT_AUTH_FAILED');
   }
 
   return data.access_token;
@@ -104,7 +152,7 @@ async function verifyCallerToken(projectId: string, accessToken: string, idToken
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.users || data.users.length === 0) {
-    throw new Error('انتهت صلاحية جلسة المدير. يرجى إعادة تسجيل الدخول.');
+    throw new Error('SESSION_EXPIRED');
   }
 
   return data.users[0].localId;
@@ -113,11 +161,15 @@ async function verifyCallerToken(projectId: string, accessToken: string, idToken
 /**
  * Reads caller's or target user's role, active status, and owned username from Firestore users collection
  */
-async function getCallerRole(projectId: string, accessToken: string, callerUid: string): Promise<{ role: string; active: boolean; username: string }> {
+async function getCallerRole(
+  projectId: string,
+  accessToken: string,
+  callerUid: string
+): Promise<{ role: string; active: boolean; username: string }> {
   const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${encodeURIComponent(callerUid)}`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
   if (res.status === 404) return { role: '', active: false, username: '' };
-  if (!res.ok) throw new Error('تعذّر التحقق من صلاحية المتصل.');
+  if (!res.ok) throw new Error('ROLE_LOOKUP_FAILED');
   const doc: any = await res.json();
   const fields = doc.fields || {};
   return {
@@ -141,10 +193,7 @@ async function countActiveAdmins(projectId: string, accessToken: string): Promis
           op: 'IN',
           value: {
             arrayValue: {
-              values: [
-                { stringValue: 'ADMIN' },
-                { stringValue: 'admin' },
-              ],
+              values: [{ stringValue: 'ADMIN' }, { stringValue: 'admin' }],
             },
           },
         },
@@ -162,7 +211,7 @@ async function countActiveAdmins(projectId: string, accessToken: string): Promis
   });
 
   if (!res.ok) {
-    throw new Error('تعذّر التحقق من عدد المديرين في النظام.');
+    throw new Error('ADMIN_COUNT_FAILED');
   }
 
   const results: any[] = await res.json();
@@ -192,11 +241,11 @@ async function deleteFromFirebaseAuth(projectId: string, accessToken: string, ui
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
     const errorMsg = errorData.error?.message || '';
-    // If user is already deleted from Auth, treat as success
     if (errorMsg.includes('USER_NOT_FOUND')) {
       return true;
     }
-    throw new Error(`خطأ Firebase Auth أثناء الحذف: ${errorMsg || res.status}`);
+    console.error('[Firebase Auth Delete] Error status:', res.status, errorMsg);
+    throw new Error('AUTH_DELETE_FAILED');
   }
 
   return true;
@@ -205,16 +254,19 @@ async function deleteFromFirebaseAuth(projectId: string, accessToken: string, ui
 /**
  * Deletes Firestore user document and verified username mapping using Firestore REST API with the access token
  */
-async function deleteFromFirestore(projectId: string, accessToken: string, uid: string, verifiedUsername?: string) {
+async function deleteFromFirestore(
+  projectId: string,
+  accessToken: string,
+  uid: string,
+  verifiedUsername?: string
+) {
   const base = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
 
-  // Delete users/{uid}
   await fetch(`${base}/users/${encodeURIComponent(uid)}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${accessToken}` },
   }).catch(() => {});
 
-  // Delete usernames/{normUsername} only if it matches a valid username format (SEC-05)
   if (verifiedUsername) {
     const norm = verifiedUsername.trim().toLowerCase().replace(/^@+/, '');
     if (/^[a-z0-9_.-]{2,32}$/.test(norm)) {
@@ -263,10 +315,7 @@ function sendResponse(res: any, status: number, data: any) {
 }
 
 export default async function handler(req: any, res: any) {
-  // Enable CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  applyCorsHeaders(req, res);
 
   if (req.method === 'OPTIONS') {
     res.statusCode = 200;
@@ -278,6 +327,14 @@ export default async function handler(req: any, res: any) {
     return sendResponse(res, 405, { error: 'الطريقة غير مسموح بها. استخدم POST.' });
   }
 
+  const clientIp = getClientIp(req);
+  if (!checkRateLimit(clientIp)) {
+    return sendResponse(res, 429, { error: 'تم تجاوز الحد المسموح للطلبات. يرجى الانتظار دقيقة والمحاولة مجدداً.' });
+  }
+
+  let callerUidForLog = 'unverified';
+  let targetUidForLog = 'unknown';
+
   try {
     // 1. Check Authorization header
     const authHeader = req.headers.authorization || req.headers.Authorization;
@@ -286,18 +343,11 @@ export default async function handler(req: any, res: any) {
     }
     const idToken = authHeader.slice(7).trim();
 
-    // 2. Resolve Environment Variables
-    let projectId =
-      process.env.FIREBASE_PROJECT_ID ||
-      process.env.VITE_FIREBASE_PROJECT_ID;
-
-    let clientEmail =
-      process.env.FIREBASE_CLIENT_EMAIL ||
-      process.env.VITE_FIREBASE_CLIENT_EMAIL;
-
+    // 2. Resolve Server-Only Environment Variables (no VITE_ prefix for service account secrets)
+    let projectId = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID;
+    let clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
     let rawPrivateKey = process.env.FIREBASE_PRIVATE_KEY;
 
-    // Helper to extract JSON properties if user pasted full serviceAccountKey.json into any env var
     const parseJsonCert = (val?: string) => {
       if (!val) return;
       let trimmed = val.trim();
@@ -317,7 +367,6 @@ export default async function handler(req: any, res: any) {
     parseJsonCert(process.env.FIREBASE_SERVICE_ACCOUNT);
     parseJsonCert(rawPrivateKey);
 
-    // Auto-detect project ID from clientEmail domain if not specified
     if (!projectId && clientEmail && clientEmail.includes('@')) {
       const domain = clientEmail.split('@')[1];
       if (domain.includes('.iam.gserviceaccount.com')) {
@@ -327,36 +376,49 @@ export default async function handler(req: any, res: any) {
 
     const privateKey = cleanPrivateKey(rawPrivateKey);
 
-    const missingVars: string[] = [];
-    if (!clientEmail) missingVars.push('FIREBASE_CLIENT_EMAIL');
-    if (!privateKey) missingVars.push('FIREBASE_PRIVATE_KEY');
-    if (!projectId) missingVars.push('FIREBASE_PROJECT_ID');
-
-    if (missingVars.length > 0) {
-      return sendResponse(res, 500, {
-        error: `متغيرات بيئة Firebase غير مكتملة في Vercel: (${missingVars.join(
-          ', '
-        )}). تأكد من إضافتها لجميع البيئات (Production و Preview) ثم إعادة النشر (Redeploy).`,
+    if (!clientEmail || !privateKey || !projectId) {
+      console.error(
+        JSON.stringify({
+          event: 'ADMIN_USER_DELETE_CONFIG_MISSING',
+          ip: clientIp,
+          timestamp: new Date().toISOString(),
+        })
+      );
+      return sendResponse(res, 503, {
+        code: 'SERVER_CONFIG_MISSING',
+        error: 'خدمة الحذف السحابي غير مفعلة حالياً على الخادم.',
       });
     }
 
     // 3. Parse Body
     const body = await parseBody(req);
     const { uid, username } = (body || {}) as DeleteRequest;
+    targetUidForLog = uid || 'missing';
 
-    if (!uid) {
-      return sendResponse(res, 400, { error: 'معرّف المستخدم (uid) مطلوب للحذف.' });
+    if (!uid || typeof uid !== 'string' || uid.length > 128) {
+      return sendResponse(res, 400, { error: 'معرّف المستخدم (uid) مطلوب وصالح للحذف.' });
     }
 
     // 4. Obtain Google Access Token
-    const accessToken = await getGoogleAccessToken(clientEmail!, privateKey!);
+    const accessToken = await getGoogleAccessToken(clientEmail, privateKey);
 
     // 5. Verify Caller's session & role
-    const callerUid = await verifyCallerToken(projectId!, accessToken, idToken);
+    const callerUid = await verifyCallerToken(projectId, accessToken, idToken);
+    callerUidForLog = callerUid;
 
-    const caller = await getCallerRole(projectId!, accessToken, callerUid);
+    const caller = await getCallerRole(projectId, accessToken, callerUid);
     const isAdminCaller = caller.active && (caller.role === 'ADMIN' || caller.role === 'admin');
     if (!isAdminCaller) {
+      console.warn(
+        JSON.stringify({
+          event: 'ADMIN_USER_DELETE_DENIED',
+          callerUid,
+          callerRole: caller.role,
+          targetUid: uid,
+          ip: clientIp,
+          timestamp: new Date().toISOString(),
+        })
+      );
       return sendResponse(res, 403, { error: 'لا تملك صلاحية حذف المستخدمين.' });
     }
 
@@ -365,29 +427,55 @@ export default async function handler(req: any, res: any) {
     }
 
     // Prevent deleting the last admin
-    const targetUser = await getCallerRole(projectId!, accessToken, uid);
+    const targetUser = await getCallerRole(projectId, accessToken, uid);
     if (targetUser.role === 'ADMIN' || targetUser.role === 'admin') {
-      const activeAdminCount = await countActiveAdmins(projectId!, accessToken);
+      const activeAdminCount = await countActiveAdmins(projectId, accessToken);
       if (activeAdminCount <= 1) {
         return sendResponse(res, 400, { error: 'لا يمكن حذف آخر مدير في النظام' });
       }
     }
 
     // 6. Delete from Firebase Authentication
-    await deleteFromFirebaseAuth(projectId!, accessToken, uid);
+    await deleteFromFirebaseAuth(projectId, accessToken, uid);
 
     // 7. Delete from Firestore using the target user's verified username from Firestore (SEC-05)
     const ownedUsername = targetUser.username || username;
-    await deleteFromFirestore(projectId!, accessToken, uid, ownedUsername);
+    await deleteFromFirestore(projectId, accessToken, uid, ownedUsername);
+
+    console.info(
+      JSON.stringify({
+        event: 'ADMIN_USER_DELETE_SUCCESS',
+        callerUid,
+        targetUid: uid,
+        targetRole: targetUser.role,
+        ip: clientIp,
+        timestamp: new Date().toISOString(),
+      })
+    );
 
     return sendResponse(res, 200, {
       success: true,
       message: 'تم حذف المستخدم نهائياً من Firebase Authentication و Firestore بنجاح.',
     });
   } catch (err: any) {
-    console.error('User deletion error:', err);
+    const code = err instanceof Error ? err.message : 'UNKNOWN_ERROR';
+    console.error(
+      JSON.stringify({
+        event: 'ADMIN_USER_DELETE_ERROR',
+        callerUid: callerUidForLog,
+        targetUid: targetUidForLog,
+        ip: clientIp,
+        errorCode: code,
+        timestamp: new Date().toISOString(),
+      })
+    );
+
+    if (code === 'SESSION_EXPIRED') {
+      return sendResponse(res, 401, { error: 'انتهت صلاحية جلسة المدير. يرجى إعادة تسجيل الدخول.' });
+    }
+
     return sendResponse(res, 500, {
-      error: err instanceof Error ? err.message : 'حدث خطأ أثناء معالجة حذف المستخدم.',
+      error: 'حدث خطأ داخلي أثناء معالجة حذف المستخدم. يرجى المحاولة لاحقاً.',
     });
   }
 }

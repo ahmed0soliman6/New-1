@@ -13,7 +13,9 @@ export default defineConfig(({ mode }) => {
     name: 'api-dev-middleware',
     configureServer(server: any) {
       server.middlewares.use(async (req: any, res: any, next: any) => {
-        if (req.url?.startsWith('/api/users/delete')) {
+        const isDeleteRoute = req.url?.startsWith('/api/users/delete');
+        const isRecoverRoute = req.url?.startsWith('/api/auth/recover');
+        if (isDeleteRoute || isRecoverRoute) {
           try {
             let rawBody = '';
             let bodyBytes = 0;
@@ -38,18 +40,22 @@ export default defineConfig(({ mode }) => {
                 req.body = {};
               }
               try {
-                const { default: handler } = await import('./api/users/delete');
-                await handler(req, res);
+                const mod = isRecoverRoute
+                  ? await import('./api/auth/recover')
+                  : await import('./api/users/delete');
+                await mod.default(req, res);
               } catch (handlerErr: any) {
+                console.error('[API Dev Middleware] Handler error:', handlerErr);
                 res.statusCode = 500;
                 res.setHeader('Content-Type', 'application/json; charset=utf-8');
-                res.end(JSON.stringify({ error: handlerErr.message }));
+                res.end(JSON.stringify({ error: 'حدث خطأ داخلي أثناء معالجة الطلب.' }));
               }
             });
           } catch (err: any) {
+            console.error('[API Dev Middleware] Request error:', err);
             res.statusCode = 500;
             res.setHeader('Content-Type', 'application/json; charset=utf-8');
-            res.end(JSON.stringify({ error: err.message }));
+            res.end(JSON.stringify({ error: 'حدث خطأ داخلي في الخادم.' }));
           }
           return;
         }

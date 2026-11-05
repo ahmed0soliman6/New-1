@@ -131,6 +131,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
 
   // New Invoice Modal States
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [invoiceDraftId, setInvoiceDraftId] = useState(() => `inv-${crypto.randomUUID()}`);
   const [invPatientName, setInvPatientName] = useState('');
   const [invService, setInvService] = useState('كشف واستشارة طبية');
   const [invAmount, setInvAmount] = useState<number>(300);
@@ -192,8 +193,8 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
       const finalPaid = invStatus === 'مدفوعة' ? netAmount : 0;
       const localDate = todayKey();
       const newTx: TransactionRecord = {
-        id: `inv-${Date.now()}`,
-        receiptNo: `INV-${Math.floor(Math.random() * 9000) + 1000}`,
+        id: invoiceDraftId,
+        receiptNo: `INV-${invoiceDraftId.slice(-6).toUpperCase()}`,
         patientName: trimmedPatientName,
         serviceName: invService,
         description: `${invService}${cleanDiscount > 0 ? ` (خصم ${toEnglishDigits(cleanDiscount)} ج.م)` : ''}`,
@@ -213,6 +214,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
 
       await onAddTransaction(newTx);
       setShowInvoiceModal(false);
+      setInvoiceDraftId(`inv-${crypto.randomUUID()}`);
       setInvPatientName('');
       setInvDiscount(0);
       setInvStatus('مدفوعة');

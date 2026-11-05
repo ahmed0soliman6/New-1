@@ -59,12 +59,14 @@ export async function backfillDayKeys(db: Firestore, onProgress?: (msg: string) 
   return report;
 }
 
+const MAX_CLINICAL_SCAN = 1000;
+
 /** يضبط hasClinicalFile / visitsCount / lastVisitAt / lastDiagnosis للمرضى الحاليين */
 export async function backfillPatientClinicalFlags(db: Firestore) {
   const [visitsSnap, rxSnap, patientsSnap] = await Promise.all([
-    getDocs(query(collection(db, 'visits'), where('status', '==', 'COMPLETED'))),
-    getDocs(collection(db, 'prescriptions')),
-    getDocs(collection(db, 'patients')),
+    getDocs(query(collection(db, 'visits'), where('status', '==', 'COMPLETED'), limit(MAX_CLINICAL_SCAN))),
+    getDocs(query(collection(db, 'prescriptions'), limit(MAX_CLINICAL_SCAN))),
+    getDocs(query(collection(db, 'patients'), limit(MAX_CLINICAL_SCAN))),
   ]);
 
   const stats = new Map<string, { count: number; last: Date | null; diag: string }>();
@@ -92,6 +94,7 @@ export async function backfillPatientClinicalFlags(db: Firestore) {
   let total = 0;
   for (const pid of ids) {
     if (!existing.has(pid)) continue;
+    if (total >= WRITE_BUDGET) break;
     const s = stats.get(pid);
     batch.update(doc(db, 'patients', pid), {
       hasClinicalFile: true,

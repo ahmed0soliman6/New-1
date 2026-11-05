@@ -194,12 +194,12 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
       (err) => console.warn('Public Booking Live Settings Sync Error:', err)
     );
 
-    // Real-time Firestore subscription to fetch visit types
-    let unsubVisitTypes = () => {};
-    import('firebase/firestore').then(({ doc, onSnapshot }) => {
-      unsubVisitTypes = onSnapshot(
-        doc(db, 'settings', 'visitTypes'),
-        (snap) => {
+    // One-time bounded Firestore fetch for visit types and services on public booking page (Check 14 quota guard)
+    let cancelled = false;
+    import('firebase/firestore').then(async ({ collection, doc, getDoc, getDocs, limit, query }) => {
+      try {
+        const snap = await getDoc(doc(db, 'settings', 'visitTypes'));
+        if (!cancelled) {
           meterDoc('booking:visitTypes', snap, 'حجوزات');
           if (snap.exists()) {
             const data = snap.data();
@@ -209,17 +209,14 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
               window.dispatchEvent(new Event('soli_visit_types_updated'));
             }
           }
-        },
-        (err) => console.warn('Public Visit Types Sync Error:', err)
-      );
-    });
+        }
+      } catch (err) {
+        console.warn('Public Visit Types Fetch Error:', err);
+      }
 
-    // Real-time Firestore subscription to fetch services
-    let unsubServices = () => {};
-    import('firebase/firestore').then(({ collection, onSnapshot }) => {
-      unsubServices = onSnapshot(
-        collection(db, 'services'),
-        (snap) => {
+      try {
+        const snap = await getDocs(query(collection(db, 'services'), limit(100)));
+        if (!cancelled) {
           meterQuery('booking:services', snap, 'حجوزات');
           const items: any[] = [];
           snap.forEach((docSnap) => {
@@ -231,15 +228,15 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
             localStorage.setItem('soli_services', JSON.stringify(items));
             window.dispatchEvent(new Event('soli_services_updated'));
           }
-        },
-        (err) => console.warn('Public Services Sync Error:', err)
-      );
+        }
+      } catch (err) {
+        console.warn('Public Services Fetch Error:', err);
+      }
     });
 
     return () => {
+      cancelled = true;
       unsub();
-      unsubVisitTypes();
-      unsubServices();
     };
   }, []);
 

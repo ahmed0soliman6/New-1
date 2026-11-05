@@ -226,6 +226,26 @@ assert(
   'حالة 12: واجهة ScreenPermissionsModal تقفل الصلاحيات والأزرار والبانر لحساب المدير'
 );
 
+// 13. التحقق من قفل قراءة /_system/recovery العامة وإزالة الباسورد الافتراضي admin1234
+const recoveryPath = path.resolve(__dirname, '../src/services/recovery.ts');
+const recoveryContent = fs.readFileSync(recoveryPath, 'utf8');
+const hasNoDefaultAdminPass = !recoveryContent.includes('admin1234');
+const hasNoNullSecretaryFallback = !rulesContent.includes("u == null && roleDefaultPermission('secretary'");
+assert(
+  hasNoDefaultAdminPass && hasNoNullSecretaryFallback,
+  'حالة 13: إزالة الباسورد الافتراضي admin1234 وإغلاق ثغرة u == null في firestore.rules'
+);
+
+// 14. التحقق من تقييد CORS وعدم استخدام VITE_FIREBASE_CLIENT_EMAIL في api/users/delete.ts
+const deleteApiPath = path.resolve(__dirname, '../api/users/delete.ts');
+const deleteApiContent = fs.readFileSync(deleteApiPath, 'utf8');
+const hasNoWildcardCors = !deleteApiContent.includes("setHeader('Access-Control-Allow-Origin', '*')");
+const hasNoViteClientEmail = !deleteApiContent.includes('VITE_FIREBASE_CLIENT_EMAIL');
+assert(
+  hasNoWildcardCors && hasNoViteClientEmail,
+  'حالة 14: تقييد CORS وإزالة VITE_FIREBASE_CLIENT_EMAIL من api/users/delete.ts'
+);
+
 console.log('\n===============================================================');
 console.log(`📊 النتيجة: ${passCount} اختبار نجح | ${failCount} اختبار فشل`);
 console.log('===============================================================\n');

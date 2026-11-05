@@ -15,7 +15,6 @@ import type {
 } from '../types/database';
 import { toDayKey, todayKey } from '../utils/dayKey';
 
-const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 const now = () => new Date().toISOString();
 
 /**
@@ -90,10 +89,12 @@ export async function checkInAppointmentTransaction(params: {
       assignedQueueNumber = counterSnap.exists() ? ((counterSnap.data()?.lastNumber || 0) + 1) : 1;
     }
 
-    const visitId = id('vis');
-    const invoiceId = id('inv');
-    const paymentId = id('pay');
-    const receiptNumber = id('REC');
+    // Deterministic IDs derived from appointmentId to guarantee idempotency on retry (Check 7)
+    const cleanAppKey = appointment.appointmentId.replace(/[^a-zA-Z0-9_-]/g, '');
+    const visitId = `vis-app-${cleanAppKey}`;
+    const invoiceId = `inv-app-${cleanAppKey}`;
+    const paymentId = `pay-app-${cleanAppKey}`;
+    const receiptNumber = `REC-${cleanAppKey.slice(-8).toUpperCase()}`;
     const timestamp = now();
     const safePayment = Math.max(0, Number(params.paymentAmount) || 0);
 
@@ -174,11 +175,33 @@ export async function registerWalkInTransaction(params: {
   queueNumber?: number;
   appointmentId?: string | null;
   receptionistData: Visit['receptionistData'];
+  idempotencyKey?: string;
 }): Promise<Visit> {
+  // Generate a stable key before entering runTransaction so automatic transaction retries reuse the exact same IDs (Check 7)
+  const cleanPatientKey = params.patient.patientId.replace(/[^a-zA-Z0-9_-]/g, '');
+  const todayOutside = todayKey();
+  const attemptKey = (params.idempotencyKey || `${cleanPatientKey}-${todayOutside}`).replace(/[^a-zA-Z0-9_-]/g, '');
+  const visitId = `vis-walk-${attemptKey}`;
+  const invoiceId = `inv-walk-${attemptKey}`;
+  const paymentId = `pay-walk-${attemptKey}`;
+  const receiptNumber = `REC-${attemptKey.slice(-8).toUpperCase()}`;
+
   return runTransaction(params.db, async (tx) => {
     const today = todayKey();
+    const visitRef = doc(params.db, 'visits', visitId);
     const counterRef = doc(params.db, 'counters', `queue_${today}`);
-    const counterSnap = await tx.get(counterRef);
+    const [existingVisitSnap, counterSnap] = await Promise.all([
+      tx.get(visitRef),
+      tx.get(counterRef),
+    ]);
+
+    // Idempotency guard: if an active WAITING/IN_PROGRESS walk-in visit already exists for this patient today, return it without duplicate billing
+    if (existingVisitSnap.exists()) {
+      const existingVisit = existingVisitSnap.data() as Visit;
+      if (existingVisit.status === 'WAITING' || existingVisit.status === 'IN_PROGRESS') {
+        return existingVisit;
+      }
+    }
 
     let assignedQueueNumber: number;
     if (params.queueNumber && params.queueNumber > 0) {
@@ -188,9 +211,6 @@ export async function registerWalkInTransaction(params: {
     }
 
     const timestamp = now();
-    const visitId = id('vis');
-    const invoiceId = id('inv');
-    const paymentId = id('pay');
     const safePayment = Math.max(0, Number(params.paymentAmount) || 0);
     const sanitizedPatient = removeUndefined(params.patient);
 
@@ -223,7 +243,7 @@ export async function registerWalkInTransaction(params: {
         amount: safePayment,
         method: params.paymentMethod,
         status: 'PAID',
-        receiptNumber: id('REC'),
+        receiptNumber,
         paidAt: serverTimestamp(),
         receivedBy: params.receivedBy,
         dayKey: today,
@@ -250,7 +270,7 @@ export async function registerWalkInTransaction(params: {
       doctorId: '',
       dayKey: today,
     };
-    tx.set(doc(params.db, 'visits', visitId), { ...visit, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), dayKey: today });
+    tx.set(visitRef, { ...visit, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), dayKey: today });
     return visit;
   });
 }
