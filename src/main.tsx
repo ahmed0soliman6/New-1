@@ -12,8 +12,8 @@ if (typeof window !== 'undefined') {
       configurable: true,
       enumerable: true,
     });
-  } catch (err) {
-    console.warn('Polyfill for window.fetch in main.tsx:', err);
+  } catch {
+    // Ignore fetch descriptor override notice
   }
 }
 
@@ -23,6 +23,9 @@ import App from './App.tsx';
 import './index.css';
 import { initArabicToEnglishDigitsGlobalListener } from './utils/numberUtils';
 import { LanguageProvider } from './i18n/LanguageContext';
+import { installProductionConsoleGuard } from './utils/logger';
+
+installProductionConsoleGuard();
 
 // Initialize global Arabic to English numbers converter for all inputs
 initArabicToEnglishDigitsGlobalListener();

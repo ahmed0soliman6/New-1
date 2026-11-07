@@ -3,6 +3,7 @@ import { collection, getDocs, query, where, type Firestore } from 'firebase/fire
 import { db } from './firebase';
 import { mapDocs } from './repositories/common';
 import { meterQuery } from './readMeter';
+import { safeLogger } from '../utils/logger';
 import type { Visit, Prescription, LabOrder, RadiologyOrder, FollowUp, Invoice, Payment } from '../types/database';
 
 export interface PatientHistory {
@@ -24,7 +25,7 @@ async function byPatient<T>(d: Firestore, name: string, patientId: string): Prom
     meterQuery(`history:${name}`, snap);
     return mapDocs<T>(name, snap);
   } catch (err) {
-    console.warn(`[fetchPatientHistory] Skipped collection "${name}" for patient "${patientId}":`, err);
+    safeLogger.warn(`[fetchPatientHistory] Skipped collection "${name}"`, err);
     return [];
   }
 }

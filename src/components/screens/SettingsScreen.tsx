@@ -37,9 +37,17 @@ import {
   ExpenseCategoryItem,
 } from '../../utils/financeManager';
 import { db } from '../../services/firebase';
-import { doc, writeBatch } from 'firebase/firestore';
 import { safeStorage, StorageKeys } from '../../services/storage';
 import { subscribeToServices, subscribeToExpenseCategories } from '../../services/repositories';
+import {
+  createBackupEnvelope,
+  parseAndVerifyBackupFile,
+  restoreVerifiedBackupToFirestore,
+  getCollectionArabicLabel,
+  type BackupManifest,
+  type BackupPayloadData,
+} from '../../services/backupService';
+import { safeLogger } from '../../utils/logger';
 
 interface ChronicItem {
   id: string;
@@ -214,7 +222,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             setMedicalServicesList(srvs as MedicalServiceItem[]);
           }
         },
-        (err) => console.warn('Services sync in SettingsScreen:', err)
+        (err) => safeLogger.warn('Services sync in SettingsScreen', err)
       );
 
       unsubExpCats = subscribeToExpenseCategories(
@@ -224,7 +232,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             setExpenseCategoriesList(cats as ExpenseCategoryItem[]);
           }
         },
-        (err) => console.warn('Exp cats sync in SettingsScreen:', err)
+        (err) => safeLogger.warn('Exp cats sync in SettingsScreen', err)
       );
     }
 
@@ -312,21 +320,46 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     setTimeout(() => setSavedToast(null), 2500);
   };
 
-  const handleExportBackup = () => {
+  // Backup Export & Restore Preview States (Items 3 & 4)
+  const [showExportBackupModal, setShowExportBackupModal] = useState(false);
+  const [exportEncryptionMode, setExportEncryptionMode] = useState<'encrypted' | 'plain'>('encrypted');
+  const [exportPassword, setExportPassword] = useState('');
+  const [exportPlainWarningAccepted, setExportPlainWarningAccepted] = useState(false);
+  const [isExportingBackup, setIsExportingBackup] = useState(false);
+
+  const [restorePreviewState, setRestorePreviewState] = useState<{
+    fileName: string;
+    rawContent: string;
+    manifest: BackupManifest;
+    requiresPassword: boolean;
+    verifiedData?: BackupPayloadData;
+  } | null>(null);
+  const [restorePasswordInput, setRestorePasswordInput] = useState('');
+  const [restoreMergeAcknowledged, setRestoreMergeAcknowledged] = useState(false);
+  const [isRestoringBackup, setIsRestoringBackup] = useState(false);
+  const [restoreErrorMsg, setRestoreErrorMsg] = useState<string | null>(null);
+
+  const handleOpenExportBackupModal = () => {
+    setExportEncryptionMode('encrypted');
+    setExportPassword('');
+    setExportPlainWarningAccepted(false);
+    setShowExportBackupModal(true);
+  };
+
+  const handleConfirmExportBackup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (exportEncryptionMode === 'encrypted' && exportPassword.trim().length < 6) {
+      alert('يرجى إدخال كلمة مرور لا تقل عن 6 خانات لتشفير النسخة الاحتياطية.');
+      return;
+    }
+    if (exportEncryptionMode === 'plain' && !exportPlainWarningAccepted) {
+      alert('يرجى الموافقة على التحذير الأمني قبل تصدير نسخة طبية غير مشفرة.');
+      return;
+    }
+
+    setIsExportingBackup(true);
     try {
-      const backupData = {
-        exportedAt: new Date().toISOString(),
-        appName: 'Soli Medical Clinic System',
-        version: APP_VERSION || 'v2.6.0',
-        summary: {
-          patientsCount: (patients || []).length,
-          appointmentsCount: (appointments || []).length,
-          visitsCount: (visits || []).length,
-          invoicesCount: (invoices || []).length,
-          paymentsCount: (payments || []).length,
-          prescriptionsCount: (prescriptions || []).length,
-          catalogsCount: (drugCatalog || []).length + (radiologyCatalog || []).length + (labCatalog || []).length,
-        },
+      const payloadData: BackupPayloadData = {
         patients: patients || [],
         appointments: appointments || [],
         visits: visits || [],
@@ -351,22 +384,35 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         chronicConditions: presetChronicConditions,
       };
 
-      const jsonString = JSON.stringify(backupData, null, 2);
+      const envelope = await createBackupEnvelope(payloadData, {
+        password: exportEncryptionMode === 'encrypted' ? exportPassword.trim() : undefined,
+      });
+
+      const jsonString = JSON.stringify(envelope, null, 2);
       const blob = new Blob([jsonString], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const downloadAnchor = document.createElement('a');
       downloadAnchor.href = url;
-      downloadAnchor.download = `soli_clinic_backup_${new Date().toISOString().slice(0, 10)}.json`;
+      const suffix = exportEncryptionMode === 'encrypted' ? 'encrypted' : 'plain';
+      downloadAnchor.download = `soli_clinic_backup_${APP_VERSION}_${suffix}_${new Date().toISOString().slice(0, 10)}.json`;
       document.body.appendChild(downloadAnchor);
       downloadAnchor.click();
       downloadAnchor.remove();
       URL.revokeObjectURL(url);
 
-      setSavedToast('تم تحميل وتصدير ملف النسخة الاحتياطية JSON بنجاح ✓');
-      setTimeout(() => setSavedToast(null), 3000);
-    } catch (e) {
-      console.error(e);
-      alert('حدث خطأ أثناء تصدير ملف النسخة الاحتياطية.');
+      setShowExportBackupModal(false);
+      setExportPassword('');
+      setSavedToast(
+        exportEncryptionMode === 'encrypted'
+          ? 'تم تشفير وتصدير النسخة الاحتياطية (AES-GCM + SHA-256 Checksum) بنجاح ✓'
+          : 'تم تصدير النسخة الاحتياطية مع بصمة التحقق (SHA-256 Checksum) بنجاح ✓'
+      );
+      setTimeout(() => setSavedToast(null), 3500);
+    } catch (err) {
+      safeLogger.error('Backup export failed', err);
+      alert(err instanceof Error ? err.message : 'حدث خطأ أثناء تصدير ملف النسخة الاحتياطية.');
+    } finally {
+      setIsExportingBackup(false);
     }
   };
 
@@ -381,143 +427,141 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       try {
         assertPermission('settings.edit', 'استيراد واستعادة نسخة احتياطية للنظام');
         const content = event.target?.result as string;
-        const data = JSON.parse(content);
 
-        if (!data || typeof data !== 'object') {
-          throw new Error('ملف JSON غير صالح.');
-        }
+        // Parse & Verify Manifest and SHA-256 Checksum BEFORE writing anything to system
+        const verification = await parseAndVerifyBackupFile(content);
 
-        if (Array.isArray(data.visitTypes) && data.visitTypes.length > 0) {
-          data.visitTypes.forEach((vt: VisitTypeItem) => {
-            if (vt.name) onAddVisitType(vt);
-          });
-        }
-
-        if (typeof data.freeFollowupDays === 'number' && data.freeFollowupDays >= 0) {
-          setFreeFollowupDays(data.freeFollowupDays);
-          safeStorage.setItem(StorageKeys.FREE_FOLLOWUP_DAYS, String(data.freeFollowupDays));
-        }
-
-        if (Array.isArray(data.medicalServices) && data.medicalServices.length > 0) {
-          saveMedicalServices(data.medicalServices);
-          setMedicalServicesList(data.medicalServices);
-        }
-
-        if (Array.isArray(data.expenseCategories) && data.expenseCategories.length > 0) {
-          saveExpenseCategories(data.expenseCategories);
-          setExpenseCategoriesList(data.expenseCategories);
-        }
-
-        if (data.alertConfig && typeof data.alertConfig === 'object') {
-          setAlertConfig(data.alertConfig);
-          saveAlertSettings(data.alertConfig);
-        }
-
-        if (data.examDisplayConfig && typeof data.examDisplayConfig === 'object') {
-          setExamDisplayConfig(data.examDisplayConfig);
-          saveExamDisplaySettings(data.examDisplayConfig);
-        }
-
-        if (Array.isArray(data.recurringTemplates) && data.recurringTemplates.length > 0) {
-          safeStorage.setJSON(StorageKeys.RECURRING_TEMPLATES, data.recurringTemplates);
-          setSavedTemplates(data.recurringTemplates);
-          window.dispatchEvent(new Event('soli_templates_updated'));
-        }
-
-        if (Array.isArray(data.radiologyCatalog) && data.radiologyCatalog.length > 0) {
-          data.radiologyCatalog.forEach((item: RadiologyCatalogItem) => onAddRadiology(item));
-        }
-
-        if (Array.isArray(data.labCatalog) && data.labCatalog.length > 0) {
-          data.labCatalog.forEach((item: LabCatalogItem) => onAddLab(item));
-        }
-
-        if (Array.isArray(data.drugCatalog) && data.drugCatalog.length > 0) {
-          data.drugCatalog.forEach((item: DrugCatalogItem) => onAddDrug(item));
-        }
-
-        if (Array.isArray(data.diagnosesCatalog) && data.diagnosesCatalog.length > 0) {
-          data.diagnosesCatalog.forEach((item: DiagnosisCatalogItem) => onAddDiagnosis(item));
-        }
-
-        if (Array.isArray(data.symptomsCatalog) && data.symptomsCatalog.length > 0) {
-          data.symptomsCatalog.forEach((item: SymptomCatalogItem) => onAddSymptom(item));
-        }
-
-        let restoredRecordsCount = 0;
-        if (db && (Array.isArray(data.patients) || Array.isArray(data.visits) || Array.isArray(data.appointments))) {
-          const pendingWrites: Array<{ col: string; id: string; payload: any }> = [];
-          if (Array.isArray(data.patients)) {
-            data.patients.forEach((p: any) => {
-              if (p && typeof p.patientId === 'string' && p.patientId.trim()) {
-                pendingWrites.push({ col: 'patients', id: p.patientId, payload: p });
-              }
-            });
-          }
-          if (Array.isArray(data.appointments)) {
-            data.appointments.forEach((a: any) => {
-              if (a && typeof a.appointmentId === 'string' && a.appointmentId.trim()) {
-                pendingWrites.push({ col: 'appointments', id: a.appointmentId, payload: a });
-              }
-            });
-          }
-          if (Array.isArray(data.visits)) {
-            data.visits.forEach((v: any) => {
-              if (v && typeof v.visitId === 'string' && v.visitId.trim()) {
-                pendingWrites.push({ col: 'visits', id: v.visitId, payload: v });
-              }
-            });
-          }
-          if (Array.isArray(data.invoices)) {
-            data.invoices.forEach((inv: any) => {
-              if (inv && typeof inv.invoiceId === 'string' && inv.invoiceId.trim()) {
-                pendingWrites.push({ col: 'invoices', id: inv.invoiceId, payload: inv });
-              }
-            });
-          }
-          if (Array.isArray(data.payments)) {
-            data.payments.forEach((pay: any) => {
-              if (pay && typeof pay.paymentId === 'string' && pay.paymentId.trim()) {
-                pendingWrites.push({ col: 'payments', id: pay.paymentId, payload: pay });
-              }
-            });
-          }
-          if (Array.isArray(data.prescriptions)) {
-            data.prescriptions.forEach((rx: any) => {
-              if (rx && typeof rx.prescriptionId === 'string' && rx.prescriptionId.trim()) {
-                pendingWrites.push({ col: 'prescriptions', id: rx.prescriptionId, payload: rx });
-              }
-            });
-          }
-
-          // Commit in chunks of 400 to respect Firestore's 500-operation batch limit (FINDING-007)
-          const CHUNK_SIZE = 400;
-          for (let i = 0; i < pendingWrites.length; i += CHUNK_SIZE) {
-            const chunk = pendingWrites.slice(i, i + CHUNK_SIZE);
-            const batch = writeBatch(db);
-            chunk.forEach((item) => {
-              batch.set(doc(db!, item.col, item.id), item.payload, { merge: true });
-            });
-            await batch.commit();
-            restoredRecordsCount += chunk.length;
-          }
-        }
-
-        const successMsg = restoredRecordsCount > 0
-          ? `تم استيراد واستعادة بيانات العيادة (${file.name}) مع ${restoredRecordsCount} سجل بنجاح ✓`
-          : `تم استيراد واستعادة إعدادات وأدلة العيادة من (${file.name}) بنجاح ✓`;
-
-        setSavedToast(successMsg);
-        setTimeout(() => setSavedToast(null), 3500);
+        setRestorePasswordInput('');
+        setRestoreMergeAcknowledged(false);
+        setRestoreErrorMsg(null);
+        setRestorePreviewState({
+          fileName: file.name,
+          rawContent: content,
+          manifest: verification.manifest,
+          requiresPassword: Boolean(verification.requiresPassword),
+          verifiedData: verification.data,
+        });
       } catch (err) {
-        console.error(err);
-        setSavedToast(err instanceof Error ? err.message : 'حدث خطأ أثناء استيراد الملف.');
-        setTimeout(() => setSavedToast(null), 4000);
+        safeLogger.error('Backup verification rejected file', err);
+        const msg = err instanceof Error ? err.message : 'ملف النسخة الاحتياطية غير صالح أو تالف.';
+        alert(`تم رفض ملف النسخة الاحتياطية:\n${msg}`);
       } finally {
         e.target.value = '';
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleUnlockEncryptedBackup = async () => {
+    if (!restorePreviewState) return;
+    setRestoreErrorMsg(null);
+    setIsRestoringBackup(true);
+    try {
+      const verification = await parseAndVerifyBackupFile(
+        restorePreviewState.rawContent,
+        restorePasswordInput
+      );
+      if (verification.valid && verification.data) {
+        setRestorePreviewState({
+          ...restorePreviewState,
+          requiresPassword: false,
+          verifiedData: verification.data,
+        });
+      }
+    } catch (err) {
+      setRestoreErrorMsg(
+        err instanceof Error ? err.message : 'فشل فك تشفير الملف أو التحقق من البصمة.'
+      );
+    } finally {
+      setIsRestoringBackup(false);
+    }
+  };
+
+  const handleExecuteVerifiedRestore = async () => {
+    if (!restorePreviewState || !restorePreviewState.verifiedData) return;
+    if (!restoreMergeAcknowledged) {
+      setRestoreErrorMsg('يرجى التأشير بالموافقة على تنبيه دمج البيانات قبل بدء الاستعادة.');
+      return;
+    }
+
+    setIsRestoringBackup(true);
+    setRestoreErrorMsg(null);
+    try {
+      assertPermission('settings.edit', 'استيراد واستعادة نسخة احتياطية للنظام');
+      const data = restorePreviewState.verifiedData;
+
+      if (Array.isArray(data.visitTypes) && data.visitTypes.length > 0) {
+        data.visitTypes.forEach((vt: VisitTypeItem) => {
+          if (vt.name) onAddVisitType(vt);
+        });
+      }
+
+      if (typeof data.freeFollowupDays === 'number' && data.freeFollowupDays >= 0) {
+        setFreeFollowupDays(data.freeFollowupDays);
+        safeStorage.setItem(StorageKeys.FREE_FOLLOWUP_DAYS, String(data.freeFollowupDays));
+      }
+
+      if (Array.isArray(data.medicalServices) && data.medicalServices.length > 0) {
+        saveMedicalServices(data.medicalServices);
+        setMedicalServicesList(data.medicalServices);
+      }
+
+      if (Array.isArray(data.expenseCategories) && data.expenseCategories.length > 0) {
+        saveExpenseCategories(data.expenseCategories);
+        setExpenseCategoriesList(data.expenseCategories);
+      }
+
+      if (data.alertConfig && typeof data.alertConfig === 'object') {
+        setAlertConfig(data.alertConfig);
+        saveAlertSettings(data.alertConfig);
+      }
+
+      if (data.examDisplayConfig && typeof data.examDisplayConfig === 'object') {
+        setExamDisplayConfig(data.examDisplayConfig);
+        saveExamDisplaySettings(data.examDisplayConfig);
+      }
+
+      if (Array.isArray(data.recurringTemplates) && data.recurringTemplates.length > 0) {
+        safeStorage.setJSON(StorageKeys.RECURRING_TEMPLATES, data.recurringTemplates);
+        setSavedTemplates(data.recurringTemplates);
+        window.dispatchEvent(new Event('soli_templates_updated'));
+      }
+
+      if (Array.isArray(data.radiologyCatalog) && data.radiologyCatalog.length > 0) {
+        data.radiologyCatalog.forEach((item: RadiologyCatalogItem) => onAddRadiology(item));
+      }
+
+      if (Array.isArray(data.labCatalog) && data.labCatalog.length > 0) {
+        data.labCatalog.forEach((item: LabCatalogItem) => onAddLab(item));
+      }
+
+      if (Array.isArray(data.drugCatalog) && data.drugCatalog.length > 0) {
+        data.drugCatalog.forEach((item: DrugCatalogItem) => onAddDrug(item));
+      }
+
+      if (Array.isArray(data.diagnosesCatalog) && data.diagnosesCatalog.length > 0) {
+        data.diagnosesCatalog.forEach((item: DiagnosisCatalogItem) => onAddDiagnosis(item));
+      }
+
+      if (Array.isArray(data.symptomsCatalog) && data.symptomsCatalog.length > 0) {
+        data.symptomsCatalog.forEach((item: SymptomCatalogItem) => onAddSymptom(item));
+      }
+
+      const restoreReport = await restoreVerifiedBackupToFirestore(db, data);
+      setRestorePreviewState(null);
+
+      if (!restoreReport.success) {
+        alert(restoreReport.summaryText);
+      } else {
+        setSavedToast(restoreReport.summaryText);
+        setTimeout(() => setSavedToast(null), 4500);
+      }
+    } catch (err) {
+      safeLogger.error('Backup restore execution error', err);
+      setRestoreErrorMsg(err instanceof Error ? err.message : 'حدث خطأ أثناء استعادة البيانات.');
+    } finally {
+      setIsRestoringBackup(false);
+    }
   };
 
   const handleTestAlertSound = (type: 'new_visit' | 'call' | 'finish' = 'new_visit') => {
@@ -610,15 +654,15 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             )}
           </div>
 
-          {/* Quick One-Click JSON Backup Button */}
+          {/* Quick Backup Button (opens security & encryption modal) */}
           <button
             type="button"
-            onClick={handleExportBackup}
+            onClick={handleOpenExportBackupModal}
             className="ms-auto flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#00c2cb]/15 hover:bg-[#00c2cb] text-[#008f97] dark:text-[#00c2cb] hover:text-slate-950 border border-[#00c2cb]/30 transition-all cursor-pointer shadow-2xs active:scale-95"
-            title="تنزيل نسخة احتياطية كاملة من بيانات وإعدادات العيادة بصيغة JSON بضغطة زر واحدة"
+            title="تصدير نسخة احتياطية محمية (مشفرة بكلمة مرور أو JSON مع بصمة SHA-256)"
           >
             <span className="material-symbols-outlined text-base">cloud_download</span>
-            <span>{language === 'en' ? 'Quick Backup (JSON)' : 'تنزيل نسخة احتياطية (JSON)'}</span>
+            <span>{language === 'en' ? 'Export Protected Backup' : 'تصدير نسخة احتياطية محمية'}</span>
           </button>
         </div>
       </div>
@@ -1575,54 +1619,66 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                     </div>
                   </div>
 
-                  {/* Block 1: Generate & Reset Demo Data */}
-                  <div className="space-y-3">
-                    <h3 className="font-bold text-slate-800 dark:text-[#dde2f5] flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#00c2cb]"></span>
-                      <span>توليد ومسح البيانات التوضيحية:</span>
-                    </h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <button
-                        type="button"
-                        disabled={isGeneratingDemo}
-                        onClick={async () => {
-                          setIsGeneratingDemo(true);
-                          try {
-                            await onGenerateYearlyDemoData();
-                          } catch (e) {
-                            console.error(e);
-                          } finally {
-                            setIsGeneratingDemo(false);
-                          }
-                        }}
-                        className="p-3.5 rounded-xl border border-[#00c2cb]/30 bg-[#00c2cb]/10 hover:bg-[#00c2cb]/20 text-[#00c2cb] hover:text-[#45dee7] font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
-                      >
-                        <span className="material-symbols-outlined text-lg">auto_awesome</span>
-                        <span>{isGeneratingDemo ? 'جاري التوليد...' : 'توليد بيانات تجريبيه سنه كاملة'}</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        disabled={isClearingAll}
-                        onClick={async () => {
-                          if (window.confirm('هل أنت متأكد من رغبتك في مسح كافة البيانات التجريبية والبدء من جديد بالكامل؟')) {
-                            setIsClearingAll(true);
-                            try {
-                              await onClearAllData();
-                            } catch (e) {
-                              console.error(e);
-                            } finally {
-                              setIsClearingAll(false);
+                  {/* Block 1: Generate & Reset Demo Data (Admin Only with Explicit Confirmation — Item 5) */}
+                  {isAdmin && (
+                    <div className="space-y-3">
+                      <h3 className="font-bold text-slate-800 dark:text-[#dde2f5] flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#00c2cb]"></span>
+                        <span>توليد ومسح البيانات التوضيحية (خاص بمدير النظام فقط):</span>
+                      </h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          disabled={isGeneratingDemo}
+                          onClick={async () => {
+                            const confirmPhrase = 'توليد بيانات تجريبية';
+                            const input = window.prompt(
+                              `⚠️ تحذير لمدير النظام:\nسيقوم هذا الإجراء بإضافة سجلات تجريبية معزولة (بمعرّفات pat-demo-* و vis-demo-*) لمدة سنة كاملة دون تعديل بيانات المرضى الحقيقية.\n\nلتأكيد الإضافة الصريحة، اكتب العبارة التالية بدقة: (${confirmPhrase})`
+                            );
+                            if (input !== confirmPhrase) {
+                              if (input !== null) {
+                                alert('العبارة المدخلة غير مطابقة. تم إلغاء توليد البيانات التجريبية.');
+                              }
+                              return;
                             }
-                          }
-                        }}
-                        className="p-3.5 rounded-xl border border-rose-500/20 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
-                      >
-                        <span className="material-symbols-outlined text-lg">restart_alt</span>
-                        <span>{isClearingAll ? 'جاري المسح...' : 'مسح كل البيانات والبدء من جديد'}</span>
-                      </button>
+                            setIsGeneratingDemo(true);
+                            try {
+                              await onGenerateYearlyDemoData();
+                            } catch (e) {
+                              safeLogger.error('Demo generation UI error', e);
+                            } finally {
+                              setIsGeneratingDemo(false);
+                            }
+                          }}
+                          className="p-3.5 rounded-xl border border-[#00c2cb]/30 bg-[#00c2cb]/10 hover:bg-[#00c2cb]/20 text-[#00c2cb] hover:text-[#45dee7] font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                        >
+                          <span className="material-symbols-outlined text-lg">auto_awesome</span>
+                          <span>{isGeneratingDemo ? 'جاري التوليد...' : 'توليد بيانات تجريبيه سنه كاملة'}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={isClearingAll}
+                          onClick={async () => {
+                            if (window.confirm('هل أنت متأكد من رغبتك في مسح كافة البيانات التجريبية والتشغيلية والبدء من جديد بالكامل؟')) {
+                              setIsClearingAll(true);
+                              try {
+                                await onClearAllData();
+                              } catch (e) {
+                                safeLogger.error('Clear all data UI error', e);
+                              } finally {
+                                setIsClearingAll(false);
+                              }
+                            }
+                          }}
+                          className="p-3.5 rounded-xl border border-rose-500/20 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                        >
+                          <span className="material-symbols-outlined text-lg">restart_alt</span>
+                          <span>{isClearingAll ? 'جاري المسح...' : 'مسح كل البيانات والبدء من جديد'}</span>
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Reset & Wipe Data Blocks (Admin or Delete Permission Only) */}
                   {canDeleteSettings && (
@@ -1647,7 +1703,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                               try {
                                 await onClearBrowserVisitsOnly();
                               } catch (e) {
-                                console.error(e);
+                                safeLogger.error('Clear browser only UI error', e);
                               } finally {
                                 setIsClearingBrowserOnly(false);
                               }
@@ -1668,7 +1724,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                             <span>حذف بيانات المرضى والزيارات من السحابة نهائياً</span>
                           </h4>
                           <p className="text-[11px] text-slate-600 dark:text-[#bbc9ca] leading-relaxed">
-                            تحذير هام: سيؤدي هذا الإجراء إلى مسح كافة ملفات وسجلات المرضى، الزيارات، الحجوزات، الفواتير، والمدفوعات بشكل نهائي من المتصفح ومن قاعدة البيانات السحابية (Firestore). سيتم الإبقاء على البيانات الثابتة من الأدلة الطبية (الأدوية، التشخيصات، الفحوصات) وتنسيقات وإعدادات صفحة الروشتة وصفحة الإعدادات لتجنب إعادة ضبط البنية التحتية للعيادة.
+                            تحذير هام: سيؤدي هذا الإجراء إلى مسح كافة ملفات وسجلات المرضى، الزيارات، الحجوزات، الفواتير، والمدفوعات بشكل نهائي من المتصفح ومن قاعدة البيانات السحابية (Firestore) على دفعات آمنة. سيتم الإبقاء على البيانات الثابتة من الأدلة الطبية (الأدوية، التشخيصات، الفحوصات) وتنسيقات وإعدادات صفحة الروشتة وصفحة الإعدادات.
                           </p>
                         </div>
                         <button
@@ -1682,7 +1738,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                               try {
                                 await onClearAllBrowserAndCloud();
                               } catch (e) {
-                                console.error(e);
+                                safeLogger.error('Cloud wipe UI error', e);
                               } finally {
                                 setIsClearingBrowserCloud(false);
                               }
@@ -1757,11 +1813,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                     <div className="flex flex-wrap items-center gap-3 pt-1">
                       <button
                         type="button"
-                        onClick={handleExportBackup}
+                        onClick={handleOpenExportBackupModal}
                         className="px-4 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-xs active:scale-95"
                       >
                         <span className="material-symbols-outlined text-base">download</span>
-                        <span>تصدير وتحميل نسخة احتياطية JSON</span>
+                        <span>تصدير وتحميل نسخة احتياطية محمية (Manifest + Checksum)</span>
                       </button>
 
                       <button
@@ -1770,7 +1826,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                         className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-xs active:scale-95"
                       >
                         <span className="material-symbols-outlined text-base">upload_file</span>
-                        <span>استيراد واستعادة ملف نسخة احتياطية JSON</span>
+                        <span>فحص ومعاينة واستعادة ملف نسخة احتياطية</span>
                       </button>
 
                       <input
@@ -1820,6 +1876,272 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
           </div>
         )}
+
+      {/* MODAL: Export Backup Protection & Encryption (Items 3 & 4) */}
+      {showExportBackupModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white dark:bg-[#111A2E] border border-slate-200 dark:border-white/10 rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-4 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/10 pb-3">
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                <span className="material-symbols-outlined text-[#00c2cb] text-xl">enhanced_encryption</span>
+                <span>حماية وتصدير النسخة الاحتياطية للعيادة ({APP_VERSION})</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowExportBackupModal(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white font-bold text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmExportBackup} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setExportEncryptionMode('encrypted')}
+                  className={`p-3 rounded-xl border text-right transition-all cursor-pointer ${
+                    exportEncryptionMode === 'encrypted'
+                      ? 'border-[#00c2cb] bg-[#00c2cb]/10 text-slate-900 dark:text-white font-bold'
+                      : 'border-slate-200 dark:border-white/10 text-slate-500 dark:text-[#859394]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold">نسخة مشفرة بكلمة مرور</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-500 font-bold">موصى به</span>
+                  </div>
+                  <p className="text-[10px] opacity-80">تشفير قياسي AES-GCM 256-bit مع بصمة SHA-256</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setExportEncryptionMode('plain')}
+                  className={`p-3 rounded-xl border text-right transition-all cursor-pointer ${
+                    exportEncryptionMode === 'plain'
+                      ? 'border-amber-500 bg-amber-500/10 text-slate-900 dark:text-white font-bold'
+                      : 'border-slate-200 dark:border-white/10 text-slate-500 dark:text-[#859394]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold">ملف JSON غير مشفر</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-500 font-bold">يتطلب تحذير</span>
+                  </div>
+                  <p className="text-[10px] opacity-80">محمي ببصمة SHA-256 ضد التلف دون تشفير المحتوى</p>
+                </button>
+              </div>
+
+              {exportEncryptionMode === 'encrypted' ? (
+                <div className="space-y-1.5">
+                  <label className="font-bold text-slate-800 dark:text-[#dde2f5] block">
+                    كلمة مرور تشفير النسخة الاحتياطية (6 خانات على الأقل):
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={exportPassword}
+                    onChange={(e) => setExportPassword(e.target.value)}
+                    placeholder="أدخل كلمة مرور قوية لحماية بيانات المرضى..."
+                    dir="ltr"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-[#18233C] border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white font-mono focus:outline-none focus:border-[#00c2cb]"
+                  />
+                  <p className="text-[10px] text-slate-500 dark:text-[#859394]">
+                    سيُطلب منك إدخال كلمة المرور هذه عند استعادة النسخة الاحتياطية مستقبلاً.
+                  </p>
+                </div>
+              ) : (
+                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-2">
+                  <p className="text-[11px] font-bold text-amber-600 dark:text-amber-400">
+                    ⚠️ تحذير أمني: حماية خصوصية البيانات الطبية
+                  </p>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                    ملف JSON غير المشفر يحتوي على أسماء المرضى والتشخيصات والفواتير كنص مقروء. لا تقم بمشاركته عبر قنوات غير آمنة.
+                  </p>
+                  <label className="flex items-center gap-2 pt-1 cursor-pointer font-bold text-slate-800 dark:text-white">
+                    <input
+                      type="checkbox"
+                      checked={exportPlainWarningAccepted}
+                      onChange={(e) => setExportPlainWarningAccepted(e.target.checked)}
+                      className="rounded border-amber-500"
+                    />
+                    <span>أدرك المخاطر وأوافق على تصدير الملف بصيغة JSON غير مشفرة</span>
+                  </label>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setShowExportBackupModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-slate-300 font-bold cursor-pointer"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={isExportingBackup}
+                  className="px-5 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold shadow-md cursor-pointer disabled:opacity-50"
+                >
+                  {isExportingBackup ? 'جارٍ التجهيز والتصدير...' : 'تأكيد وتنزيل النسخة الاحتياطية'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Backup Restore Preview & Checksum Verification (Item 3 & 4) */}
+      {restorePreviewState && (
+        <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white dark:bg-[#111A2E] border border-emerald-500/30 rounded-2xl p-6 max-w-xl w-full shadow-2xl space-y-4 text-xs max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-emerald-500 text-xl">verified_user</span>
+                <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+                  معاينة وفحص النسخة الاحتياطية قبل الاستعادة
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRestorePreviewState(null)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white font-bold text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {restoreErrorMsg && (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 font-bold">
+                {restoreErrorMsg}
+              </div>
+            )}
+
+            {/* Manifest Summary Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3.5 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/10">
+              <div>
+                <span className="text-[10px] text-slate-400 block">إصدار النسخة</span>
+                <span className="font-mono font-bold text-slate-900 dark:text-white">
+                  {restorePreviewState.manifest.appVersion} (Schema v{restorePreviewState.manifest.schemaVersion})
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 block">تاريخ الإنشاء</span>
+                <span className="font-mono font-bold text-slate-900 dark:text-white">
+                  {new Date(restorePreviewState.manifest.createdAt).toLocaleString('ar-EG')}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 block">نوع الحماية</span>
+                <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                  {restorePreviewState.manifest.backupType === 'FULL_ENCRYPTED' ? 'مشفر AES-GCM 🔒' : 'JSON + SHA-256 ✓'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 block">إجمالي السجلات</span>
+                <span className="font-mono font-bold text-[#008f97] dark:text-[#00c2cb]">
+                  {restorePreviewState.manifest.totalRecords} سجل
+                </span>
+              </div>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-emerald-500/5 border border-emerald-500/20 flex items-center justify-between gap-2">
+              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                ✓ بصمة التحقق الرقمية (SHA-256 Checksum):
+              </span>
+              <span className="font-mono text-[10px] text-slate-500 truncate max-w-[260px]" dir="ltr">
+                {restorePreviewState.manifest.checksum}
+              </span>
+            </div>
+
+            {/* Affected Collections Breakdown */}
+            <div className="space-y-1.5">
+              <span className="font-bold text-slate-800 dark:text-[#dde2f5] block">
+                المجموعات التي ستتأثر بالاستعادة ({restorePreviewState.manifest.affectedCollections.length} مجموعة):
+              </span>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-40 overflow-y-auto p-2 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5">
+                {restorePreviewState.manifest.affectedCollections.map((colKey) => (
+                  <div
+                    key={colKey}
+                    className="p-2 rounded-lg bg-white dark:bg-[#111A2E] border border-slate-100 dark:border-white/5 flex items-center justify-between"
+                  >
+                    <span className="text-[10px] text-slate-700 dark:text-slate-300 truncate">
+                      {getCollectionArabicLabel(colKey)}
+                    </span>
+                    <span className="font-mono font-bold text-[#008f97] dark:text-[#00c2cb] text-[11px]">
+                      {restorePreviewState.manifest.collectionCounts[colKey] || 0}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {restorePreviewState.requiresPassword ? (
+              <div className="p-4 rounded-xl bg-purple-500/10 border border-purple-500/30 space-y-3">
+                <label className="font-bold text-purple-700 dark:text-purple-300 block">
+                  هذه النسخة مشفرة. أدخل كلمة المرور لفك التشفير والتحقق من البصمة:
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="password"
+                    value={restorePasswordInput}
+                    onChange={(e) => setRestorePasswordInput(e.target.value)}
+                    placeholder="كلمة مرور النسخة الاحتياطية..."
+                    dir="ltr"
+                    className="flex-1 px-3.5 py-2 rounded-xl bg-white dark:bg-[#0c1322] border border-purple-400/40 font-mono outline-none"
+                  />
+                  <button
+                    type="button"
+                    disabled={isRestoringBackup || !restorePasswordInput.trim()}
+                    onClick={handleUnlockEncryptedBackup}
+                    className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold cursor-pointer disabled:opacity-50"
+                  >
+                    {isRestoringBackup ? 'جارٍ التحقق...' : 'فك التشفير والتحقق'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-2">
+                <p className="text-[11px] font-bold text-amber-600 dark:text-amber-400">
+                  ⚠️ تنبيه قبل الاستعادة:
+                </p>
+                <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                  ستقوم عملية الاستعادة بدمج بيانات النسخة الاحتياطية على دفعات آمنة فوق السجلات الحالية التي تحمل نفس المعرّف في النظام دون حذف السجلات الأخرى.
+                </p>
+                <label className="flex items-center gap-2 pt-1 cursor-pointer font-bold text-slate-800 dark:text-white">
+                  <input
+                    type="checkbox"
+                    checked={restoreMergeAcknowledged}
+                    onChange={(e) => setRestoreMergeAcknowledged(e.target.checked)}
+                    className="rounded border-amber-500"
+                  />
+                  <span>راجعت بيانات النسخة وأؤكد بدء الاستعادة والدمج على دفعات آمنة</span>
+                </label>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-white/10">
+              <button
+                type="button"
+                disabled={isRestoringBackup}
+                onClick={() => setRestorePreviewState(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-slate-300 font-bold cursor-pointer"
+              >
+                إلغاء
+              </button>
+              {!restorePreviewState.requiresPassword && (
+                <button
+                  type="button"
+                  disabled={isRestoringBackup || !restoreMergeAcknowledged}
+                  onClick={handleExecuteVerifiedRestore}
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-md cursor-pointer disabled:opacity-50"
+                >
+                  {isRestoringBackup ? 'جارٍ الاستعادة على دفعات...' : 'تأكيد واستعادة النسخة الاحتياطية الآن'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL: Add New Visit Type */}
       {showAddVisitModal && (

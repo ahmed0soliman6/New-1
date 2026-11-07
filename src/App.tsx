@@ -118,7 +118,9 @@ import {
   registerWalkInTransaction,
   startVisitTransaction,
   completeVisitTransaction,
+  deletePatientTransaction,
 } from './services/firestoreWorkflows';
+import { safeLogger } from './utils/logger';
 import {
   subscribeToPatients,
   subscribeToAppointments,
@@ -459,26 +461,41 @@ function ClinicApp() {
   };
 
   const handleGenerateYearlyDemoData = async () => {
+    const currentRole = String(userProfile?.role || '').toLowerCase();
+    if (currentRole !== 'admin') {
+      alert('غير مصرح: توليد البيانات التجريبية متاح لمدير النظام (ADMIN) فقط.');
+      return;
+    }
     try {
       const { generateOneYearDemoData } = await import('./utils/demoDataGenerator');
-      await generateOneYearDemoData(db);
+      const res = await generateOneYearDemoData(db, { callerRole: userProfile?.role, confirmed: true });
       setSyncRetryCounter((c) => c + 1);
-      alert('تم توليد بيانات تجريبية متكاملة لمدى سنة كاملة بنجاح! تشمل سجلات المرضى والزيارات الموزعة، الحجوزات، الفواتير، المقبوضات ومصروفات العيادة المتنوعة لتظهر في التقارير والرسوم البيانية بشكل دقيق.');
+      alert(
+        `تم توليد بيانات تجريبية معزولة لمدى سنة كاملة بنجاح (${res.createdRecords} سجل سحابي) دون المساس ببيانات المرضى الحقيقية ✓`
+      );
     } catch (err) {
-      console.error(err);
-      alert('حدث خطأ أثناء توليد البيانات التجريبية.');
+      safeLogger.error('Demo data generation failed', err);
+      alert(err instanceof Error ? err.message : 'حدث خطأ أثناء توليد البيانات التجريبية.');
     }
   };
 
   const handleClearAllData = async () => {
     try {
+      const { clearAllDatabaseCollections } = await import('./utils/demoDataGenerator');
+      const report = await clearAllDatabaseCollections(db, {
+        callerRole: userProfile?.role,
+        hasDeletePermission: canDelete('system-settings'),
+      });
+
+      if (!report.success) {
+        alert(report.summaryText);
+        throw new Error(report.summaryText);
+      }
+
       safeStorage.setItem(StorageKeys.CLINIC_DB_INITIALIZED, 'true');
       safeStorage.setJSON(StorageKeys.CLINIC_EXPENSES, []);
       window.dispatchEvent(new CustomEvent('soli_clinic_expenses_updated'));
 
-      const { clearAllDatabaseCollections } = await import('./utils/demoDataGenerator');
-      await clearAllDatabaseCollections(db);
-      
       setPatientsCanonical([]);
       setAppointmentsCanonical([]);
       setVisitsCanonical([]);
@@ -491,10 +508,14 @@ function ClinicApp() {
       setActiveExamPatient(null);
       setActivePrescription([]);
 
-      alert('تم مسح سجلات المرضى والزيارات وقوائم الانتظار والمواعيد والفواتير بالكامل والبدء من جديد مع بقاء الإعدادات والأدلة الطبية الثابتة ✓');
+      alert(
+        `تم مسح سجلات المرضى والزيارات وقوائم الانتظار والمواعيد والفواتير بالكامل والبدء من جديد مع بقاء الإعدادات والأدلة الطبية الثابتة ✓\n\n${report.summaryText}`
+      );
     } catch (err) {
-      console.error(err);
-      alert('حدث خطأ أثناء مسح البيانات.');
+      safeLogger.error('Clear all data failed', err);
+      if (!(err instanceof Error && err.message.startsWith('فشلت عملية الحذف'))) {
+        alert(err instanceof Error ? err.message : 'حدث خطأ أثناء مسح البيانات.');
+      }
     }
   };
 
@@ -521,20 +542,28 @@ function ClinicApp() {
 
       alert('تم تفريغ ذاكرة المتصفح محلياً وتحميل البيانات الفعلية الموجودة على السحابة (Firestore) فقط ✓');
     } catch (err) {
-      console.error(err);
+      safeLogger.error('Clear browser visits failed', err);
       alert('حدث خطأ أثناء مسح المتصفح وإعادة الاستدعاء.');
     }
   };
 
   const handleClearAllBrowserAndCloud = async () => {
     try {
+      const { clearAllDatabaseCollections } = await import('./utils/demoDataGenerator');
+      const report = await clearAllDatabaseCollections(db, {
+        callerRole: userProfile?.role,
+        hasDeletePermission: canDelete('system-settings'),
+      });
+
+      if (!report.success) {
+        alert(report.summaryText);
+        throw new Error(report.summaryText);
+      }
+
       safeStorage.setItem(StorageKeys.CLINIC_DB_INITIALIZED, 'true');
       safeStorage.setJSON(StorageKeys.CLINIC_EXPENSES, []);
       window.dispatchEvent(new CustomEvent('soli_clinic_expenses_updated'));
 
-      const { clearAllDatabaseCollections } = await import('./utils/demoDataGenerator');
-      await clearAllDatabaseCollections(db);
-      
       setPatientsCanonical([]);
       setAppointmentsCanonical([]);
       setVisitsCanonical([]);
@@ -547,10 +576,14 @@ function ClinicApp() {
       setActiveExamPatient(null);
       setActivePrescription([]);
 
-      alert('تم حذف وتدمير سجلات المرضى والزيارات والمواعيد بالكامل من المتصفح ومن قاعدة بيانات السحابة (Firestore) نهائياً ✓');
+      alert(
+        `تم حذف وتدمير سجلات المرضى والزيارات والمواعيد بالكامل من المتصفح ومن قاعدة بيانات السحابة (Firestore) نهائياً ✓\n\n${report.summaryText}`
+      );
     } catch (err) {
-      console.error(err);
-      alert('حدث خطأ أثناء تدمير ومسح بيانات السحابة.');
+      safeLogger.error('Clear browser and cloud failed', err);
+      if (!(err instanceof Error && err.message.startsWith('فشلت عملية الحذف'))) {
+        alert(err instanceof Error ? err.message : 'حدث خطأ أثناء تدمير ومسح بيانات السحابة.');
+      }
     }
   };
 
@@ -2137,11 +2170,34 @@ function ClinicApp() {
     }
   };
 
-  // Delete patient record
+  // Delete patient record and all linked clinical/financial records in safe batches (Item 2)
   const handleDeletePatient = async (patientId: string) => {
     assertPermission('patients.delete', 'حذف ملف المريض');
-    if (db) {
-      await deleteDoc(doc(db, 'patients', patientId));
+    try {
+      if (db) {
+        await deletePatientTransaction(db, patientId, { allowDeleteFinancials: true });
+      }
+      setPatientsCanonical((prev) => prev.filter((p) => p.patientId !== patientId));
+      setAppointmentsCanonical((prev) => prev.filter((a) => a.patientId !== patientId));
+      setVisitsCanonical((prev) => prev.filter((v) => v.patientId !== patientId));
+      setInvoicesCanonical((prev) => prev.filter((inv) => inv.patientId !== patientId));
+      setPaymentsCanonical((prev) => prev.filter((pay) => pay.patientId !== patientId));
+      setPrescriptionsCanonical((prev) => prev.filter((rx) => rx.patientId !== patientId));
+      setLabOrdersCanonical((prev) => prev.filter((lab) => lab.patientId !== patientId));
+      setRadiologyOrdersCanonical((prev) => prev.filter((rad) => rad.patientId !== patientId));
+      setFollowUpsCanonical((prev) => prev.filter((fol) => fol.patientId !== patientId));
+      if (activeExamPatient?.id === patientId) {
+        setActiveExamPatient(null);
+        setActivePrescription([]);
+      }
+    } catch (err) {
+      safeLogger.error('Cascading patient deletion failed', err);
+      alert(
+        err instanceof Error
+          ? `فشلت عملية حذف المريض والسجلات المرتبطة به: ${err.message}`
+          : 'تعذر إتمام حذف المريض والسجلات المرتبطة به بالكامل. لم يتم اعتبار العملية ناجحة.'
+      );
+      throw err;
     }
   };
 

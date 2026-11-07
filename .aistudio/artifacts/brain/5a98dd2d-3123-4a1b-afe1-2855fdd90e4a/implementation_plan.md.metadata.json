@@ -1,6 +1,6 @@
 {
-  "summary": "Comprehensive implementation plan for upgrading the 4 Clinical Cards in the Examination View and Medical Catalogs Manager with a unified Hybrid Search Engine, Arabic/English phonetic normalization, curated Egyptian/Standard reference archives, real NLM ClinicalTables live API fallback (LOINC & ICD-10), browser client-side caching, and zero fake cards.",
-  "updatedAt": "2026-11-03T14:44:13.297039907Z",
-  "requestFeedback": true,
-  "userFacing": true
+  "summary":  "خطة تنفيذ الإصلاحات الأمنية والتشغيلية العشرة لنظام عيادة Soli Medical Clinic (الحذف السحابي الجماعي والفردي، النسخ الاحتياطي المشفر والمحمي ببصمة SHA-256، عزل بيانات Demo، تطهير الكاش والسجلات، تقييد صلاحيات users، والاختبارات الشاملة مع رفع الإصدار إلى v2.9.0).",
+  "updatedAt":  "2026-11-07T07:34:06.279965296Z",
+  "requestFeedback":  true,
+  "userFacing":  true
 }

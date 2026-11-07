@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { onAuthStateChanged, signOut, type User as FirebaseUser } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
@@ -15,6 +15,7 @@ import {
   getDefaultAllowedScreens,
   getDefaultRolePermissions,
 } from '../permissions';
+import { safeLogger } from '../utils/logger';
 
 export interface UserProfile {
   uid: string;
@@ -47,7 +48,12 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-function clearCachedUserProfiles(uid?: string) {
+const EMPTY_PERMISSIONS: CustomPermissionsMap = {};
+
+/**
+ * Purges all cached profile, role, and session state for a user from storage (Item 6).
+ */
+export function clearUserSessionAndCache(uid?: string) {
   try {
     if (uid) {
       localStorage.removeItem(`soli_cached_profile_${uid}`);
@@ -55,11 +61,18 @@ function clearCachedUserProfiles(uid?: string) {
     const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k && k.startsWith('soli_cached_profile_')) {
+      if (
+        k &&
+        (k.startsWith('soli_cached_profile_') ||
+          k.startsWith('soli_role_') ||
+          k.startsWith('soli_perms_') ||
+          k.startsWith('soli_session_'))
+      ) {
         keysToRemove.push(k);
       }
     }
     keysToRemove.forEach((k) => localStorage.removeItem(k));
+    sessionStorage.clear();
   } catch {}
 }
 
@@ -67,6 +80,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const previousRoleRef = useRef<Role | null>(null);
 
   useEffect(() => {
     if (!auth) {
@@ -77,52 +91,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let unsubscribeDoc: (() => void) | null = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, (fbUser) => {
-      setCurrentUser(fbUser);
-
       if (unsubscribeDoc) {
         unsubscribeDoc();
         unsubscribeDoc = null;
       }
 
+      // Always remove any legacy localStorage permission caches so permissions are strictly server-verified (Item 6)
+      clearUserSessionAndCache(fbUser?.uid);
+
       if (!fbUser) {
+        previousRoleRef.current = null;
+        setCurrentUser(null);
         setUserProfile(null);
         setLoading(false);
         return;
       }
 
+      setCurrentUser(fbUser);
+      // Keep loading = true and userProfile = null until Firestore confirms the live document (no stale cache UI grant)
+      setUserProfile(null);
+      setLoading(true);
+
       if (!db) {
-        // Least-privilege fallback without Firestore (FINDING-003)
-        setUserProfile({
-          uid: fbUser.uid,
-          username: fbUser.email?.split('@')[0] || 'user',
-          displayName: fbUser.displayName || 'مستخدم',
-          email: fbUser.email || '',
-          role: 'secretary',
-          active: true,
-          customPermissions: getDefaultRolePermissions('secretary'),
-          allowedScreens: getDefaultAllowedScreens('secretary'),
-        });
         setLoading(false);
         return;
       }
 
-      // Instant optimistic hydration from localStorage if available to avoid blocking first open
-      const cacheKey = `soli_cached_profile_${fbUser.uid}`;
-      try {
-        const cachedRaw = localStorage.getItem(cacheKey);
-        if (cachedRaw) {
-          const cachedProfile = JSON.parse(cachedRaw) as UserProfile;
-          if (cachedProfile && cachedProfile.uid === fbUser.uid && cachedProfile.active !== false) {
-            setUserProfile({
-              ...cachedProfile,
-              role: normalizeRole(cachedProfile.role),
-            });
-            setLoading(false);
-          }
-        }
-      } catch {}
-
-      // Listen in real-time to user's profile in Firestore
+      // Listen in real-time to user's authoritative profile in Firestore
       const userDocRef = doc(db, 'users', fbUser.uid);
       unsubscribeDoc = onSnapshot(
         userDocRef,
@@ -131,9 +126,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const data = snapshot.data();
             const isActive = data.active !== false;
 
-            // Instant enforcement: if account is disabled, sign out immediately
+            // Instant enforcement: if account is disabled, wipe session/cache and sign out immediately
             if (!isActive) {
-              clearCachedUserProfiles(fbUser.uid);
+              previousRoleRef.current = null;
+              clearUserSessionAndCache(fbUser.uid);
               window.dispatchEvent(
                 new CustomEvent('soli-rbac-denied', {
                   detail: { message: 'تم تعطيل حسابك من قِبل إدارة العيادة. يرجى التواصل مع الإدارة.' },
@@ -141,12 +137,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               );
               void signOut(auth);
               setUserProfile(null);
+              setCurrentUser(null);
               setLoading(false);
               return;
             }
 
             const rawRole = data.role;
             const parsedRole = normalizeRole(rawRole);
+
+            // If user role changed while logged in, purge session cache immediately (Item 6)
+            if (previousRoleRef.current !== null && previousRoleRef.current !== parsedRole) {
+              clearUserSessionAndCache(fbUser.uid);
+            }
+            previousRoleRef.current = parsedRole;
+
             const rawAllowedScreens = data.allowedScreens;
             const customScreens = Array.isArray(rawAllowedScreens)
               ? (rawAllowedScreens as string[])
@@ -168,20 +172,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               customPermissions,
             };
             setUserProfile(nextProfile);
-            try { localStorage.setItem(cacheKey, JSON.stringify(nextProfile)); } catch {}
           } else {
-            // User document does not exist in Firestore users collection
-            clearCachedUserProfiles(fbUser.uid);
-            console.warn('[AuthContext] User document not found in Firestore for UID:', fbUser.uid);
+            // User document does not exist in Firestore users collection -> deny and sign out
+            previousRoleRef.current = null;
+            clearUserSessionAndCache(fbUser.uid);
+            safeLogger.warn('User profile document not found in Firestore');
             void signOut(auth);
             setUserProfile(null);
+            setCurrentUser(null);
           }
           setLoading(false);
         },
         (error: any) => {
-          console.warn('[AuthContext] Error fetching profile:', error);
+          safeLogger.warn('Error fetching user profile from Firestore', error);
           if (error?.code === 'permission-denied') {
-            clearCachedUserProfiles(fbUser.uid);
+            previousRoleRef.current = null;
+            clearUserSessionAndCache(fbUser.uid);
             setUserProfile(null);
           }
           setLoading(false);
@@ -195,18 +201,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
+  // Until userProfile is verified from Firebase, grant NO permissions (Item 6)
+  const isVerifiedActive = Boolean(userProfile && userProfile.active);
   const activeRole: Role = userProfile?.role || 'secretary';
-  const effectiveCustomPermissions: CustomPermissionsMap =
-    userProfile?.customPermissions || getDefaultRolePermissions(activeRole);
+  const effectiveCustomPermissions: CustomPermissionsMap = isVerifiedActive
+    ? userProfile?.customPermissions || getDefaultRolePermissions(activeRole)
+    : EMPTY_PERMISSIONS;
 
-  const effectiveAllowedScreens: string[] =
-    userProfile?.allowedScreens && userProfile.allowedScreens.length > 0
+  const effectiveAllowedScreens: string[] = isVerifiedActive
+    ? userProfile?.allowedScreens && userProfile.allowedScreens.length > 0
       ? userProfile.allowedScreens
-      : Object.keys(effectiveCustomPermissions).filter(
-          (k) => effectiveCustomPermissions[k]?.view
-        );
+      : Object.keys(effectiveCustomPermissions).filter((k) => effectiveCustomPermissions[k]?.view)
+    : [];
 
   const hasPermission = (permission: Permission) => {
+    if (!isVerifiedActive) return false;
     return checkHasPermission(
       activeRole,
       permission,
@@ -216,6 +225,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const canAccess = (screenId: string) => {
+    if (!isVerifiedActive) return false;
     return checkCanAccessRoute(
       activeRole,
       screenId,
@@ -225,6 +235,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const canPerform = (screenId: string, action: ScreenAction) => {
+    if (!isVerifiedActive) return false;
     return checkScreenPermission(
       activeRole,
       screenId,
@@ -240,6 +251,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const canDelete = (screenId: string) => canPerform(screenId, 'delete');
 
   const assertPermission = (permission: Permission, actionDescription?: string) => {
+    if (!isVerifiedActive) {
+      throw new Error('لم يتم التحقق من صلاحيات الحساب من الخادم بعد.');
+    }
     checkAssertPermission(
       activeRole,
       permission,
@@ -250,7 +264,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
-    clearCachedUserProfiles(currentUser?.uid);
+    previousRoleRef.current = null;
+    clearUserSessionAndCache(currentUser?.uid);
     if (auth) {
       await signOut(auth);
     }
@@ -286,23 +301,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 export const useAuth = (): AuthContextValue => {
   const context = useContext(AuthContext);
   if (!context) {
-    console.warn('[useAuth] called outside of AuthProvider. Using least-privilege fallback context.');
-    const secPerms = getDefaultRolePermissions('secretary');
+    safeLogger.warn('useAuth called outside of AuthProvider; returning zero-privilege context');
     return {
       currentUser: null,
       userProfile: null,
       role: 'secretary',
-      allowedScreens: getDefaultAllowedScreens('secretary'),
-      customPermissions: secPerms,
+      allowedScreens: [],
+      customPermissions: EMPTY_PERMISSIONS,
       loading: false,
-      hasPermission: (perm) => checkHasPermission('secretary', perm, secPerms),
-      canAccess: (screenId) => checkCanAccessRoute('secretary', screenId, undefined, secPerms),
-      canPerform: (screenId, action) => checkScreenPermission('secretary', screenId, action, secPerms),
-      canView: (screenId) => checkScreenPermission('secretary', screenId, 'view', secPerms),
-      canCreate: (screenId) => checkScreenPermission('secretary', screenId, 'create', secPerms),
-      canUpdate: (screenId) => checkScreenPermission('secretary', screenId, 'update', secPerms),
+      hasPermission: () => false,
+      canAccess: () => false,
+      canPerform: () => false,
+      canView: () => false,
+      canCreate: () => false,
+      canUpdate: () => false,
       canDelete: () => false,
-      assertPermission: (perm, desc) => checkAssertPermission('secretary', perm, desc, secPerms),
+      assertPermission: () => {
+        throw new Error('غير مصرح بتنفيذ هذا الإجراء خارج جلسة مصادقة نشطة.');
+      },
       logout: async () => {},
     };
   }

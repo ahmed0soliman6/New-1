@@ -20,7 +20,7 @@ export interface PatientListItemsScreenProps {
   patientsCanonical?: Patient[];
   onNavigate: (screen: ScreenType) => void;
   onSelectPatientForExam: (patient: PatientListItem) => void;
-  onDeletePatient?: (patientId: string) => void;
+  onDeletePatient?: (patientId: string) => Promise<void> | void;
   onUpdatePatient?: (updated: {
     patientId: string;
     fullName: string;
@@ -68,6 +68,7 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
   const [viewingPatientId, setViewingPatientId] = useState<string | null>(selectedPatientId || null);
   const [search, setSearch] = useState('');
   const [patientToDelete, setPatientToDelete] = useState<PatientListItem | null>(null);
+  const [isDeletingPatient, setIsDeletingPatient] = useState(false);
 
   // If a patient is selected for viewing, render the full-page dossier
   const activePatient = viewingPatientId
@@ -108,8 +109,10 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
         onUpdatePatient={onUpdatePatient}
         onSelectPatientForExam={onSelectPatientForExam}
         onNavigate={onNavigate}
-        onDeletePatient={(id) => {
-          if (onDeletePatient) onDeletePatient(id);
+        onDeletePatient={async (id) => {
+          if (onDeletePatient) {
+            await onDeletePatient(id);
+          }
           setViewingPatientId(null);
         }}
         visits={visits}
@@ -331,47 +334,66 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
       </div>
 
       {/* Confirmation Modal for Deleting Patient File */}
-      {patientToDelete && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#111A2E] border border-rose-500/30 rounded-3xl p-6 max-w-md w-full text-center space-y-4 shadow-2xl animate-in zoom-in-95">
-            <div className="w-14 h-14 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-500 mx-auto flex items-center justify-center">
-              <span className="material-symbols-outlined text-3xl">delete_forever</span>
-            </div>
-            <div className="space-y-1">
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                تأكيد حذف ملف المريض نهائياً
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-[#859394] leading-relaxed">
-                هل أنت متأكد من رغبتك في حذف ملف المريض <strong className="text-slate-800 dark:text-white">({patientToDelete.name})</strong> رقم الملف <strong className="text-[#008f97] dark:text-[#00c2cb] font-mono">#{toEnglishDigits(patientToDelete.fileNumber || 1)}</strong>؟
-              </p>
-              <p className="text-[11px] text-rose-600 dark:text-rose-400 font-medium pt-1">
-                ⚠️ تحذير: سيتم حذف كافة البيانات الطبية والزيارات المرتبطة بهذا الملف ولا يمكن التراجع بعد الحذف.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 pt-3">
-              <button
-                type="button"
-                onClick={() => setPatientToDelete(null)}
-                className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] text-xs font-bold transition-all cursor-pointer hover:bg-slate-200 dark:hover:bg-[#242a38]"
-              >
-                إلغاء التراجع
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (onDeletePatient && patientToDelete) {
-                    onDeletePatient(patientToDelete.id);
-                    setPatientToDelete(null);
-                  }
-                }}
-                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md transition-all cursor-pointer active:scale-95"
-              >
-                تأكيد الحذف النهائي
-              </button>
+      {patientToDelete && (() => {
+        const linkedVisitsCount = visits.filter((v) => v.patientId === patientToDelete.id).length;
+        const linkedInvoicesCount = invoices.filter((inv) => inv.patientId === patientToDelete.id).length;
+        const linkedRxCount = prescriptions.filter((rx) => rx.patientId === patientToDelete.id).length;
+        return (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-[#111A2E] border border-rose-500/30 rounded-3xl p-6 max-w-md w-full text-center space-y-4 shadow-2xl animate-in zoom-in-95">
+              <div className="w-14 h-14 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-500 mx-auto flex items-center justify-center">
+                <span className="material-symbols-outlined text-3xl">delete_forever</span>
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  تأكيد حذف ملف المريض والسجلات المرتبطة نهائياً
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-[#859394] leading-relaxed">
+                  هل أنت متأكد من رغبتك في حذف ملف المريض <strong className="text-slate-800 dark:text-white">({patientToDelete.name})</strong> رقم الملف <strong className="text-[#008f97] dark:text-[#00c2cb] font-mono">#{toEnglishDigits(patientToDelete.fileNumber || 1)}</strong>؟
+                </p>
+                <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-right space-y-1">
+                  <p className="text-[11px] text-rose-600 dark:text-rose-400 font-bold">
+                    ⚠️ تحذير مالي وطبي صريح قبل التنفيذ:
+                  </p>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                    سيؤدي هذا الإجراء إلى الحذف النهائي لوثيقة المريض وجميع سجلاته الطبية والمالية المرتبطة به ({toEnglishDigits(linkedVisitsCount)} زيارة، {toEnglishDigits(linkedRxCount)} روشتة، و{toEnglishDigits(linkedInvoicesCount)} فاتورة/دفعة مالية) من حسابات العيادة دون إمكانية التراجع.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 pt-3">
+                <button
+                  type="button"
+                  disabled={isDeletingPatient}
+                  onClick={() => setPatientToDelete(null)}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#dde2f5] text-xs font-bold transition-all cursor-pointer hover:bg-slate-200 dark:hover:bg-[#242a38] disabled:opacity-50"
+                >
+                  إلغاء التراجع
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeletingPatient}
+                  onClick={async () => {
+                    if (onDeletePatient && patientToDelete) {
+                      setIsDeletingPatient(true);
+                      try {
+                        await onDeletePatient(patientToDelete.id);
+                        setPatientToDelete(null);
+                      } catch {
+                        // Error is alerted by handleDeletePatient; keep modal open or reset busy state
+                      } finally {
+                        setIsDeletingPatient(false);
+                      }
+                    }
+                  }}
+                  className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                >
+                  {isDeletingPatient ? 'جارٍ حذف السجلات...' : 'تأكيد الحذف النهائي'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };

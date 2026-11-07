@@ -151,8 +151,9 @@ service cloud.firestore {
     // 1. USERS & ACCESS CONTROL (CRITICAL: ADMIN PROTECTION)
     // =============================================================
     match /users/{userId} {
-      // All authenticated users can read users for profile and collaborator lookups
-      allow read: if signedIn() && isUserActive();
+      // Regular users can only read their own profile document; only Admin can list or read all users
+      allow get: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if signedIn() && isAdmin();
 
       // Creation allowed ONLY by Admin or initial system bootstrap (first admin self-doc only)
       allow create: if signedIn() && (
@@ -198,7 +199,7 @@ service cloud.firestore {
     // =============================================================
     match /usernames/{usernameLower} {
       allow get: if true; // Single doc lookup for username resolution on login
-      allow list: if signedIn() && isUserActive();
+      allow list: if signedIn() && isAdmin();
       allow create: if signedIn() && (
         isAdmin() || (
           request.resource.data.uid == request.auth.uid &&

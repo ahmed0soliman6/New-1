@@ -6,6 +6,7 @@ import { SoliMedicalLogo } from './SoliMedicalLogo';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 import { PWAInstallModal } from './PWAInstallModal';
 import { useLanguage } from '../i18n/LanguageContext';
+import { APP_VERSION } from '../constants/version';
 
 export const AuthScreen: React.FC = () => {
   const [username, setUsername] = useState('admin');
@@ -86,7 +87,7 @@ export const AuthScreen: React.FC = () => {
               <h2 className="text-base font-bold text-white">تسجيل الدخول للنظام</h2>
             </div>
             <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-[#00c2cb]/10 text-[#45dee7] border border-[#00c2cb]/30 font-bold">
-              v2.6 RBAC
+              {APP_VERSION} RBAC
             </span>
           </div>
 

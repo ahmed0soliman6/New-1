@@ -44,7 +44,7 @@ interface PatientDetailFullScreenProps {
   }) => Promise<void> | void;
   onSelectPatientForExam: (patient: PatientListItem) => void;
   onNavigate: (screen: ScreenType) => void;
-  onDeletePatient?: (patientId: string) => void;
+  onDeletePatient?: (patientId: string) => Promise<void> | void;
   visits?: Visit[];
   invoices?: Invoice[];
   prescriptions?: Prescription[];
@@ -1788,16 +1788,21 @@ ${pr.notes ? `📝 *إرشادات الطبيب:* ${pr.notes}\n\n` : ''}مع ت�
             <div className="w-14 h-14 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-500 mx-auto flex items-center justify-center">
               <span className="material-symbols-outlined text-3xl">delete_forever</span>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-2">
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                تأكيد حذف ملف المريض نهائياً
+                تأكيد حذف ملف المريض والسجلات المرتبطة نهائياً
               </h3>
               <p className="text-xs text-slate-500 dark:text-[#859394] leading-relaxed">
                 هل أنت متأكد من رغبتك في حذف ملف المريض <strong className="text-slate-800 dark:text-white">({fullName || patient.name})</strong> رقم الملف <strong className="text-[#008f97] dark:text-[#00c2cb] font-mono">#{toEnglishDigits(patient.fileNumber || 1)}</strong>؟
               </p>
-              <p className="text-[11px] text-rose-600 dark:text-rose-400 font-medium pt-1">
-                ⚠️ تحذير: سيتم حذف كافة البيانات الطبية والزيارات المرتبطة بهذا الملف ولا يمكن التراجع بعد الحذف.
-              </p>
+              <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-right space-y-1">
+                <p className="text-[11px] text-rose-600 dark:text-rose-400 font-bold">
+                  ⚠️ تحذير مالي وطبي صريح قبل التنفيذ:
+                </p>
+                <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                  سيؤدي الحذف النهائي إلى إزالة وثيقة المريض وجميع الزيارات والمواعيد والروشتات والفحوصات المرتبطة به، بالإضافة إلى حذف الفواتير والمدفوعات المسجلة باسمه من السجلات المالية نهائياً ولا يمكن التراجع بعد الحذف.
+                </p>
+              </div>
             </div>
             <div className="flex items-center gap-2 pt-3">
               <button
@@ -1809,12 +1814,16 @@ ${pr.notes ? `📝 *إرشادات الطبيب:* ${pr.notes}\n\n` : ''}مع ت�
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  if (onDeletePatient) {
-                    onDeletePatient(patient.id);
+                onClick={async () => {
+                  try {
+                    if (onDeletePatient) {
+                      await onDeletePatient(patient.id);
+                    }
+                    setShowDeleteConfirm(false);
+                    onBack();
+                  } catch {
+                    // Deletion failed and error was alerted; do not close dossier or claim success
                   }
-                  setShowDeleteConfirm(false);
-                  onBack();
                 }}
                 className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md transition-all cursor-pointer active:scale-95"
               >

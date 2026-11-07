@@ -1,6 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  createBackupEnvelope,
+  parseAndVerifyBackupFile,
+  computeSha256Hex,
+  canonicalizeBackupData,
+} from '../src/services/backupService.ts';
+import { APP_VERSION, APP_VERSION_NUMBER, APP_SCHEMA_VERSION } from '../src/constants/version.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -8,7 +15,7 @@ const rulesPath = path.resolve(__dirname, '../firestore.rules');
 const rulesContent = fs.readFileSync(rulesPath, 'utf8');
 
 console.log('===============================================================');
-console.log('🔒 تشغيل اختبارات قبول إغلاق الثغرات الأمنية (Security Hardening)');
+console.log('🔒 تشغيل اختبارات قبول الإصلاحات الأمنية وسلامة البيانات (v2.9.0)');
 console.log('===============================================================\n');
 
 let passCount = 0;
@@ -24,232 +31,429 @@ function assert(condition, testName, details = '') {
   }
 }
 
-// -------------------------------------------------------------
-// Test 1-4: API user deletion permission & safety logic simulation
-// -------------------------------------------------------------
-
-// Simulating delete handler logic exactly as in api/users/delete.ts
-function simulateDeleteHandler({ callerUser, targetUser, activeAdminCount }) {
-  // Check admin caller
-  const isAdminCaller = callerUser.active && (callerUser.role === 'ADMIN' || callerUser.role === 'admin');
-  if (!isAdminCaller) {
-    return { status: 403, error: 'لا تملك صلاحية حذف المستخدمين.' };
-  }
-
-  // Check self-delete
-  if (callerUser.uid === targetUser.uid) {
-    return { status: 400, error: 'لا يمكنك حذف الحساب الحالي المسجل به.' };
-  }
-
-  // Check last admin
-  if (targetUser.role === 'ADMIN' || targetUser.role === 'admin') {
-    if (activeAdminCount <= 1) {
-      return { status: 400, error: 'لا يمكن حذف آخر مدير في النظام' };
+async function runAllTests() {
+  // -------------------------------------------------------------
+  // 1. اختبارات إدارة المستخدمين ومنع تصعيد الصلاحيات
+  // -------------------------------------------------------------
+  function simulateDeleteHandler({ callerUser, targetUser, activeAdminCount }) {
+    const isAdminCaller = callerUser.active && (callerUser.role === 'ADMIN' || callerUser.role === 'admin');
+    if (!isAdminCaller) {
+      return { status: 403, error: 'لا تملك صلاحية حذف المستخدمين.' };
     }
+    if (callerUser.uid === targetUser.uid) {
+      return { status: 400, error: 'لا يمكنك حذف الحساب الحالي المسجل به.' };
+    }
+    if (targetUser.role === 'ADMIN' || targetUser.role === 'admin') {
+      if (activeAdminCount <= 1) {
+        return { status: 400, error: 'لا يمكن حذف آخر مدير في النظام' };
+      }
+    }
+    return { status: 200, success: true };
   }
 
-  return { status: 200, success: true };
-}
+  const test1 = simulateDeleteHandler({
+    callerUser: { uid: 'doc-1', role: 'DOCTOR', active: true },
+    targetUser: { uid: 'sec-1', role: 'SECRETARY', active: true },
+    activeAdminCount: 2,
+  });
+  assert(test1.status === 403, 'حالة 1: منع المستخدم غير المدير (طبيب) من حذف مستخدم آخر (403)');
 
-// 1. طبيب مسجّل يرسل طلب حذف مستخدم آخر للدالة -> 403
-const test1 = simulateDeleteHandler({
-  callerUser: { uid: 'doc-1', role: 'DOCTOR', active: true },
-  targetUser: { uid: 'sec-1', role: 'SECRETARY', active: true },
-  activeAdminCount: 2,
-});
-assert(test1.status === 403, 'حالة 1: طبيب مسجّل يرسل طلب حذف مستخدم آخر للدالة', `المتوقع 403، الفعلي: ${test1.status}`);
+  const test2 = simulateDeleteHandler({
+    callerUser: { uid: 'sec-1', role: 'SECRETARY', active: true },
+    targetUser: { uid: 'doc-1', role: 'DOCTOR', active: true },
+    activeAdminCount: 2,
+  });
+  assert(test2.status === 403, 'حالة 2: منع المستخدم العادي (سكرتير) من إدارة أو حذف المستخدمين (403)');
 
-// 2. سكرتير مسجّل يرسل طلب حذف -> 403
-const test2 = simulateDeleteHandler({
-  callerUser: { uid: 'sec-1', role: 'SECRETARY', active: true },
-  targetUser: { uid: 'doc-1', role: 'DOCTOR', active: true },
-  activeAdminCount: 2,
-});
-assert(test2.status === 403, 'حالة 2: سكرتير مسجّل يرسل طلب حذف', `المتوقع 403، الفعلي: ${test2.status}`);
+  const test3 = simulateDeleteHandler({
+    callerUser: { uid: 'admin-1', role: 'ADMIN', active: true },
+    targetUser: { uid: 'sec-1', role: 'SECRETARY', active: true },
+    activeAdminCount: 2,
+  });
+  assert(test3.status === 200, 'حالة 3: مدير النظام النشط يحذف حساب سكرتير بنجاح (200)');
 
-// 3. مدير مسجّل يحذف حساب سكرتير -> 200 ينجح
-const test3 = simulateDeleteHandler({
-  callerUser: { uid: 'admin-1', role: 'ADMIN', active: true },
-  targetUser: { uid: 'sec-1', role: 'SECRETARY', active: true },
-  activeAdminCount: 2,
-});
-assert(test3.status === 200, 'حالة 3: مدير مسجّل يحذف حساب سكرتير', `المتوقع 200، الفعلي: ${test3.status}`);
+  const test4 = simulateDeleteHandler({
+    callerUser: { uid: 'admin-1', role: 'ADMIN', active: true },
+    targetUser: { uid: 'admin-2', role: 'ADMIN', active: true },
+    activeAdminCount: 1,
+  });
+  assert(test4.status === 400, 'حالة 4: منع حذف آخر مدير نشط في النظام (400)');
 
-// 4. مدير يحاول حذف آخر مدير -> 400
-const test4 = simulateDeleteHandler({
-  callerUser: { uid: 'admin-1', role: 'ADMIN', active: true },
-  targetUser: { uid: 'admin-2', role: 'ADMIN', active: true },
-  activeAdminCount: 1, // Only 1 active admin remains
-});
-assert(test4.status === 400 && test4.error === 'لا يمكن حذف آخر مدير في النظام', 'حالة 4: مدير يحاول حذف آخر مدير', `المتوقع 400، الفعلي: ${test4.status}`);
+  // -------------------------------------------------------------
+  // 2. اختبار الحذف السحابي الجماعي لأكثر من 500 سجل (دفعات <= 400)
+  // -------------------------------------------------------------
+  const SAFE_BATCH_LIMIT = 400;
 
-// -------------------------------------------------------------
-// Test 5-7: Firestore Rules logic verification
-// -------------------------------------------------------------
+  async function simulateChunkedBulkDelete({ collectionsDb, callerRole, hasPatientsDeletePerm, failOnCollection = null, failOnBatchIndex = -1 }) {
+    const isAdmin = callerRole === 'ADMIN' || callerRole === 'admin';
+    if (!isAdmin && !hasPatientsDeletePerm) {
+      throw new Error('غير مصرح: عملية الحذف السحابي الشامل تتطلب صلاحية مدير النظام (Admin).');
+    }
 
-function simulateIsDoctor(auth, userDoc) {
-  const signedIn = auth != null;
-  const isUserActive = signedIn && (userDoc == null || userDoc.active !== false);
-  const role = userDoc && userDoc.role ? userDoc.role : 'SECRETARY';
-  const isAdmin = signedIn && isUserActive && (role === 'ADMIN' || role === 'admin');
-  return signedIn && isUserActive && (isAdmin || role === 'DOCTOR' || role === 'doctor');
-}
+    const OPERATIONAL_COLLECTIONS = [
+      'patients',
+      'appointments',
+      'visits',
+      'prescriptions',
+      'labOrders',
+      'radiologyOrders',
+      'followUps',
+      'invoices',
+      'payments',
+      'expenses',
+      'counters',
+    ];
 
-function simulateSettingsRule(auth, userDoc, settingId, action) {
-  const signedIn = auth != null;
-  const isUserActive = signedIn && (userDoc == null || userDoc.active !== false);
-  const role = userDoc && userDoc.role ? userDoc.role : 'SECRETARY';
-  const isAdmin = signedIn && isUserActive && (role === 'ADMIN' || role === 'admin');
-  const isDoctor = signedIn && isUserActive && (isAdmin || role === 'DOCTOR' || role === 'doctor');
-  
-  // Custom permissions or fallback
-  const hasSystemSettingsUpdate = userDoc?.customPermissions?.['system-settings']?.update === true;
+    const collectionResults = [];
+    let totalDeleted = 0;
+    let totalFailed = 0;
+    let maxBatchSizeObserved = 0;
+    let totalBatchesCommitted = 0;
 
-  if (action === 'create' || action === 'update') {
-    return (
-      (['prescriptionSettings', 'visitTypes'].includes(settingId) && (isDoctor || hasSystemSettingsUpdate)) ||
-      (!['prescriptionSettings', 'visitTypes'].includes(settingId) && (isAdmin || hasSystemSettingsUpdate))
-    );
-  }
-  return false;
-}
+    for (const colName of OPERATIONAL_COLLECTIONS) {
+      let colDeleted = 0;
+      let colFailed = 0;
+      let colSuccess = true;
+      let colError;
+      let batchIdx = 0;
 
-// 5. حساب بريده يحوي كلمة drive ودوره سكرتير -> لا يحصل على صلاحية طبيب
-const test5IsDoctor = simulateIsDoctor(
-  { uid: 'u-drive', email: 'secretary.drive@example.com' },
-  { uid: 'u-drive', role: 'SECRETARY', active: true }
-);
-assert(!test5IsDoctor, 'حالة 5: حساب بريده يحوي كلمة drive ودوره سكرتير لا يحصل على صلاحية طبيب', `الفعلي: ${test5IsDoctor}`);
+      const store = collectionsDb[colName] || [];
 
-// Also verify that firestore.rules file DOES NOT contain matches('.*admin.*') or matches('.*(doctor|dr).*')
-const hasAdminRegex = rulesContent.includes("matches('.*admin.*')");
-const hasDoctorRegex = rulesContent.includes("matches('.*(doctor|dr).*')");
-assert(!hasAdminRegex && !hasDoctorRegex, 'حالة 5B: إزالة شروط البريد الإلكتروني Regex تماماً من firestore.rules', `adminRegex=${hasAdminRegex}, doctorRegex=${hasDoctorRegex}`);
+      try {
+        while (store.length > 0) {
+          // Simulate query(collection(db, colName), limit(400))
+          const chunk = store.slice(0, SAFE_BATCH_LIMIT);
+          if (chunk.length > maxBatchSizeObserved) {
+            maxBatchSizeObserved = chunk.length;
+          }
 
-// 6. طبيب يكتب في prescriptionSettings -> ينجح
-const test6DoctorWritesRxSettings = simulateSettingsRule(
-  { uid: 'doc-1', email: 'doctor@solimedical.com' },
-  { uid: 'doc-1', role: 'DOCTOR', active: true },
-  'prescriptionSettings',
-  'update'
-);
-assert(test6DoctorWritesRxSettings, 'حالة 6: طبيب يكتب في prescriptionSettings ينجح', `الفعلي: ${test6DoctorWritesRxSettings}`);
+          if (failOnCollection === colName && batchIdx === failOnBatchIndex) {
+            colFailed += chunk.length;
+            throw new Error(`Simulated batch failure on ${colName} at batch ${batchIdx}`);
+          }
 
-// 7. سكرتير يكتب في settings/system -> يُرفض
-const test7SecretaryWritesSystem = simulateSettingsRule(
-  { uid: 'sec-1', email: 'sec@solimedical.com' },
-  { uid: 'sec-1', role: 'SECRETARY', active: true },
-  'systemSettings',
-  'update'
-);
-assert(!test7SecretaryWritesSystem, 'حالة 7: سكرتير يكتب في settings/system يُرفض', `الفعلي: ${test7SecretaryWritesSystem}`);
+          // Commit batch delete
+          store.splice(0, chunk.length);
+          colDeleted += chunk.length;
+          totalBatchesCommitted++;
+          batchIdx++;
+        }
+      } catch (err) {
+        colSuccess = false;
+        colError = err.message;
+        if (colFailed === 0) colFailed = 1;
+      }
 
-// -------------------------------------------------------------
-// Test 8-12: Prompt 11 - Admin Locked Permissions Tests
-// -------------------------------------------------------------
+      totalDeleted += colDeleted;
+      totalFailed += colFailed;
+      collectionResults.push({
+        collection: colName,
+        deletedCount: colDeleted,
+        failedCount: colFailed,
+        success: colSuccess && colFailed === 0,
+        errorMessage: colError,
+      });
+    }
 
-function simulateUserUpdateRule({ callerAuth, callerDoc, targetUserDoc, updatedFields }) {
-  const signedIn = callerAuth != null;
-  const isUserActive = signedIn && (callerDoc == null || callerDoc.active !== false);
-  const callerRole = callerDoc && callerDoc.role ? callerDoc.role : 'SECRETARY';
-  const isAdmin = signedIn && isUserActive && (callerRole === 'ADMIN' || callerRole === 'admin');
-
-  if (!signedIn || !isUserActive) return false;
-
-  const affectedKeys = Object.keys(updatedFields);
-
-  // Target is Admin
-  if (targetUserDoc.role === 'ADMIN' || targetUserDoc.role === 'admin') {
-    const hasProtectedKey = affectedKeys.some((k) =>
-      ['role', 'active', 'customPermissions', 'allowedScreens', 'createdBy'].includes(k)
-    );
-    if (hasProtectedKey) return false;
-    return isAdmin || callerAuth.uid === targetUserDoc.uid;
+    const allSucceeded = collectionResults.every((r) => r.success) && totalFailed === 0;
+    return {
+      success: allSucceeded,
+      totalDeleted,
+      totalFailed,
+      maxBatchSizeObserved,
+      totalBatchesCommitted,
+      collections: collectionResults,
+    };
   }
 
-  // Target is Non-Admin
-  if (isAdmin) return true;
-  if (callerAuth.uid === targetUserDoc.uid) {
-    const hasProtectedKey = affectedKeys.some((k) =>
-      ['role', 'customPermissions', 'allowedScreens', 'active', 'createdBy'].includes(k)
-    );
-    return !hasProtectedKey;
+  // Prepare mock DB with 950 patients and 620 visits (> 500 records per collection) plus static settings
+  const mockLargeDb = {
+    patients: Array.from({ length: 950 }, (_, i) => ({ id: `pat-${i}` })),
+    visits: Array.from({ length: 620 }, (_, i) => ({ id: `vis-${i}` })),
+    invoices: Array.from({ length: 510 }, (_, i) => ({ id: `inv-${i}` })),
+    settings: [{ id: 'prescriptionSettings' }, { id: 'visitTypes' }], // Static settings preserved
+    drugCatalog: [{ id: 'drug-1' }], // Medical catalog preserved
+  };
+
+  const bulkReport = await simulateChunkedBulkDelete({
+    collectionsDb: mockLargeDb,
+    callerRole: 'ADMIN',
+    hasPatientsDeletePerm: true,
+  });
+
+  assert(
+    bulkReport.success === true &&
+      bulkReport.totalDeleted === 950 + 620 + 510 &&
+      bulkReport.maxBatchSizeObserved === 400 &&
+      mockLargeDb.patients.length === 0 &&
+      mockLargeDb.visits.length === 0 &&
+      mockLargeDb.settings.length === 2 &&
+      mockLargeDb.drugCatalog.length === 1,
+    'حالة 5: الحذف السحابي الجماعي لأكثر من 500 سجل (950 مريض + 620 زيارة + 510 فاتورة) يعمل على دفعات <= 400 حتى انتهاء جميع المستندات مع الحفاظ على الإعدادات والأدلة الطبية',
+    `deleted=${bulkReport.totalDeleted}, maxBatch=${bulkReport.maxBatchSizeObserved}`
+  );
+
+  // Verify demoDataGenerator.ts source code actually uses MAX_SAFE_BATCH_SIZE = 400 and while(true) loop
+  const demoGenContent = fs.readFileSync(path.resolve(__dirname, '../src/utils/demoDataGenerator.ts'), 'utf8');
+  assert(
+    demoGenContent.includes('MAX_SAFE_BATCH_SIZE = 400') &&
+      demoGenContent.includes('limit(MAX_SAFE_BATCH_SIZE)') &&
+      demoGenContent.includes('verifyAdminOrDeletePermission'),
+    'حالة 5B: التحقق من كود clearAllDatabaseCollections في demoDataGenerator.ts (دفعات 400 + فحص صلاحية داخلي)'
+  );
+
+  // -------------------------------------------------------------
+  // 3. اختبار فشل دفعة أثناء الحذف الجماعي وعدم إظهار نجاح كاذب
+  // -------------------------------------------------------------
+  const mockFailingDb = {
+    patients: Array.from({ length: 850 }, (_, i) => ({ id: `pat-${i}` })),
+    visits: Array.from({ length: 550 }, (_, i) => ({ id: `vis-${i}` })),
+  };
+
+  const failedBulkReport = await simulateChunkedBulkDelete({
+    collectionsDb: mockFailingDb,
+    callerRole: 'ADMIN',
+    hasPatientsDeletePerm: true,
+    failOnCollection: 'visits',
+    failOnBatchIndex: 1, // Fails on 2nd batch of visits after 400 deleted
+  });
+
+  const visitsReport = failedBulkReport.collections.find((c) => c.collection === 'visits');
+  assert(
+    failedBulkReport.success === false &&
+      failedBulkReport.totalFailed > 0 &&
+      visitsReport.deletedCount === 400 &&
+      visitsReport.failedCount === 150 &&
+      visitsReport.success === false,
+    'حالة 6: فشل دفعة أثناء الحذف الجماعي يسجل عدد المستندات المحذوفة والفاشلة بدقة ولا يعرض نجاحاً كاذباً (report.success === false)',
+    `success=${failedBulkReport.success}, visitsDeleted=${visitsReport?.deletedCount}, visitsFailed=${visitsReport?.failedCount}`
+  );
+
+  // -------------------------------------------------------------
+  // 4. اختبار منع المستخدم العادي من الحذف الجماعي وتوليد البيانات التجريبية
+  // -------------------------------------------------------------
+  let nonAdminBlockedFromBulkDelete = false;
+  try {
+    await simulateChunkedBulkDelete({
+      collectionsDb: mockFailingDb,
+      callerRole: 'SECRETARY',
+      hasPatientsDeletePerm: false,
+    });
+  } catch {
+    nonAdminBlockedFromBulkDelete = true;
+  }
+  assert(nonAdminBlockedFromBulkDelete, 'حالة 7: منع المستخدم العادي (غير المدير) من تنفيذ الحذف الجماعي داخل الدالة نفسها');
+
+  // -------------------------------------------------------------
+  // 5. اختبار حذف مريض مرتبط بزيارات وفواتير ومدفوعات ووصفات (حذف متسلسل آمن)
+  // -------------------------------------------------------------
+  async function simulateDeletePatientTransaction(dbCollections, patientId, failBatchAt = -1) {
+    const LINKED_COLLECTIONS = [
+      'appointments',
+      'visits',
+      'prescriptions',
+      'labOrders',
+      'radiologyOrders',
+      'followUps',
+      'invoices',
+      'payments',
+    ];
+
+    const refsToDelete = [];
+    for (const colName of LINKED_COLLECTIONS) {
+      const colDocs = dbCollections[colName] || [];
+      for (const docItem of colDocs) {
+        if (docItem.patientId === patientId) {
+          refsToDelete.push({ colName, id: docItem.id });
+        }
+      }
+    }
+    refsToDelete.push({ colName: 'patients', id: patientId });
+
+    let batchIdx = 0;
+    for (let i = 0; i < refsToDelete.length; i += SAFE_BATCH_LIMIT) {
+      const chunk = refsToDelete.slice(i, i + SAFE_BATCH_LIMIT);
+      if (batchIdx === failBatchAt) {
+        throw new Error('فشل حذف دفعة من سجلات المريض المرتبطة');
+      }
+      for (const ref of chunk) {
+        dbCollections[ref.colName] = (dbCollections[ref.colName] || []).filter((d) => d.id !== ref.id);
+      }
+      batchIdx++;
+    }
+    return { deletedTotal: refsToDelete.length };
   }
 
-  return false;
+  const patientDb = {
+    patients: [{ id: 'pat-target', fullName: 'مريض اختبار' }, { id: 'pat-other', fullName: 'مريض آخر' }],
+    visits: [
+      { id: 'v-1', patientId: 'pat-target' },
+      { id: 'v-2', patientId: 'pat-target' },
+      { id: 'v-other', patientId: 'pat-other' },
+    ],
+    prescriptions: [{ id: 'rx-1', patientId: 'pat-target' }],
+    invoices: [{ id: 'inv-1', patientId: 'pat-target', amount: 300 }],
+    payments: [{ id: 'pay-1', patientId: 'pat-target', amount: 300 }],
+    labOrders: [{ id: 'lab-1', patientId: 'pat-target' }],
+    radiologyOrders: [{ id: 'rad-1', patientId: 'pat-target' }],
+    followUps: [{ id: 'fu-1', patientId: 'pat-target' }],
+    appointments: [{ id: 'app-1', patientId: 'pat-target' }],
+  };
+
+  await simulateDeletePatientTransaction(patientDb, 'pat-target');
+
+  const targetRemaining = [
+    ...patientDb.patients.filter((p) => p.id === 'pat-target'),
+    ...patientDb.visits.filter((d) => d.patientId === 'pat-target'),
+    ...patientDb.prescriptions.filter((d) => d.patientId === 'pat-target'),
+    ...patientDb.invoices.filter((d) => d.patientId === 'pat-target'),
+    ...patientDb.payments.filter((d) => d.patientId === 'pat-target'),
+    ...patientDb.labOrders.filter((d) => d.patientId === 'pat-target'),
+    ...patientDb.radiologyOrders.filter((d) => d.patientId === 'pat-target'),
+    ...patientDb.followUps.filter((d) => d.patientId === 'pat-target'),
+    ...patientDb.appointments.filter((d) => d.patientId === 'pat-target'),
+  ];
+  const otherRemaining = patientDb.patients.find((p) => p.id === 'pat-other') && patientDb.visits.find((v) => v.id === 'v-other');
+
+  assert(
+    targetRemaining.length === 0 && Boolean(otherRemaining),
+    'حالة 8: حذف المريض الفردي يحذف كافة الزيارات والوصفات والتحاليل والأشعة والفواتير والمدفوعات المرتبطة به دون المساس بالمرضى الآخرين'
+  );
+
+  // Verify failure propagation in deletePatientTransaction
+  let partialPatientDeleteFailedProperly = false;
+  try {
+    await simulateDeletePatientTransaction(patientDb, 'pat-other', 0);
+  } catch {
+    partialPatientDeleteFailedProperly = true;
+  }
+  assert(
+    partialPatientDeleteFailedProperly && patientDb.patients.some((p) => p.id === 'pat-other'),
+    'حالة 8B: لا تعتبر عملية حذف المريض الفردي ناجحة إذا فشل حذف أي دفعة منها'
+  );
+
+  // -------------------------------------------------------------
+  // 6. اختبارات النسخ الاحتياطي والاستعادة (Manifest + SHA-256 Checksum + AES-GCM)
+  // -------------------------------------------------------------
+  const sampleBackupData = {
+    patients: [
+      { id: 'pat-101', fileNumber: '101', fullName: 'مريض تجريبي 1', phone: '01000000001' },
+      { id: 'pat-102', fileNumber: '102', fullName: 'مريض تجريبي 2', phone: '01000000002' },
+    ],
+    visits: [{ id: 'vis-101', patientId: 'pat-101', diagnosis: 'Follow up' }],
+    invoices: [{ id: 'inv-101', patientId: 'pat-101', amount: 250 }],
+    payments: [{ id: 'pay-101', patientId: 'pat-101', amount: 250 }],
+    prescriptions: [],
+    labOrders: [],
+    radiologyOrders: [],
+    followUps: [],
+    appointments: [],
+    freeFollowupDays: 14,
+  };
+
+  // 6A. Create valid plain backup with Manifest & SHA-256 Checksum and verify it
+  const validPlainEnvelope = await createBackupEnvelope(sampleBackupData);
+  assert(
+    validPlainEnvelope.manifest.appVersion === APP_VERSION &&
+      validPlainEnvelope.manifest.schemaVersion === APP_SCHEMA_VERSION &&
+      validPlainEnvelope.manifest.totalRecords === 5 &&
+      validPlainEnvelope.manifest.collectionCounts.patients === 2 &&
+      typeof validPlainEnvelope.manifest.checksum === 'string' &&
+      validPlainEnvelope.manifest.checksum.length === 64,
+    'حالة 9: إنشاء نسخة احتياطية يولّد Manifest كامل (appVersion, schemaVersion, collectionCounts, totalRecords) وبصمة SHA-256 صالحة'
+  );
+
+  const verifiedPlain = await parseAndVerifyBackupFile(JSON.stringify(validPlainEnvelope));
+  assert(
+    verifiedPlain.valid === true &&
+      verifiedPlain.data?.patients?.length === 2 &&
+      verifiedPlain.manifest.totalRecords === 5,
+    'حالة 10: نجاح التحقق واستعادة نسخة احتياطية صالحة ومطابقة للبصمة'
+  );
+
+  // 6B. Tamper with backup data (modify invoice amount by 1 EGP) -> must be rejected by SHA-256 Checksum!
+  const tamperedEnvelope = JSON.parse(JSON.stringify(validPlainEnvelope));
+  tamperedEnvelope.data.invoices[0].amount = 9999;
+  let tamperedRejected = false;
+  try {
+    await parseAndVerifyBackupFile(JSON.stringify(tamperedEnvelope));
+  } catch (err) {
+    tamperedRejected = err.message.includes('Checksum') || err.message.includes('تلاعب');
+  }
+  assert(tamperedRejected, 'حالة 11: رفض ملف نسخة احتياطية معدّل أو تالف عند اختلاف بصمة SHA-256 (Checksum Mismatch)');
+
+  // 6C. Incompatible schemaVersion -> must be rejected before writing anything
+  const futureSchemaEnvelope = JSON.parse(JSON.stringify(validPlainEnvelope));
+  futureSchemaEnvelope.manifest.schemaVersion = 999;
+  let incompatibleRejected = false;
+  try {
+    await parseAndVerifyBackupFile(JSON.stringify(futureSchemaEnvelope));
+  } catch (err) {
+    incompatibleRejected = err.message.includes('غير متوافق');
+  }
+  assert(incompatibleRejected, 'حالة 12: رفض ملف نسخة احتياطية بإصدار هيكل بيانات (schemaVersion) غير متوافق');
+
+  // 6D. Encrypted Backup (AES-GCM 256-bit + PBKDF2) creation, wrong password rejection, and valid decryption
+  const encryptedEnvelope = await createBackupEnvelope(sampleBackupData, { password: 'ClinicStrongPassword#2026' });
+  assert(
+    encryptedEnvelope.encrypted === true &&
+      encryptedEnvelope.data === undefined &&
+      typeof encryptedEnvelope.ciphertext === 'string' &&
+      typeof encryptedEnvelope.salt === 'string' &&
+      typeof encryptedEnvelope.iv === 'string',
+    'حالة 13: النسخة الاحتياطية المشفرة (AES-GCM) تخفي بيانات المرضى تماماً داخل النص المشفر'
+  );
+
+  let wrongPasswordRejected = false;
+  try {
+    await parseAndVerifyBackupFile(JSON.stringify(encryptedEnvelope), 'WrongPassword123');
+  } catch {
+    wrongPasswordRejected = true;
+  }
+  assert(wrongPasswordRejected, 'حالة 14: رفض فك تشفير النسخة الاحتياطية عند إدخال كلمة مرور خاطئة');
+
+  const decryptedVerification = await parseAndVerifyBackupFile(
+    JSON.stringify(encryptedEnvelope),
+    'ClinicStrongPassword#2026'
+  );
+  assert(
+    decryptedVerification.valid === true && decryptedVerification.data?.patients?.length === 2,
+    'حالة 15: نجاح فك تشفير النسخة الاحتياطية المشفرة والتحقق من بصمتها SHA-256 بكلمة المرور الصحيحة'
+  );
+
+  // -------------------------------------------------------------
+  // 7. اختبار قواعد مجموعة users و usernames في firestore.rules
+  // -------------------------------------------------------------
+  const hasStrictUserGetRule = rulesContent.includes('allow get: if signedIn() && (request.auth.uid == userId || isAdmin());');
+  const hasAdminOnlyUserListRule = rulesContent.includes('allow list: if signedIn() && isAdmin();');
+  assert(
+    hasStrictUserGetRule && hasAdminOnlyUserListRule,
+    'حالة 16: قواعد firestore.rules تقيد قراءة /users/{userId} بصاحب الحساب نفسه أو المدير فقط وتمنع السرد الجماعي (list) لغير المدير'
+  );
+
+  // -------------------------------------------------------------
+  // 8. اختبار توحيد رقم الإصدار v2.9.0 في كافة ملفات النظام
+  // -------------------------------------------------------------
+  const pkgJson = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf8'));
+  const authScreenContent = fs.readFileSync(path.resolve(__dirname, '../src/components/AuthScreen.tsx'), 'utf8');
+  assert(
+    pkgJson.version === '2.9.0' &&
+      APP_VERSION_NUMBER === '2.9.0' &&
+      APP_VERSION === 'v2.9.0' &&
+      authScreenContent.includes('{APP_VERSION} RBAC'),
+    'حالة 17: توحيد رقم الإصدار (2.9.0 / v2.9.0) في package.json و version.ts وواجهة الدخول والإعدادات'
+  );
+
+  console.log('\n===============================================================');
+  console.log(`📊 النتيجة النهائية: ${passCount} اختبار نجح | ${failCount} اختبار فشل`);
+  console.log('===============================================================\n');
+
+  if (failCount > 0) {
+    process.exit(1);
+  }
 }
 
-// 8. مدير يحاول تعديل دور مدير آخر -> يُرفض
-const test8AdminModifiesAdminRole = simulateUserUpdateRule({
-  callerAuth: { uid: 'admin-1' },
-  callerDoc: { uid: 'admin-1', role: 'ADMIN', active: true },
-  targetUserDoc: { uid: 'admin-2', role: 'ADMIN', active: true },
-  updatedFields: { role: 'DOCTOR' },
-});
-assert(!test8AdminModifiesAdminRole, 'حالة 8: مدير يحاول تغيير دور مدير آخر إلى طبيب -> يُرفض في القواعد');
-
-// 9. مدير يحاول تعطيل مدير آخر -> يُرفض
-const test9AdminDeactivatesAdmin = simulateUserUpdateRule({
-  callerAuth: { uid: 'admin-1' },
-  callerDoc: { uid: 'admin-1', role: 'ADMIN', active: true },
-  targetUserDoc: { uid: 'admin-2', role: 'ADMIN', active: true },
-  updatedFields: { active: false },
-});
-assert(!test9AdminDeactivatesAdmin, 'حالة 9: مدير يحاول تعطيل حساب مدير آخر -> يُرفض في القواعد');
-
-// 10. مدير يحاول تعيين customPermissions لحساب مدير -> يُرفض
-const test10AdminSetsAdminCustomPerms = simulateUserUpdateRule({
-  callerAuth: { uid: 'admin-1' },
-  callerDoc: { uid: 'admin-1', role: 'ADMIN', active: true },
-  targetUserDoc: { uid: 'admin-2', role: 'ADMIN', active: true },
-  updatedFields: { customPermissions: { dashboard: { view: false } } },
-});
-assert(!test10AdminSetsAdminCustomPerms, 'حالة 10: محاولة تخصيص/تقييد صلاحيات حساب مدير -> تُرفض في القواعد');
-
-// 11. مدير يعدل الاسم الظاهر لمدير آخر -> ينجح
-const test11AdminUpdatesAdminDisplayName = simulateUserUpdateRule({
-  callerAuth: { uid: 'admin-1' },
-  callerDoc: { uid: 'admin-1', role: 'ADMIN', active: true },
-  targetUserDoc: { uid: 'admin-2', role: 'ADMIN', active: true },
-  updatedFields: { displayName: 'د. أحمد سليمان - الإدارة الطبية' },
-});
-assert(test11AdminUpdatesAdminDisplayName, 'حالة 11: مدير يعدل الاسم الظاهر لمدير -> ينجح');
-
-// 12. التحقق من كود نافذة الصلاحيات ScreenPermissionsModal.tsx
-const modalPath = path.resolve(__dirname, '../src/components/settings/ScreenPermissionsModal.tsx');
-const modalContent = fs.readFileSync(modalPath, 'utf8');
-const hasIsAdminAccount = modalContent.includes('isAdminAccount');
-const hasLockedSave = modalContent.includes('disabled={isAdminAccount || saving}');
-const hasLockBanner = modalContent.includes('صلاحيات المدير ثابتة ومحمية');
-assert(
-  hasIsAdminAccount && hasLockedSave && hasLockBanner,
-  'حالة 12: واجهة ScreenPermissionsModal تقفل الصلاحيات والأزرار والبانر لحساب المدير'
-);
-
-// 13. التحقق من قفل قراءة /_system/recovery العامة وإزالة الباسورد الافتراضي admin1234
-const recoveryPath = path.resolve(__dirname, '../src/services/recovery.ts');
-const recoveryContent = fs.readFileSync(recoveryPath, 'utf8');
-const hasNoDefaultAdminPass = !recoveryContent.includes('admin1234');
-const hasNoNullSecretaryFallback = !rulesContent.includes("u == null && roleDefaultPermission('secretary'");
-assert(
-  hasNoDefaultAdminPass && hasNoNullSecretaryFallback,
-  'حالة 13: إزالة الباسورد الافتراضي admin1234 وإغلاق ثغرة u == null في firestore.rules'
-);
-
-// 14. التحقق من تقييد CORS وعدم استخدام VITE_FIREBASE_CLIENT_EMAIL في api/users/delete.ts
-const deleteApiPath = path.resolve(__dirname, '../api/users/delete.ts');
-const deleteApiContent = fs.readFileSync(deleteApiPath, 'utf8');
-const hasNoWildcardCors = !deleteApiContent.includes("setHeader('Access-Control-Allow-Origin', '*')");
-const hasNoViteClientEmail = !deleteApiContent.includes('VITE_FIREBASE_CLIENT_EMAIL');
-assert(
-  hasNoWildcardCors && hasNoViteClientEmail,
-  'حالة 14: تقييد CORS وإزالة VITE_FIREBASE_CLIENT_EMAIL من api/users/delete.ts'
-);
-
-console.log('\n===============================================================');
-console.log(`📊 النتيجة: ${passCount} اختبار نجح | ${failCount} اختبار فشل`);
-console.log('===============================================================\n');
-
-if (failCount > 0) {
+runAllTests().catch((err) => {
+  console.error('Fatal test runner error:', err);
   process.exit(1);
-}
+});

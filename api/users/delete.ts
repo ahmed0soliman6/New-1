@@ -380,7 +380,6 @@ export default async function handler(req: any, res: any) {
       console.error(
         JSON.stringify({
           event: 'ADMIN_USER_DELETE_CONFIG_MISSING',
-          ip: clientIp,
           timestamp: new Date().toISOString(),
         })
       );
@@ -393,7 +392,8 @@ export default async function handler(req: any, res: any) {
     // 3. Parse Body
     const body = await parseBody(req);
     const { uid, username } = (body || {}) as DeleteRequest;
-    targetUidForLog = uid || 'missing';
+    const maskUid = (id: string) => (id && id.length > 6 ? `${id.slice(0, 3)}***${id.slice(-2)}` : '***');
+    targetUidForLog = maskUid(uid || '');
 
     if (!uid || typeof uid !== 'string' || uid.length > 128) {
       return sendResponse(res, 400, { error: 'معرّف المستخدم (uid) مطلوب وصالح للحذف.' });
@@ -404,7 +404,7 @@ export default async function handler(req: any, res: any) {
 
     // 5. Verify Caller's session & role
     const callerUid = await verifyCallerToken(projectId, accessToken, idToken);
-    callerUidForLog = callerUid;
+    callerUidForLog = maskUid(callerUid);
 
     const caller = await getCallerRole(projectId, accessToken, callerUid);
     const isAdminCaller = caller.active && (caller.role === 'ADMIN' || caller.role === 'admin');
@@ -412,10 +412,7 @@ export default async function handler(req: any, res: any) {
       console.warn(
         JSON.stringify({
           event: 'ADMIN_USER_DELETE_DENIED',
-          callerUid,
           callerRole: caller.role,
-          targetUid: uid,
-          ip: clientIp,
           timestamp: new Date().toISOString(),
         })
       );
@@ -445,10 +442,7 @@ export default async function handler(req: any, res: any) {
     console.info(
       JSON.stringify({
         event: 'ADMIN_USER_DELETE_SUCCESS',
-        callerUid,
-        targetUid: uid,
         targetRole: targetUser.role,
-        ip: clientIp,
         timestamp: new Date().toISOString(),
       })
     );
@@ -462,9 +456,8 @@ export default async function handler(req: any, res: any) {
     console.error(
       JSON.stringify({
         event: 'ADMIN_USER_DELETE_ERROR',
-        callerUid: callerUidForLog,
-        targetUid: targetUidForLog,
-        ip: clientIp,
+        callerRef: callerUidForLog,
+        targetRef: targetUidForLog,
         errorCode: code,
         timestamp: new Date().toISOString(),
       })

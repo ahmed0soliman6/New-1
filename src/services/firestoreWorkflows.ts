@@ -1,8 +1,13 @@
 import {
+  collection,
   doc,
   deleteDoc,
+  getDocs,
+  query,
   runTransaction,
   serverTimestamp,
+  where,
+  writeBatch,
   type Firestore,
 } from 'firebase/firestore';
 import type {
@@ -485,6 +490,81 @@ export async function deleteAppointmentTransaction(db: Firestore, appointmentId:
   await deleteDoc(doc(db, 'appointments', appointmentId));
 }
 
-export async function deletePatientTransaction(db: Firestore, patientId: string): Promise<void> {
-  await deleteDoc(doc(db, 'patients', patientId));
+export const PATIENT_LINKED_COLLECTIONS = [
+  'appointments',
+  'visits',
+  'prescriptions',
+  'labOrders',
+  'radiologyOrders',
+  'followUps',
+  'invoices',
+  'payments',
+] as const;
+
+export interface PatientDeleteReport {
+  patientId: string;
+  deletedCounts: Record<string, number>;
+  totalDeleted: number;
+  hadFinancialRecords: boolean;
 }
+
+/**
+ * Deletes a patient and all linked clinical and financial records in safe batches (<= 400 per batch).
+ * Fails loudly and throws if any query or batch commit fails so partial failures are never reported as success (Item 2).
+ */
+export async function deletePatientTransaction(
+  db: Firestore,
+  patientId: string,
+  options?: { allowDeleteFinancials?: boolean }
+): Promise<PatientDeleteReport> {
+  if (!patientId || !patientId.trim()) {
+    throw new Error('معرّف المريض غير صالح للحذف.');
+  }
+
+  const MAX_BATCH = 400;
+  const deletedCounts: Record<string, number> = {};
+  const docsToDelete: Array<{ col: string; id: string }> = [];
+
+  for (const colName of PATIENT_LINKED_COLLECTIONS) {
+    deletedCounts[colName] = 0;
+    const snap = await getDocs(
+      query(collection(db, colName), where('patientId', '==', patientId))
+    );
+    snap.docs.forEach((d) => {
+      docsToDelete.push({ col: colName, id: d.id });
+      deletedCounts[colName] += 1;
+    });
+  }
+
+  const hadFinancialRecords =
+    (deletedCounts.invoices || 0) > 0 || (deletedCounts.payments || 0) > 0;
+
+  if (hadFinancialRecords && options?.allowDeleteFinancials === false) {
+    throw new Error(
+      'يوجد سجلات مالية (فواتير أو مدفوعات) مرتبطة بهذا المريض. يجب تأكيد حذف السجلات المالية صراحة قبل المتابعة.'
+    );
+  }
+
+  // Delete all linked records first, then the patient document itself
+  docsToDelete.push({ col: 'patients', id: patientId });
+  deletedCounts.patients = 1;
+
+  let totalDeleted = 0;
+  for (let i = 0; i < docsToDelete.length; i += MAX_BATCH) {
+    const chunk = docsToDelete.slice(i, i + MAX_BATCH);
+    const batch = writeBatch(db);
+    for (const item of chunk) {
+      batch.delete(doc(db, item.col, item.id));
+    }
+    await batch.commit();
+    totalDeleted += chunk.length;
+  }
+
+  return {
+    patientId,
+    deletedCounts,
+    totalDeleted,
+    hadFinancialRecords,
+  };
+}
+
