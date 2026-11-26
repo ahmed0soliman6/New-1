@@ -37,7 +37,7 @@ interface AppointmentsScreenProps {
   followUps?: FollowUpItem[];
   onCheckInPatient: (appointment: AppointmentListItem) => void;
   onOpenNewAppointment?: () => void;
-  onAddAppointment?: (appointment: AppointmentListItem) => void | Promise<void>;
+  onAddAppointment?: (appointment: AppointmentListItem) => void | Promise<boolean>;
   onNavigate: (screen: ScreenType) => void;
   onStartIntakeFromAppointment?: (appointment: AppointmentListItem) => void;
   patients?: PatientListItem[];
@@ -506,7 +506,11 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
 
     // د8: انتظار نتيجة الحفظ قبل إعلان النجاح وتصفير النموذج.
     if (onAddAppointment) {
-      await onAddAppointment(newApp);
+      const saved = await onAddAppointment(newApp);
+      if (saved === false) {
+        setFormFeedback('تعذّر حفظ الموعد — تحقق من الاتصال وحاول مرة أخرى');
+        return;
+      }
     }
 
     // Reset Form
