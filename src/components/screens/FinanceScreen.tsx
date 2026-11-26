@@ -22,6 +22,7 @@ import {
 import { toEnglishDigits, formatAppTime } from '../../utils/numberUtils';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { todayKey } from '../../utils/dayKey';
+import { meterWrite } from '../../services/readMeter';
 import { fetchShiftBreakdown, type ShiftBreakdown } from '../../services/financePaged';
 import { InflowPage } from '../finance/InflowPage';
 import { ExpensesPage } from '../finance/ExpensesPage';
@@ -213,6 +214,8 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
       };
 
       await onAddTransaction(newTx);
+      // عدّاد الكتابات: الفاتورة حُفظت فعلاً
+      meterWrite(1);
       setShowInvoiceModal(false);
       setInvoiceDraftId(`inv-${crypto.randomUUID()}`);
       setInvPatientName('');
@@ -277,6 +280,8 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
         category: 'مصروفات العيادة',
       };
       await onAddTransaction(txExp);
+      // عدّاد الكتابات: المصروف حُفظ فعلاً
+      meterWrite(1);
 
       setSelectedExpenseCategory('');
       setQuickExpenseAmount('');
