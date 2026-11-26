@@ -12,6 +12,7 @@
  */
 
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { requireFirebase } from './firebase';
 
 // Helper: Convert ArrayBuffer to Hex String
@@ -77,6 +78,24 @@ export async function setupAdminRecoveryCode(params: {
   const { db, auth } = requireFirebase();
   const currentUser = auth.currentUser;
   if (!currentUser) throw new Error('يجب تسجيل الدخول كمدير لحفظ رمز الاسترداد.');
+
+  // د14: كلمة مرور المدير الحالية تُتحقَّق منها فعلياً قبل توليد/حفظ أي رمز —
+  // كانت تُستقبَل وتُتجاهل تماماً، فيستطيع أي جالس على الجهاز توليد رمز.
+  if (!params.adminCurrentPassword || !params.adminCurrentPassword.trim()) {
+    throw new Error('يرجى إدخال كلمة مرور المدير الحالية للتحقق قبل حفظ رمز الاسترداد.');
+  }
+  if (!currentUser.email) {
+    throw new Error('تعذّر التحقق من هوية المدير: لا يوجد بريد مرتبط بالحساب الحالي.');
+  }
+  try {
+    const credential = EmailAuthProvider.credential(currentUser.email, params.adminCurrentPassword);
+    await reauthenticateWithCredential(currentUser, credential);
+  } catch (err: unknown) {
+    if (err instanceof Error && (err.message.includes('wrong-password') || err.message.includes('invalid-credential'))) {
+      throw new Error('كلمة مرور المدير الحالية غير صحيحة.');
+    }
+    throw new Error('فشل التحقق من كلمة مرور المدير الحالية. يرجى التأكد منها أو إعادة تسجيل الدخول والمحاولة مجدداً.');
+  }
 
   // Generate 16-byte random cryptographic salt
   const salt = new Uint8Array(16);
