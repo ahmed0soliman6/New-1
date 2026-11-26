@@ -1679,6 +1679,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
         {/* 1. Vital Signs Card (Conditional on displaySettings.showVitals) */}
         {displaySettings.showVitals && (activeTab === 'all' || activeTab === 'vitals') && (
           <VitalsCard
+            key={`${patient?.id || 'no-patient'}:${currentVisitId || 'no-visit'}`}
             initialVitals={examVitals}
             onChange={(v) => setExamVitals(v)}
           />
