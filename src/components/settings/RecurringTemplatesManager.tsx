@@ -270,11 +270,18 @@ export const RecurringTemplatesManager: React.FC<RecurringTemplatesManagerProps>
               );
 
               if (newToMerge.length === 0) {
-                // If all are already present, force reload/restore full set
-                if (window.confirm('جميع الأدلة والبروتوكولات الطبية محملة مسبقاً. هل تريد إعادة استعادة جميع أدلة التخصصات؟')) {
-                  saveRecurringTemplates(INITIAL_CLINICAL_GUIDES_TEMPLATES);
-                  setTemplates(INITIAL_CLINICAL_GUIDES_TEMPLATES);
-                  onNotify('تمت إعادة تحميل جميع الأدلة والبروتوكولات الطبية لكافة التخصصات بنجاح ✓');
+                // د6: كل الأدلة موجودة أصلاً — لا يوجد ما يُستعاد. لا تستبدل
+                // القائمة أبداً: الاستبدال كان يمسح كل القوائم المخصصة.
+                // الدمج هنا لا يغيّر شيئاً، والقوائم المخصصة تبقى كما هي.
+                if (
+                  window.confirm(
+                    'جميع أدلة التخصصات محملة مسبقاً، ولا يوجد دليل جديد لإضافته.\n\nسيتم الدمج فقط (إضافة الأدلة الناقصة إن وجدت) — ولن تُمسح أي قائمة مخصصة من قوائمك. متابعة؟'
+                  )
+                ) {
+                  const merged = [...current, ...newToMerge];
+                  saveRecurringTemplates(merged);
+                  setTemplates(merged);
+                  onNotify('جميع الأدلة محملة مسبقاً — لم يتغير شيء، وقوائمك المخصصة محفوظة ✓');
                 }
               } else {
                 const merged = [...current, ...newToMerge];
