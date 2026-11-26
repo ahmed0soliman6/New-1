@@ -14,7 +14,7 @@ import {
   ClinicExpenseRecord,
 } from '../../utils/financeManager';
 import { db } from '../../services/firebase';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 import {
   subscribeToServices,
   subscribeToExpenseCategories,
@@ -123,6 +123,36 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
   const [txToDelete, setTxToDelete] = useState<TransactionRecord | null>(null);
   const [expenseToDelete, setExpenseToDelete] = useState<ClinicExpenseRecord | null>(null);
   const [shiftSummaryModal, setShiftSummaryModal] = useState<(ShiftBreakdown & { date: string }) | null>(null);
+  // ج3: حالة تقفيل وردية اليوم — تُقرأ من سجل التقفيل المحفوظ لا من نص ثابت.
+  const shiftClosureKey = (d: string) => `soli_shift_closure_${d}`;
+  const [shiftClosedToday, setShiftClosedToday] = useState<boolean>(() => {
+    try {
+      return !!localStorage.getItem(shiftClosureKey(todayKey()));
+    } catch {
+      return false;
+    }
+  });
+  const [isApprovingShift, setIsApprovingShift] = useState(false);
+
+  // ج3: عند الفتح، تحقق من سجل التقفيل السحابي لليوم (قد يكون قُفل من جهاز آخر).
+  useEffect(() => {
+    if (!db) return;
+    const t = todayKey();
+    getDoc(doc(db, 'shiftClosures', t))
+      .then((snap) => {
+        if (snap.exists()) {
+          setShiftClosedToday(true);
+          try {
+            localStorage.setItem(shiftClosureKey(t), JSON.stringify(snap.data()));
+          } catch {
+            // تجاهل فشل التخزين المحلي
+          }
+        }
+      })
+      .catch(() => {
+        // بلا اتصال: الاعتماد على السجل المحلي فقط
+      });
+  }, []);
 
   // Submission locks to prevent duplicate writes on double-click (FIN-04)
   const [isSavingInvoice, setIsSavingInvoice] = useState(false);
@@ -268,7 +298,7 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
       // Register into transactions stream
       const txExp: TransactionRecord = {
         id: newExp.id,
-        receiptNo: `EXP-${Math.floor(Math.random() * 900) + 100}`,
+        receiptNo: `EXP-${todayKey().replace(/-/g, '')}-${Date.now().toString(36).toUpperCase()}`, // ج18: فريد ومتصاعد زمنياً، لا عشوائي في 900 احتمال
         patientName: `مصروف: ${selectedExpenseCategory}`,
         description: newExp.notes || selectedExpenseCategory,
         amount: amountNum,
@@ -294,6 +324,62 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
     } finally {
       setIsSavingExpense(false);
     }
+  };
+
+  // ج3: اعتماد وتسليم الوردية — يسجّل سجل تقفيل فعلياً (Firestore + محلي)
+  // قبل رسالة النجاح، ويمنع اعتماد نفس الوردية مرتين.
+  const handleApproveShift = async () => {
+    if (!shiftSummaryModal || isApprovingShift) return;
+    if (shiftClosedToday) {
+      setShiftSummaryModal(null);
+      showToastMessage('وردية اليوم مُقفلة بالفعل — تم اعتمادها سابقاً.', 4000);
+      return;
+    }
+    setIsApprovingShift(true);
+    const record = {
+      date: shiftSummaryModal.date,
+      dayKey: shiftSummaryModal.date,
+      closedAt: new Date().toISOString(),
+      closedBy: userProfile?.displayName || 'الاستقبال',
+      totalInflow: shiftSummaryModal.totalInflow,
+      cashInflow: shiftSummaryModal.cashInflow,
+      electronicInflow: shiftSummaryModal.electronicInflow,
+      expensesTotal: shiftSummaryModal.expensesTotal,
+      netDrawerCash: shiftSummaryModal.netDrawerCash,
+      netTotalRevenue: shiftSummaryModal.netTotalRevenue,
+      paymentsCount: shiftSummaryModal.paymentsCount,
+      expensesCount: shiftSummaryModal.expensesCount,
+    };
+    let savedRemotely = false;
+    if (db) {
+      try {
+        await setDoc(doc(db, 'shiftClosures', shiftSummaryModal.date), record);
+        savedRemotely = true;
+        meterWrite(1);
+      } catch (err) {
+        console.warn('Shift closure Firestore save failed, keeping local record:', err);
+      }
+    }
+    try {
+      localStorage.setItem(shiftClosureKey(shiftSummaryModal.date), JSON.stringify(record));
+    } catch {
+      // تجاهل فشل التخزين المحلي
+    }
+    setIsApprovingShift(false);
+    setShiftClosedToday(true);
+    const formattedCash = `${toEnglishDigits(
+      shiftSummaryModal.netDrawerCash.toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
+    )} ج.م`;
+    setShiftSummaryModal(null);
+    showToastMessage(
+      savedRemotely
+        ? `تم اعتماد وتسجيل تقفيل الوردية بنجاح! صافي النقدية المسلمة: ${formattedCash}`
+        : `تم تسجيل تقفيل الوردية محلياً (تعذّرت المزامنة السحابية الآن). صافي النقدية المسلمة: ${formattedCash}`,
+      4500
+    );
   };
 
   // Handle Close Shift: Asynchronously queries today's breakdown (Total, Cash, Electronic, Expenses)
@@ -332,8 +418,14 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
           </div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-3">
             <span>إدارة الفواتير والتحصيل المالي</span>
-            <span className="bg-emerald-100 dark:bg-[#10B981]/20 text-emerald-700 dark:text-[#10B981] px-3 py-0.5 rounded-full text-xs font-bold border border-emerald-200 dark:border-[#10B981]/30">
-              وردية اليوم مفتوحة
+            <span
+              className={`px-3 py-0.5 rounded-full text-xs font-bold border ${
+                shiftClosedToday
+                  ? 'bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-white/10'
+                  : 'bg-emerald-100 dark:bg-[#10B981]/20 text-emerald-700 dark:text-[#10B981] border-emerald-200 dark:border-[#10B981]/30'
+              }`}
+            >
+              {shiftClosedToday ? 'وردية اليوم مُقفلة ✓' : 'وردية اليوم مفتوحة'}
             </span>
           </h1>
         </div>
@@ -975,19 +1067,11 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  const formattedCash = `${toEnglishDigits(
-                    shiftSummaryModal.netDrawerCash.toLocaleString('en-US', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })
-                  )} ج.م`;
-                  setShiftSummaryModal(null);
-                  showToastMessage(`تم اعتماد تقفيل الوردية بنجاح! صافي النقدية المسلمة: ${formattedCash}`, 4500);
-                }}
-                className="flex-1 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs font-bold shadow-md transition-all cursor-pointer"
+                onClick={handleApproveShift}
+                disabled={isApprovingShift}
+                className="flex-1 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs font-bold shadow-md transition-all cursor-pointer disabled:opacity-50"
               >
-                اعتماد وتسليم الوردية
+                {isApprovingShift ? 'جارٍ تسجيل التقفيل...' : 'اعتماد وتسليم الوردية'}
               </button>
             </div>
           </div>
