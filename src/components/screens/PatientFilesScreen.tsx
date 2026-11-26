@@ -79,16 +79,28 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
     ? patientsCanonical?.find((p) => p.patientId === viewingPatientId)
     : undefined;
 
+  // ج20: توحيد البحث مثل البحث العام (أشكال الألف والتشكيل والأرقام العربية).
+  const normalizeSearch = (str: string = '') => {
+    return str
+      .trim()
+      .toLowerCase()
+      .replace(/[أإآ]/g, 'ا')
+      .replace(/ة/g, 'ه')
+      .replace(/ى/g, 'ي')
+      .replace(/[\u064B-\u0652\u0640]/g, '')
+      .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
+  };
+
   const filteredPatients = useMemo(() => {
     return patients
       .filter((p) => {
         if (!search.trim()) return true;
-        const q = search.toLowerCase();
+        const q = normalizeSearch(search);
         return (
-          (p.name || '').toLowerCase().includes(q) ||
-          (p.phone || '').includes(q) ||
+          normalizeSearch(p.name || '').includes(q) ||
+          normalizeSearch(p.phone || '').includes(q) ||
           String(p.fileNumber || '').includes(q) ||
-          (p.medicalCode || '').toLowerCase().includes(q)
+          normalizeSearch(p.medicalCode || '').includes(q)
         );
       })
       .sort((a, b) => {
@@ -182,8 +194,13 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
           </div>
         ) : (
           filteredPatients.map((p) => {
-            const completedVisits = READ_OPT ? [] : visits.filter((v) => v.patientId === p.id && v.status === 'COMPLETED');
-            const pVisitsCount = READ_OPT ? (p.visitsCount || 1) : (completedVisits.length > 0 ? completedVisits.length : p.visitsCount || 1);
+            // ج6/ج14: عدّ الزيارات الفعلية فقط — بلا اختراع «|| 1»، وبنفس
+            // تعريف شاشة التفاصيل (كل الزيارات). تحت READ_OPT تكون قائمة
+            // الزيارات مقيّدة بنافذة الاشتراك (90 يوماً بعد توسيعها في
+            // App.tsx)، فيُستخدم العدد المخزّن visitsCount إن كان أكبر —
+            // وهو تقريبي وقد يكون قديماً؛ لا يوجد مصدر كامل هنا.
+            const countedVisits = visits.filter((v) => v.patientId === p.id).length;
+            const pVisitsCount = Math.max(countedVisits, p.visitsCount || 0);
             const pPrescriptionsCount = prescriptions.filter((pr) => pr.patientId === p.id).length;
 
             return (
@@ -215,7 +232,7 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
                           {p.name}
                         </span>
                         <span className="bg-teal-50 dark:bg-[#00c2cb]/15 text-[#008f97] dark:text-[#45dee7] text-[10px] font-mono font-bold px-2 py-0.5 rounded-md border border-teal-200/50 dark:border-transparent">
-                          ملف #{toEnglishDigits(p.fileNumber || 1)}
+                          ملف #{toEnglishDigits(p.fileNumber || '—')}
                         </span>
                         {p.bloodType && p.bloodType !== 'غير محدد' && (
                           <span className="bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 text-[10px] font-mono font-bold px-2 py-0.5 rounded-md border border-red-100 dark:border-transparent">
@@ -349,7 +366,7 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
                   تأكيد حذف ملف المريض والسجلات المرتبطة نهائياً
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-[#859394] leading-relaxed">
-                  هل أنت متأكد من رغبتك في حذف ملف المريض <strong className="text-slate-800 dark:text-white">({patientToDelete.name})</strong> رقم الملف <strong className="text-[#008f97] dark:text-[#00c2cb] font-mono">#{toEnglishDigits(patientToDelete.fileNumber || 1)}</strong>؟
+                  هل أنت متأكد من رغبتك في حذف ملف المريض <strong className="text-slate-800 dark:text-white">({patientToDelete.name})</strong> رقم الملف <strong className="text-[#008f97] dark:text-[#00c2cb] font-mono">#{toEnglishDigits(patientToDelete.fileNumber || '—')}</strong>؟
                 </p>
                 <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-right space-y-1">
                   <p className="text-[11px] text-rose-600 dark:text-rose-400 font-bold">
@@ -358,6 +375,11 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
                   <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
                     سيؤدي هذا الإجراء إلى الحذف النهائي لوثيقة المريض وجميع سجلاته الطبية والمالية المرتبطة به ({toEnglishDigits(linkedVisitsCount)} زيارة، {toEnglishDigits(linkedRxCount)} روشتة، و{toEnglishDigits(linkedInvoicesCount)} فاتورة/دفعة مالية) من حسابات العيادة دون إمكانية التراجع.
                   </p>
+                  {READ_OPT && (
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400 leading-relaxed">
+                      ملاحظة: هذه الأعداد محسوبة من البيانات المتاحة في هذه الشاشة (نافذة الاشتراك الأخيرة) وقد تكون أقل من إجمالي سجلات المريض القديمة — راجع ملفه الكامل قبل الحذف.
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-2 pt-3">
