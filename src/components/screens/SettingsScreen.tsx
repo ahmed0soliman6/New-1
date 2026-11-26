@@ -162,7 +162,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const { language, t, isRTL } = useLanguage();
   const isAdmin = role === 'admin';
   const canDeleteSettings = isAdmin || canDelete('system-settings') || canPerform('system-settings', 'delete');
-  const canRunMaintenance = isAdmin || role === 'doctor' || canDeleteSettings;
+  // د17: ترحيل الصيانة (كتابة جماعية تصل لـ8000 كتابة) للمدير فقط — لا للطبيب.
+  const canRunMaintenance = isAdmin || canDeleteSettings;
   const [activeSettingsSection, setActiveSettingsSection] = useState<
     'general' | 'catalogs' | 'users'
   >('general');
@@ -262,10 +263,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     }
   }, [activeSettingsSection, isAdmin, hasPermission]);
 
-  const [freeFollowupDays, setFreeFollowupDays] = useState<number>(() => {
-    const saved = safeStorage.getItem(StorageKeys.FREE_FOLLOWUP_DAYS);
-    return saved ? Number(saved) : 14;
-  });
   const [alertConfig, setAlertConfig] = useState<AlertSettings>(loadAlertSettings);
   const [examDisplayConfig, setExamDisplayConfig] = useState<ExamDisplaySettings>(loadExamDisplaySettings);
   const [savedToast, setSavedToast] = useState<string | null>(null);
@@ -275,9 +272,16 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const [newVisitName, setNewVisitName] = useState('');
   const [newVisitFee, setNewVisitFee] = useState<number>(250);
 
-  const handleAddNewVisitSubmit = (e: React.FormEvent) => {
+  const handleAddNewVisitSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newVisitName.trim()) return;
+    try {
+      // د10: إضافة نوع زيارة تعديل إعدادات — تتطلب صلاحية settings.edit.
+      assertPermission('settings.edit', 'إضافة نوع زيارة جديد');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'ليس لديك صلاحية لإضافة نوع زيارة.');
+      return;
+    }
     onAddVisitType({
       id: `vt-${Date.now()}`,
       name: newVisitName.trim(),
@@ -290,7 +294,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     setTimeout(() => setSavedToast(null), 3000);
   };
 
-  const updateExamDisplayConfig = (key: keyof ExamDisplaySettings, value: boolean) => {
+  const updateExamDisplayConfig = async (key: keyof ExamDisplaySettings, value: boolean) => {
+    // د10: مفاتيح عرض الكشف تعديل إعدادات — تحقق قبل أي تغيير.
+    try {
+      assertPermission('settings.edit', 'تعديل إعدادات عرض شاشة الكشف');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'ليس لديك صلاحية لتعديل إعدادات العرض.');
+      return;
+    }
     const updated = { ...examDisplayConfig, [key]: value };
     setExamDisplayConfig(updated);
     saveExamDisplaySettings(updated);
@@ -305,18 +316,27 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     setTimeout(() => setSavedToast(null), 2500);
   };
 
-  const updateAlertConfig = (key: keyof AlertSettings, value: boolean) => {
+  const updateAlertConfig = async (key: keyof AlertSettings, value: boolean) => {
+    // د10: مفاتيح التنبيهات تعديل إعدادات — تحقق قبل أي تغيير.
+    try {
+      assertPermission('settings.edit', 'تعديل إعدادات التنبيهات والأصوات');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'ليس لديك صلاحية لتعديل إعدادات التنبيهات.');
+      return;
+    }
     const updated = { ...alertConfig, [key]: value };
+    const previous = alertConfig;
     setAlertConfig(updated);
-    saveAlertSettings(updated);
-    setSavedToast('تم حفظ وتطبيق إعدادات التنبيهات والأصوات تلقائياً ✓');
-    setTimeout(() => setSavedToast(null), 2500);
-  };
-
-  const handleUpdateFollowupDays = (days: number) => {
-    setFreeFollowupDays(days);
-    safeStorage.setItem(StorageKeys.FREE_FOLLOWUP_DAYS, String(days));
-    setSavedToast(`تم حفظ مدة الاستشارة (${days} يوم) تلقائياً ✓`);
+    try {
+      // د1: أظهر رسالة النجاح فقط بعد نجاح الحفظ الفعلي (Firestore + محلياً).
+      await saveAlertSettings(updated);
+      setSavedToast('تم حفظ وتطبيق إعدادات التنبيهات والأصوات تلقائياً ✓');
+    } catch (err) {
+      setAlertConfig(previous);
+      safeLogger.error('Alert settings save failed', err);
+      alert('تعذّر حفظ إعدادات التنبيهات. تحقق من الاتصال وحاول مجدداً.');
+      return;
+    }
     setTimeout(() => setSavedToast(null), 2500);
   };
 
@@ -370,7 +390,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         radiologyOrders: radiologyOrders || [],
         followUps: followUps || [],
         visitTypes: visitTypesList,
-        freeFollowupDays,
         medicalServices: medicalServicesList,
         expenseCategories: expenseCategoriesList,
         alertConfig,
@@ -496,11 +515,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         });
       }
 
-      if (typeof data.freeFollowupDays === 'number' && data.freeFollowupDays >= 0) {
-        setFreeFollowupDays(data.freeFollowupDays);
-        safeStorage.setItem(StorageKeys.FREE_FOLLOWUP_DAYS, String(data.freeFollowupDays));
-      }
-
       if (Array.isArray(data.medicalServices) && data.medicalServices.length > 0) {
         saveMedicalServices(data.medicalServices);
         setMedicalServicesList(data.medicalServices);
@@ -513,7 +527,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
       if (data.alertConfig && typeof data.alertConfig === 'object') {
         setAlertConfig(data.alertConfig);
-        saveAlertSettings(data.alertConfig);
+        await saveAlertSettings(data.alertConfig);
       }
 
       if (data.examDisplayConfig && typeof data.examDisplayConfig === 'object') {
@@ -547,6 +561,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         data.symptomsCatalog.forEach((item: SymptomCatalogItem) => onAddSymptom(item));
       }
 
+      // د5: استرجاع دليل الأمراض المزمنة — كان في التصدير ويُسقَط عند الاستعادة.
+      if (Array.isArray(data.chronicConditions) && data.chronicConditions.length > 0) {
+        data.chronicConditions.forEach((item: ChronicItem) => {
+          if (item?.name) onAddChronicCondition(item);
+        });
+      }
+
       const restoreReport = await restoreVerifiedBackupToFirestore(db, data);
       setRestorePreviewState(null);
 
@@ -572,11 +593,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     setTimeout(() => setSavedToast(null), 3000);
   };
 
-  const handleSave = (e?: React.FormEvent) => {
+  const handleSave = async (e?: React.FormEvent) => {
     if (e && e.preventDefault) e.preventDefault();
     try {
       assertPermission('settings.edit', 'حفظ إعدادات العيادة العامة والأسعار');
-      saveAlertSettings(alertConfig);
+      // د1: انتظر الحفظ الفعلي قبل رسالة النجاح.
+      await saveAlertSettings(alertConfig);
       setSavedToast('تم حفظ كافة إعدادات النظام وتحديث الأسعار والتنبيهات بنجاح ✓');
       setTimeout(() => setSavedToast(null), 3500);
     } catch (err) {
@@ -768,6 +790,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                               type="number"
                               value={vt.fee}
                               onChange={(e) => {
+                                // د10: تعديل سعر نوع زيارة يتطلب صلاحية settings.edit.
+                                try {
+                                  assertPermission('settings.edit', 'تعديل سعر نوع زيارة');
+                                } catch (err) {
+                                  alert(err instanceof Error ? err.message : 'ليس لديك صلاحية لتعديل الأسعار.');
+                                  return;
+                                }
                                 const fee = Number(e.target.value);
                                 onUpdateVisitTypeFee(vt.id, fee);
                                 setSavedToast(`تم حفظ سعر ${vt.name} (${fee} ج.م) تلقائياً ✓`);
@@ -785,6 +814,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                               <button
                                 type="button"
                                 onClick={() => {
+                                  // د10: حذف نوع زيارة يتطلب صلاحية settings.edit.
+                                  try {
+                                    assertPermission('settings.edit', 'حذف نوع زيارة');
+                                  } catch (err) {
+                                    alert(err instanceof Error ? err.message : 'ليس لديك صلاحية لحذف نوع زيارة.');
+                                    return;
+                                  }
                                   onRemoveVisitType(vt.id);
                                   setDeleteConfirmVisitId(null);
                                   setSavedToast(`تم حذف نوع الزيارة "${vt.name}" وحفظ التغيير تلقائياً ✓`);
@@ -817,26 +853,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                     ))}
                   </div>
 
-                  {/* Follow-up Days Rule */}
-                  <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 flex items-center justify-between gap-4">
-                    <div>
-                      <span className="font-bold text-slate-800 dark:text-white block">
-                        مدة المتابعة المسموحة (بالأيام):
-                      </span>
-                      <p className="text-[11px] text-slate-500 dark:text-[#859394] mt-0.5">
-                        أي زيارة مريض خلال هذه الفترة المحددة تعتبر متابعة (تحفظ تلقائياً).
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <input
-                        type="number"
-                        value={freeFollowupDays}
-                        onChange={(e) => handleUpdateFollowupDays(Number(e.target.value))}
-                        className="w-20 bg-white dark:bg-[#18233C] p-2 rounded-xl border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white font-mono font-bold text-xs text-center"
-                      />
-                      <span className="text-xs font-bold text-slate-600 dark:text-slate-400">يوماً</span>
-                    </div>
-                  </div>
                 </div>
               )}
             </div>
