@@ -104,7 +104,7 @@ export function generateBranchTimeSlots(
   startTime?: string,
   endTime?: string,
   workingHours?: string
-): { raw: string; label: string }[] {
+): { raw: string; label: string; dateOffset: number }[] {
   let effectiveStart = startTime;
   let effectiveEnd = endTime;
 
@@ -143,10 +143,13 @@ export function generateBranchTimeSlots(
     endMins += 24 * 60;
   }
 
-  const slots: { raw: string; label: string }[] = [];
+  const slots: { raw: string; label: string; dateOffset: number }[] = [];
   const step = 15; // 15-minute slots as requested by user
 
-  for (let mins = startMins; mins <= endMins; mins += step) {
+  // وقت الإغلاق نفسه غير قابل للحجز (mins < endMins)، والخانات بعد منتصف
+  // الليل في الفروع الليلية تُنسب لتاريخ اليوم التالي (dateOffset = 1).
+  for (let mins = startMins; mins < endMins; mins += step) {
+    const dateOffset = mins >= 24 * 60 ? 1 : 0;
     const norm = mins % (24 * 60);
     const h = Math.floor(norm / 60);
     const m = norm % 60;
@@ -156,7 +159,7 @@ export function generateBranchTimeSlots(
     const h12 = h % 12 || 12;
     const labelStr = `${h12 < 10 ? '0' + h12 : h12}:${m < 10 ? '0' + m : m} ${period}`;
 
-    slots.push({ raw: rawStr, label: labelStr });
+    slots.push({ raw: rawStr, label: labelStr, dateOffset });
   }
 
   return slots;
@@ -251,6 +254,7 @@ export function saveClinicBranches(branches: ClinicBranchItem[]): void {
       name: b.name,
       address: b.address,
       phone: b.phone || b.mobile || '',
+      mobile: b.mobile || b.phone || '',
       workingHours: b.workingHours || '',
       startTime: b.startTime || '16:00',
       endTime: b.endTime || '22:00',
@@ -322,7 +326,8 @@ export function buildAppointmentReminderMessage(params: {
 }): string {
   const doctor = getPrescriptionDoctorInfo();
   const doctorName = doctor.doctorName || CLINIC_INFO.doctorName;
-  const time = params.timeSlot || '09:00 ص';
+  // الافتراضي هو وقت فتح الفرع نفسه (مثلاً 04:00 م)، لا 09:00 ص
+  const time = params.timeSlot || formatBranchTime(branch.startTime) || '04:00 م';
   const visitType = params.visitType || 'كشف';
   const branch = params.branch;
   const contactPhone = branch.phone || branch.mobile || doctor.phone || '01092847162';
