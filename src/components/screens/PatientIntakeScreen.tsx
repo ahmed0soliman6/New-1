@@ -4,7 +4,7 @@ import { useLanguage } from '../../i18n/LanguageContext';
 import { formatAppTime } from '../../utils/numberUtils';
 
 interface PatientIntakeScreenProps {
-  onAddPatientToQueue: (item: QueueItem) => void;
+  onAddPatientToQueue: (item: QueueItem) => Promise<{ queueNumber: number; fileNumber: number } | null>;
   patients: PatientListItem[];
   presetChronicConditions: { id: string; name: string; category: string; color: string }[];
   onAddChronicCondition: (condition: { id: string; name: string; category: string; color: string }) => void;
@@ -247,7 +247,7 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
     setFormErrors({});
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const errors: { name?: string; gender?: string; visitType?: string } = {};
 
@@ -308,8 +308,9 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
       bloodType: bloodType,
     };
 
-    onAddPatientToQueue(newQueueItem);
-    setToastMessage(`تم تسجيل الزيارة بنجاح ودخول صالة الانتظار! تذكرة (${ticketNumber}) - ملف رقم (${autoFileNumber})`);
+    const registered = await onAddPatientToQueue(newQueueItem);
+    if (!registered) return;
+    setToastMessage(`تم تسجيل الزيارة بنجاح ودخول صالة الانتظار! تذكرة (#0${registered.queueNumber}) - ملف رقم (${registered.fileNumber})`);
     if (onClearInitialData) onClearInitialData();
     resetFormFields();
 
