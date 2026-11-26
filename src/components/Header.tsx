@@ -91,7 +91,7 @@ export const Header: React.FC<HeaderProps> = ({
     };
   }, [showNotifications]);
 
-  // Filter urgent upcoming follow-ups: Only patients with 0 to 2 days remaining (0 <= days <= 2)
+  // ج16: المتابعات العاجلة — نافذة موحدة 3 أيام (اليوم وغداً وبعد غد: 0 <= days <= 2)
   const urgentFollowUps = useMemo(() => {
     return followUpsList.filter((f) => f.daysRemaining >= 0 && f.daysRemaining <= 2);
   }, [followUpsList]);
@@ -132,13 +132,13 @@ Wishing you great health and wellness ✨`
 
     setWhatsappToast(
       language === 'en'
-        ? `WhatsApp chat opened with follow-up reminder for (${patientName})`
-        : `تم فتح محادثة واتساب وتجهيز رسالة تذكير المتابعة لـ (${patientName})`
+        ? `WhatsApp chat opened with follow-up reminder for (${patientName}) — complete sending manually in WhatsApp`
+        : `تم فتح محادثة واتساب وتجهيز رسالة تذكير المتابعة لـ (${patientName}) — أكمل الإرسال يدوياً من واتساب`
     );
     setTimeout(() => setWhatsappToast(null), 4000);
   };
 
-  // Total unread/pending count for notification badge: queue items + active alerts + urgent followups (< 2 days)
+  // Total unread/pending count for notification badge: queue items + active alerts + urgent followups (خلال 3 أيام)
   const totalActionCount = waitingQueue.length + recentAlerts.length + urgentFollowUps.length;
 
   return (
@@ -158,39 +158,48 @@ Wishing you great health and wellness ✨`
 
           {/* Sync Status Badge (متصل / غير متصل / جاري الاتصال) */}
           {syncStatus === 'connected' && (
-            <div
-              className="flex items-center gap-1.5 bg-emerald-500/10 dark:bg-emerald-950/30 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-emerald-500/20 dark:border-emerald-500/30 transition-all cursor-default select-none shrink-0"
-              title={language === 'en' ? 'System is online' : 'النظام متصل بالسحابة'}
+            <button
+              type="button"
+              onClick={() => setShowSyncDetailsModal(true)}
+              className="flex items-center gap-1.5 bg-emerald-500/10 dark:bg-emerald-950/30 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-emerald-500/20 dark:border-emerald-500/30 transition-all cursor-pointer select-none shrink-0 hover:bg-emerald-500/20"
+              title={language === 'en' ? 'System is online — click for sync details' : 'النظام متصل بالسحابة — اضغط لعرض تفاصيل المزامنة'}
+              aria-label={language === 'en' ? 'Sync details' : 'تفاصيل المزامنة'}
             >
               <span className="w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse"></span>
               <span className="text-[11px] sm:text-xs text-emerald-700 dark:text-emerald-400 font-bold">
                 {t('header.connected')}
               </span>
-            </div>
+            </button>
           )}
 
           {syncStatus === 'syncing' && (
-            <div
-              className="flex items-center gap-1.5 bg-amber-500/10 dark:bg-amber-950/30 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-amber-500/30 dark:border-amber-400/30 transition-all cursor-default select-none shrink-0"
-              title={language === 'en' ? 'Connecting and syncing...' : 'جاري الاتصال والمزامنة مع السحابة'}
+            <button
+              type="button"
+              onClick={() => setShowSyncDetailsModal(true)}
+              className="flex items-center gap-1.5 bg-amber-500/10 dark:bg-amber-950/30 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-amber-500/30 dark:border-amber-400/30 transition-all cursor-pointer select-none shrink-0 hover:bg-amber-500/20"
+              title={language === 'en' ? 'Connecting and syncing... — click for sync details' : 'جاري الاتصال والمزامنة مع السحابة — اضغط لعرض تفاصيل المزامنة'}
+              aria-label={language === 'en' ? 'Sync details' : 'تفاصيل المزامنة'}
             >
               <span className="w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-amber-500 animate-spin"></span>
               <span className="text-[11px] sm:text-xs text-amber-700 dark:text-amber-400 font-bold">
                 {t('header.syncing')}
               </span>
-            </div>
+            </button>
           )}
 
           {(syncStatus === 'offline' || syncStatus === 'error') && (
-            <div
-              className="flex items-center gap-1.5 bg-rose-500/10 dark:bg-rose-950/30 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-rose-500/30 dark:border-rose-500/40 transition-all cursor-default select-none shrink-0"
-              title={language === 'en' ? 'Disconnected' : 'غير متصل بالشبكة أو حدث خطأ في الاتصال'}
+            <button
+              type="button"
+              onClick={() => setShowSyncDetailsModal(true)}
+              className="flex items-center gap-1.5 bg-rose-500/10 dark:bg-rose-950/30 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-rose-500/30 dark:border-rose-500/40 transition-all cursor-pointer select-none shrink-0 hover:bg-rose-500/20"
+              title={language === 'en' ? 'Disconnected — click for sync details' : 'غير متصل بالشبكة أو حدث خطأ في الاتصال — اضغط لعرض تفاصيل المزامنة'}
+              aria-label={language === 'en' ? 'Sync details' : 'تفاصيل المزامنة'}
             >
               <span className="w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-rose-500 dark:bg-rose-400"></span>
               <span className="text-[11px] sm:text-xs text-rose-700 dark:text-rose-400 font-bold">
                 {t('header.offline')}
               </span>
-            </div>
+            </button>
           )}
 
           <div className="hidden xl:flex items-center gap-1.5 text-slate-400 dark:text-[#bbc9ca] text-xs font-medium mx-1">
@@ -439,7 +448,7 @@ Wishing you great health and wellness ✨`
                   </div>
                 )}
 
-                {/* Tab 3: Upcoming Follow-ups (< 2 days only) & WhatsApp Reminders */}
+                {/* Tab 3: Upcoming Follow-ups (خلال 3 أيام) & WhatsApp Reminders */}
                 {activeNotifyTab === 'followups' && (
                   <div className="max-h-64 overflow-y-auto divide-y divide-slate-100 dark:divide-white/5 space-y-1">
                     {urgentFollowUps.length === 0 ? (
@@ -447,7 +456,7 @@ Wishing you great health and wellness ✨`
                         <span className="material-symbols-outlined text-2xl mb-1 text-emerald-500 block">
                           task_alt
                         </span>
-                        لا توجد متابعات مستحقة خلال أقل من يومين
+                        لا توجد متابعات مستحقة خلال 3 أيام
                       </div>
                     ) : (
                       urgentFollowUps.map((f) => {
@@ -462,17 +471,17 @@ Wishing you great health and wellness ✨`
                                   {f.patientName}
                                 </span>
                                 <span className="bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300 text-[9px] font-bold px-1.5 py-0.2 rounded border border-amber-200 dark:border-transparent">
-                                  أقل من يومين ⚠️
+                                  خلال 3 أيام ⚠️
                                 </span>
                               </div>
                               <p className="text-[10px] text-slate-400 dark:text-[#859394] mt-0.5">
                                 موعد المتابعة: <strong className="font-mono text-slate-700 dark:text-slate-300">{toEnglishDigits(f.dueDate)}</strong>
                                 <span className="text-amber-700 dark:text-amber-400 font-bold mr-1">
-                                  {f.daysRemaining < 0
-                                    ? `(متأخر منذ ${toEnglishDigits(Math.abs(f.daysRemaining))} يوم)`
-                                    : f.daysRemaining === 0
+                                  {f.daysRemaining === 0
                                     ? ` (الموعد اليوم - ${toEnglishDigits(0)} يوم)`
-                                    : ` (غداً - متبقي ${toEnglishDigits(1)} يوم)`}
+                                    : f.daysRemaining === 1
+                                    ? ` (غداً - متبقي ${toEnglishDigits(1)} يوم)`
+                                    : ` (بعد غد - متبقي ${toEnglishDigits(2)} يوم)`}
                                 </span>
                               </p>
                             </div>
