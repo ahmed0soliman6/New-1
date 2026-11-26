@@ -21,8 +21,43 @@ export interface WhatsappReminderModalProps {
   initialBranch?: string;
 }
 
-export const WhatsappReminderModal: React.FC<WhatsappReminderModalProps> = ({
-  isOpen,
+/**
+ * د12: تنسيق تاريخ ISO (YYYY-MM-DD) بصيغة عربية مقروءة، مثلاً
+ * «الجمعة، 27 نوفمبر 2026» بدل «2026-11-27» الخام في رسالة واتساب.
+ * يُفسَّر التاريخ كمكوّنات تقويم محلية لتجنّب إزاحة UTC.
+ */
+export function formatArabicReminderDate(dateStr?: string): string {
+  if (!dateStr) return '';
+  const match = dateStr.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return dateStr;
+  const d = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  if (isNaN(d.getTime())) return dateStr;
+  try {
+    return new Intl.DateTimeFormat('ar-EG', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    }).format(d);
+  } catch {
+    return dateStr;
+  }
+}
+
+/**
+ * د12: تجهيز رقم هاتف لرابط wa.me (صيغة دولية بلا +).
+ * - «002010...» ← تُحذف «00» البادئة فتصبح «2010...» (لا «2002010...»).
+ * - «010...» ← تُستبدل الصفر بكود مصر «2» فتصبح «2010...».
+ * - «2010...» أو «+2010...» ← تُترك كما هي.
+ */
+export function formatWhatsAppPhone(rawPhone: string): string {
+  let clean = (rawPhone || '').replace(/[^0-9]/g, '');
+  if (clean.startsWith('00')) clean = clean.slice(2);
+  if (clean.startsWith('0')) clean = `2${clean}`;
+  return clean;
+}
+
+export const WhatsappReminderModal: React.FC<WhatsappReminderModalProps> = ({  isOpen,
   onClose,
   type,
   patientName,
@@ -50,6 +85,8 @@ export const WhatsappReminderModal: React.FC<WhatsappReminderModalProps> = ({
 
   // Copied state
   const [copied, setCopied] = useState(false);
+  // د12: خطأ نسخ صريح بدل ادعاء النجاح عند فشل الحافظة.
+  const [copyError, setCopyError] = useState(false);
 
   // Re-sync when modal opens with new props
   useEffect(() => {
@@ -59,6 +96,7 @@ export const WhatsappReminderModal: React.FC<WhatsappReminderModalProps> = ({
       setRecipientPhone(phone);
       setCustomNote('');
       setCopied(false);
+      setCopyError(false);
     }
   }, [isOpen, initialBranch, phone]);
 
@@ -66,12 +104,13 @@ export const WhatsappReminderModal: React.FC<WhatsappReminderModalProps> = ({
     return branches.find((b) => b.id === selectedBranchId) || branches[0] || findBranch(initialBranch);
   }, [branches, selectedBranchId, initialBranch]);
 
-  // Formatted preview message
+  // Formatted preview message (dates in readable Arabic; the builder already
+  // defaults a missing time to the branch opening time, not 09:00 ص)
   const messageText = useMemo(() => {
     if (type === 'followup') {
       return buildFollowupReminderMessage({
         patientName,
-        dueDate: dueDate || 'الأيام القادمة',
+        dueDate: formatArabicReminderDate(dueDate) || dueDate || 'الأيام القادمة',
         branch: activeBranch,
         diagnosis,
         customNote,
@@ -82,7 +121,7 @@ export const WhatsappReminderModal: React.FC<WhatsappReminderModalProps> = ({
       patientName,
       timeSlot,
       visitType,
-      date,
+      date: formatArabicReminderDate(date) || date,
       branch: activeBranch,
       customNote,
     });
@@ -91,7 +130,8 @@ export const WhatsappReminderModal: React.FC<WhatsappReminderModalProps> = ({
   if (!isOpen) return null;
 
   const cleanPhone = (recipientPhone || '').replace(/[^0-9]/g, '');
-  const formattedPhone = cleanPhone.startsWith('0') ? `2${cleanPhone}` : cleanPhone;
+  // د12: إصلاح تشويه الأرقام التي تبدأ بـ 00 في روابط wa.me.
+  const formattedPhone = formatWhatsAppPhone(recipientPhone);
 
   const handleSendWhatsApp = () => {
     if (!cleanPhone) {
@@ -109,14 +149,38 @@ export const WhatsappReminderModal: React.FC<WhatsappReminderModalProps> = ({
   };
 
   const handleCopyText = async () => {
+    // د12: لا تدّعِ النجاح عند فشل النسخ — جرّب الحافظة ثم بديلاً يدوياً،
+    // وإن فشل الاثنان أظهر خطأً صريحاً.
+    const fallbackCopy = (): boolean => {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = messageText;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return ok;
+      } catch {
+        return false;
+      }
+    };
+
     try {
       await navigator.clipboard.writeText(messageText);
       setCopied(true);
+      setCopyError(false);
       setTimeout(() => setCopied(false), 3000);
     } catch {
-      // Fallback
-      setCopied(true);
-      setTimeout(() => setCopied(false), 3000);
+      if (fallbackCopy()) {
+        setCopied(true);
+        setCopyError(false);
+        setTimeout(() => setCopied(false), 3000);
+      } else {
+        setCopied(false);
+        setCopyError(true);
+      }
     }
   };
 
@@ -246,6 +310,11 @@ export const WhatsappReminderModal: React.FC<WhatsappReminderModalProps> = ({
                 <span>{copied ? 'تم النسخ بنجاح' : 'نسخ النص'}</span>
               </button>
             </div>
+            {copyError && (
+              <p className="text-[11px] font-bold text-rose-600 dark:text-rose-400 pb-1">
+                تعذّر نسخ الرسالة تلقائياً — حدّد النص من المعاينة وانسخه يدوياً.
+              </p>
+            )}
 
             <div className="bg-[#e5ddd5] dark:bg-[#0b141a] p-4 rounded-2xl border border-slate-200 dark:border-white/10 relative overflow-hidden">
               <div className="max-w-md bg-white dark:bg-[#202c33] text-slate-900 dark:text-[#e9edef] text-xs p-3.5 rounded-2xl rounded-tr-xs shadow-md space-y-1.5 font-sans leading-relaxed whitespace-pre-wrap border border-slate-100 dark:border-white/5">
