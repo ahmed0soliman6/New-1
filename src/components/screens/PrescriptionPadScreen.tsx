@@ -12,7 +12,7 @@ import { usePermissions } from '../../context/AuthContext';
 import { PermissionGate } from '../auth/PermissionGate';
 import { PatientListItem, PrescriptionItem } from '../../types';
 import { useLanguage } from '../../i18n/LanguageContext';
-import { formatAppDate, formatAppTime } from '../../utils/numberUtils';
+import { formatAppDate, formatAppTime, formatDurationLabel } from '../../utils/numberUtils';
 
 interface PrescriptionPadScreenProps {
   patient?: PatientListItem | null;
@@ -1477,7 +1477,7 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
                                 {idx + 1}. {item.drugName} {item.strength || ''} {item.dosageForm || ''} {item.scientificName ? `(${item.scientificName})` : ''}
                               </div>
                               <div className={`text-teal-700 font-medium ${instructionTextClass}`}>
-                                {item.dosageInstructions || item.dosage || ''} {item.timing ? `• ${item.timing}` : ''} {item.duration ? `• لمدة ${item.duration}` : ''}
+                                {item.dosageInstructions || item.dosage || ''} {item.timing ? `• ${item.timing}` : ''} {item.duration ? `• ${formatDurationLabel(item.duration)}` : ''}
                               </div>
                               {item.notes && (
                                 <div className={`text-slate-500 italic mt-0.5 ${noteTextClass}`}>توجيهات إضافية: {item.notes}</div>
