@@ -182,7 +182,16 @@ service cloud.firestore {
           // Target document is a non-admin account:
           // Admin can manage them, or users can update their own unprivileged fields
           resource.data.role != 'ADMIN' && resource.data.role != 'admin' && (
-            isAdmin() || (
+            (
+              isAdmin() &&
+              // د3: تغيير الدور يجب أن يُصاحبه مسح الصلاحيات المخصصة، وإلا احتفظ
+              // المستخدم بامتيازات دوره السابق (المخصصة تتغلب على الدور).
+              (
+                !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']) ||
+                !('customPermissions' in request.resource.data) ||
+                request.resource.data.customPermissions == null
+              )
+            ) || (
               request.auth.uid == userId &&
               !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'customPermissions', 'allowedScreens', 'active', 'createdBy'])
             )
