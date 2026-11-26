@@ -29,7 +29,38 @@ export function cleanPhone(value: string): string {
   return normalizeDigits(value).replace(/[\s\-()+]/g, '');
 }
 
-export type BookingField = 'name' | 'phone' | 'branch' | 'date' | 'time' | 'notes' | 'fee';
+import { toDayKey, addDaysToKey } from './dayKey';
+
+/** دقائق وقت "HH:MM" أو "HH:MM ص/م" (أرقام عربية/إنجليزية) — null إن كان غير صالح */
+export function parseBookingTimeToMinutes(value: string): number | null {
+  if (!value) return null;
+  const s = normalizeDigits(value.trim().toLowerCase());
+  const isPM = s.includes('م') || s.includes('pm');
+  const isAM = s.includes('ص') || s.includes('am');
+  const digitsOnly = s.replace(/[^\d:]/g, '');
+  const parts = digitsOnly.split(':');
+  if (parts.length < 1 || parts[0] === '') return null;
+  let h = parseInt(parts[0], 10);
+  let m = parts.length >= 2 && parts[1] !== '' ? parseInt(parts[1], 10) : 0;
+  if (isNaN(h) || isNaN(m)) return null;
+  if (isPM && h < 12) h += 12;
+  if (isAM && h === 12) h = 0;
+  if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+  return h * 60 + m;
+}
+
+/** دقائق الوقت الحالي بتوقيت القاهرة */
+export function cairoNowMinutes(): number {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Africa/Cairo',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date());
+  const h = Number(parts.find((p) => p.type === 'hour')?.value || 0);
+  const m = Number(parts.find((p) => p.type === 'minute')?.value || 0);
+  return h * 60 + m;
+}
 export type BookingErrors = Partial<Record<BookingField, string>>;
 
 export interface BookingInput {
@@ -61,13 +92,20 @@ export function validateBooking(input: BookingInput): BookingErrors {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) {
     errors.date = 'يرجى اختيار تاريخ صالح';
   } else {
-    const t = new Date(`${input.date}T00:00:00Z`).getTime();
-    const now = Date.now();
-    const DAY = 24 * 60 * 60 * 1000;
-    if (Number.isNaN(t)) {
-      errors.date = 'يرجى اختيار تاريخ صالح';
-    } else if (t < now - BOOKING_LIMITS.windowPastDays * DAY || t > now + BOOKING_LIMITS.windowFutureDays * DAY) {
+    // المقارنة بتاريخ القاهرة (YYYY-MM-DD) لا بتوقيت UTC، حتى لا يظهر
+    // "أمس" بين 00:00 و02:00 بتوقيت القاهرة.
+    const today = toDayKey(new Date());
+    const maxDate = addDaysToKey(today, BOOKING_LIMITS.windowFutureDays);
+    if (input.date < today) {
+      errors.date = 'لا يمكن حجز موعد في تاريخ مضى';
+    } else if (input.date > maxDate) {
       errors.date = `التاريخ يجب أن يكون خلال ${BOOKING_LIMITS.windowFutureDays} يومًا قادمة`;
+    } else if (input.date === today) {
+      // حجز اليوم: امنع وقتًا مضى بالفعل بتوقيت القاهرة
+      const timeMins = parseBookingTimeToMinutes(input.time);
+      if (timeMins !== null && timeMins <= cairoNowMinutes()) {
+        errors.time = 'وقت الموعد مضى بالفعل، يرجى اختيار وقت لاحق اليوم';
+      }
     }
   }
 
