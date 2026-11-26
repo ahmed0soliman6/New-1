@@ -79,26 +79,33 @@ export const PreviousVisitCard: React.FC<PreviousVisitCardProps> = ({
     diagnosisText = visit.clinicalData.diagnosis.join(language === 'en' ? ', ' : ' ، ');
   }
 
-  // Derive medications strictly from prescription
-  const medicationsList: Array<{ name: string; dose?: string; form?: string; frequency?: string }> =
+  // Derive medications strictly from prescription, keeping the ORIGINAL
+  // duration / timing / instructions (ب9: never invent "5 days" / "after meals")
+  const medicationsList: Array<{ name: string; dose?: string; form?: string; frequency?: string; strength?: string; duration?: string; instructions?: string }> =
     prescription && prescription.items && prescription.items.length > 0
       ? prescription.items.map((i) => ({
           name: i.name,
           dose: i.dose,
           form: i.form,
           frequency: i.frequency,
+          strength: i.strength,
+          duration: i.duration,
+          instructions: i.instructions,
         }))
       : [];
 
   // Derive Labs strictly from labOrders
   const labItemsText: string[] = (labOrders || []).map((l) => {
-    if (l.status === 'RESULT' && l.result) {
+    if ((l.status === 'RESULT' || l.status === 'REPORT') && l.result) {
       return language === 'en'
         ? `Lab result ${l.testName}: "${l.result}"`
         : `نتيجة تحليل ${l.testName} "${l.result}"`;
     }
+    // ب10: a REPORT-status lab is report-ready, never "مطلوب"
     const statusText = l.status === 'RESULT'
       ? (l.result || (language === 'en' ? 'Verified' : 'معتمد'))
+      : l.status === 'REPORT'
+      ? (language === 'en' ? 'Report ready' : 'تقرير جاهز')
       : (language === 'en' ? 'Requested' : 'مطلوب');
     return `${l.testName} "${statusText}"`;
   });
@@ -126,12 +133,12 @@ export const PreviousVisitCard: React.FC<PreviousVisitCardProps> = ({
     const mapped: PrescriptionItem[] = medicationsList.map((m, idx) => ({
       id: `rx-copied-${Date.now()}-${idx}`,
       drugName: m.name,
-      dosage: m.dose || (language === 'en' ? '1 tab' : 'قرص واحد'),
-      dosageForm: m.form || (language === 'en' ? 'Tablets' : 'أقراص'),
-      frequency: m.frequency || (language === 'en' ? 'Daily' : 'يومياً'),
-      timing: language === 'en' ? 'After meals' : 'بعد الأكل',
-      duration: language === 'en' ? '5 days' : '5 أيام',
-      notes: language === 'en' ? 'Copied from previous visit' : 'تكرار من الزيارة السابقة',
+      strength: m.strength || undefined,
+      dosage: m.dose || '',
+      dosageForm: m.form || '',
+      timing: m.frequency || '',
+      duration: m.duration || '',
+      notes: m.instructions || '',
     }));
     onCopyMedications(mapped);
     setCopiedNotification(true);
@@ -259,9 +266,24 @@ export const PreviousVisitCard: React.FC<PreviousVisitCardProps> = ({
                   >
                     <span className="text-teal-600 dark:text-[#00c2cb] font-bold text-base leading-none">•</span>
                     <span>{med.name}</span>
+                    {med.strength && (
+                      <span className="text-slate-500 dark:text-[#859394] text-xs font-normal">
+                        ({med.strength})
+                      </span>
+                    )}
                     {med.dose && (
                       <span className="text-slate-500 dark:text-[#859394] text-xs font-normal">
                         ({med.dose})
+                      </span>
+                    )}
+                    {med.duration && (
+                      <span className="text-teal-700 dark:text-teal-300 text-xs font-normal">
+                        • {med.duration}
+                      </span>
+                    )}
+                    {med.instructions && (
+                      <span className="text-slate-500 dark:text-[#859394] text-xs font-normal italic">
+                        • {med.instructions}
                       </span>
                     )}
                   </li>
