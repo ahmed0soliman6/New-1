@@ -42,7 +42,6 @@ export interface BackupPayloadData {
   radiologyOrders?: any[];
   followUps?: any[];
   visitTypes?: any[];
-  freeFollowupDays?: number;
   medicalServices?: any[];
   expenseCategories?: any[];
   alertConfig?: any;
@@ -149,7 +148,6 @@ export function canonicalizeBackupData(data: BackupPayloadData): string {
     radiologyOrders: Array.isArray(data.radiologyOrders) ? data.radiologyOrders : [],
     followUps: Array.isArray(data.followUps) ? data.followUps : [],
     visitTypes: Array.isArray(data.visitTypes) ? data.visitTypes : [],
-    freeFollowupDays: typeof data.freeFollowupDays === 'number' ? data.freeFollowupDays : 14,
     medicalServices: Array.isArray(data.medicalServices) ? data.medicalServices : [],
     expenseCategories: Array.isArray(data.expenseCategories) ? data.expenseCategories : [],
     alertConfig: data.alertConfig && typeof data.alertConfig === 'object' ? data.alertConfig : {},
