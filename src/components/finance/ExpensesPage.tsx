@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { db } from '../../services/firebase';
 import type { ClinicExpenseRecord } from '../../utils/financeManager';
 import {
   currentPeriod,
@@ -27,6 +29,9 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ refreshKey, onDelete
   const [totalData, setTotalData] = useState<{ total: number; count: number }>({ total: 0, count: 0 });
   const [totalLoading, setTotalLoading] = useState(false);
   const [totalError, setTotalError] = useState<string | null>(null);
+  // ج23: عدّاد التحديثات الحية من قاعدة البيانات (جهاز آخر).
+  const [liveTick, setLiveTick] = useState(0);
+  const liveFirstSnap = useRef(true);
 
   // Load Aggregated Total
   useEffect(() => {
@@ -46,7 +51,27 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ refreshKey, onDelete
     return () => {
       cancelled = true;
     };
-  }, [period, refreshKey]);
+  }, [period, refreshKey, liveTick]);
+
+  // ج23: اشتراك حي — أي مصروف يُسجَّل من جهاز آخر يظهر دون إعادة تحميل.
+  useEffect(() => {
+    if (!db) return;
+    liveFirstSnap.current = true;
+    const range = periodToRange(period);
+    const constraints = [
+      ...(range.from ? [where('date', '>=', range.from)] : []),
+      ...(range.to ? [where('date', '<=', range.to)] : []),
+    ];
+    const unsub = onSnapshot(
+      query(collection(db, 'expenses'), ...constraints),
+      () => {
+        if (liveFirstSnap.current) { liveFirstSnap.current = false; return; }
+        setLiveTick((t) => t + 1);
+      },
+      (err) => console.warn('Expenses live sync error:', err)
+    );
+    return () => { unsub(); };
+  }, [period]);
 
   // Paginated Expenses
   const fetchPage = useCallback(
@@ -65,7 +90,7 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ refreshKey, onDelete
     next,
     prev,
     reload,
-  } = usePagedList(fetchPage, refreshKey);
+  } = usePagedList(fetchPage, refreshKey + liveTick);
 
   const formatCurrency = (val: number) => {
     return `${toEnglishDigits(
