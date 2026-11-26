@@ -9,6 +9,7 @@ import {
 import { MedicalCatalogsManager } from '../settings/MedicalCatalogsManager';
 import { UserManagementPanel } from '../settings/UserManagementPanel';
 import { RecurringTemplatesManager } from '../settings/RecurringTemplatesManager';
+import { ClinicBranchesPanel } from '../settings/ClinicBranchesPanel';
 import { ChangePasswordCard } from '../settings/ChangePasswordCard';
 import { MaintenanceCard } from '../settings/MaintenanceCard';
 import { ReadOptCard } from '../settings/ReadOptCard';
@@ -179,6 +180,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     templates: false,
     demoData: false,
     backup: false,
+    branches: false,
   });
 
   const [isGeneratingDemo, setIsGeneratingDemo] = useState(false);
@@ -949,6 +951,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                           type="button"
                           onClick={() => {
                             if (!newServiceName.trim()) return;
+                            // د10: إضافة خدمة طبية تتطلب صلاحية settings.edit.
+                            try {
+                              assertPermission('settings.edit', 'إضافة خدمة طبية');
+                            } catch (err) {
+                              alert(err instanceof Error ? err.message : 'ليس لديك صلاحية لإضافة خدمة طبية.');
+                              return;
+                            }
                             const newSrv: MedicalServiceItem = {
                               id: `srv-${Date.now()}`,
                               name: newServiceName.trim(),
@@ -987,6 +996,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                               type="number"
                               value={srv.price}
                               onChange={(e) => {
+                                // د10: تعديل سعر خدمة طبية يتطلب صلاحية settings.edit.
+                                try {
+                                  assertPermission('settings.edit', 'تعديل سعر خدمة طبية');
+                                } catch (err) {
+                                  alert(err instanceof Error ? err.message : 'ليس لديك صلاحية لتعديل الأسعار.');
+                                  return;
+                                }
                                 const newPrice = Number(e.target.value);
                                 const updated = updateMedicalService(srv.id, { price: newPrice });
                                 setMedicalServicesList(updated);
@@ -1003,6 +1019,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                               <button
                                 type="button"
                                 onClick={() => {
+                                  // د10: حذف خدمة طبية يتطلب صلاحية settings.edit.
+                                  try {
+                                    assertPermission('settings.edit', 'حذف خدمة طبية');
+                                  } catch (err) {
+                                    alert(err instanceof Error ? err.message : 'ليس لديك صلاحية لحذف خدمة طبية.');
+                                    return;
+                                  }
                                   const updated = removeMedicalService(srv.id);
                                   setMedicalServicesList(updated);
                                   setDeleteConfirmServiceId(null);
@@ -1089,6 +1112,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                         type="button"
                         onClick={() => {
                           if (!newExpenseCategoryInput.trim()) return;
+                          // د10: إضافة بند مصروف تتطلب صلاحية settings.edit.
+                          try {
+                            assertPermission('settings.edit', 'إضافة بند مصروف');
+                          } catch (err) {
+                            alert(err instanceof Error ? err.message : 'ليس لديك صلاحية لإضافة بند مصروف.');
+                            return;
+                          }
                           const updated = addExpenseCategory(newExpenseCategoryInput.trim());
                           setExpenseCategoriesList(updated);
                           setSavedToast(`تمت إضافة بند المصروف "${newExpenseCategoryInput.trim()}" بنجاح ✓`);
@@ -1129,6 +1159,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => {
+                                    // د10: حذف بند مصروف يتطلب صلاحية settings.edit.
+                                    try {
+                                      assertPermission('settings.edit', 'حذف بند مصروف');
+                                    } catch (err) {
+                                      alert(err instanceof Error ? err.message : 'ليس لديك صلاحية لحذف بند مصروف.');
+                                      return;
+                                    }
                                     const updated = removeExpenseCategory(cat.id);
                                     setExpenseCategoriesList(updated);
                                     setDeleteConfirmExpenseCatId(null);
@@ -2158,6 +2195,42 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </div>
         </div>
       )}
+
+      {/* ACCORDION CARD 10: Clinic Branches (فروع العيادة) — د4: the panel writes
+          settings/clinicBranches, which App subscribes to as the branch source. */}
+      <div className="bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 shadow-xs overflow-hidden transition-all">
+        <button
+          type="button"
+          onClick={() => toggleCard('branches')}
+          className="w-full p-5 flex items-center justify-between text-right cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-teal-500/15 text-teal-500 flex items-center justify-center font-bold">
+              <span className="material-symbols-outlined text-xl">location_on</span>
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-2">
+                <span>10. فروع العيادة</span>
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-[#859394] mt-0.5">
+                تعديل عناوين الفروع وأرقامها ومواعيد عملها (تُحفظ في السحابة وتظهر في كل الأجهزة)
+              </p>
+            </div>
+          </div>
+          <span
+            className="material-symbols-outlined text-slate-400 text-2xl transition-transform duration-200"
+            style={{ transform: openCards.branches ? 'rotate(180deg)' : 'rotate(0deg)' }}
+          >
+            expand_more
+          </span>
+        </button>
+
+        {openCards.branches && (
+          <div className="p-5 pt-0 border-t border-slate-100 dark:border-white/5 space-y-4 text-xs">
+            <ClinicBranchesPanel />
+          </div>
+        )}
+      </div>
 
       {/* MODAL: Add New Visit Type */}
       {showAddVisitModal && (
