@@ -300,6 +300,9 @@ export async function completeVisitTransaction(params: {
   doctorId: string;
   clinicalData: Visit['clinicalData'];
   vitalSigns: Visit['vitalSigns'];
+  // ب18: اسم التشخيص الرئيسي (isPrimary) كما حسبه المتصل من كائنات التشخيص —
+  // يُستخدم لـ lastDiagnosis بدل أول عنصر في القائمة.
+  primaryDiagnosis?: string;
   prescriptionItems?: PrescriptionItemSnapshot[];
   prescriptionNotes?: string;
   labOrders?: Array<{
@@ -308,6 +311,12 @@ export async function completeVisitTransaction(params: {
     notes?: string;
     status?: OrderStatus;
     result?: string;
+    // ب12: حقول التحليل الإضافية التي يجب أن تُحفظ فعلاً في Firestore.
+    isAbnormal?: boolean;
+    referenceRange?: string;
+    unit?: string;
+    resultDate?: string;
+    reportNotes?: string;
   }>;
   radiologyOrders?: Array<{
     radiologyTypeId?: string | null;
@@ -344,7 +353,7 @@ export async function completeVisitTransaction(params: {
         hasClinicalFile: true,
         visitsCount: alreadyCompleted ? (prev.visitsCount ?? 1) : (Number(prev.visitsCount) || 0) + 1,
         lastVisitAt: serverTimestamp(),
-        lastDiagnosis: params.clinicalData?.diagnosis?.[0] ?? '',
+        lastDiagnosis: (params.primaryDiagnosis || params.clinicalData?.diagnosis?.[0]) ?? '',
         updatedAt: serverTimestamp(),
       });
     }
@@ -388,6 +397,13 @@ export async function completeVisitTransaction(params: {
             status: resolvedStatus,
             result: lab.result || '',
             notes: lab.notes || '',
+            // ب12: حفظ علامة «غير طبيعي» والمدى المرجعي والوحدة
+            // وتاريخ النتيجة وملاحظات التقرير — لا تُسقط عند الإنهاء.
+            isAbnormal: lab.isAbnormal || false,
+            referenceRange: lab.referenceRange || '',
+            unit: lab.unit || '',
+            resultDate: lab.resultDate || '',
+            reportNotes: lab.reportNotes || '',
             orderedAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
             dayKey: day,
