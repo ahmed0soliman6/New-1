@@ -13,13 +13,17 @@ export const AdminRecoveryModal: React.FC<AdminRecoveryModalProps> = ({ onClose,
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
+  const [savedCode, setSavedCode] = useState<string | null>(null);
+
   const handleCopy = () => {
-    navigator.clipboard.writeText(code);
+    if (!savedCode) return;
+    navigator.clipboard.writeText(savedCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
   };
 
   const handleRegenerate = () => {
+    if (savedCode) return;
     setCode(generateAdminRecoveryCode());
     setCopied(false);
   };
@@ -29,12 +33,17 @@ export const AdminRecoveryModal: React.FC<AdminRecoveryModalProps> = ({ onClose,
     setError('');
 
     try {
+      if (!adminPass.trim()) {
+        setError('كلمة مرور المدير الحالية مطلوبة للتحقق قبل حفظ رمز الاسترداد.');
+        return;
+      }
       await setupAdminRecoveryCode({
         recoveryCode: code,
-        adminCurrentPassword: adminPass || undefined,
+        adminCurrentPassword: adminPass,
       });
-      onSuccess('تم حفظ وتفعيل رمز استرداد المدير بنجاح عبر تشفير PBKDF2 و AES-GCM.');
-      onClose();
+      // د14: الرسالة الصحيحة — PBKDF2 فقط، ولا يوجد AES-GCM في ملف الاسترداد.
+      setSavedCode(code);
+      onSuccess('تم حفظ وتفعيل رمز استرداد المدير بنجاح (تجزئة PBKDF2 مع 100,000 تكرار). انسخ الرمز الآن واحفظه في مكان آمن.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'تعذر حفظ رمز الاسترداد.');
     } finally {
@@ -74,14 +83,15 @@ export const AdminRecoveryModal: React.FC<AdminRecoveryModalProps> = ({ onClose,
           </div>
         )}
 
-        {/* Generated Code Display Box */}
+        {/* Generated Code Display Box — د14: يُعرض الرمز فقط بعد حفظه وتفعيله */}
         <div className="p-4 rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/40 space-y-2">
           <div className="text-[11px] font-bold text-purple-800 dark:text-purple-300 flex items-center justify-between">
             <span>رمز الاسترداد الآمن الخاص بك:</span>
             <button
               type="button"
+              disabled={!!savedCode}
               onClick={handleRegenerate}
-              className="text-xs text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1 cursor-pointer"
+              className="text-xs text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-40"
             >
               <span className="material-symbols-outlined text-xs">refresh</span>
               <span>توليد رمز جديد</span>
@@ -92,14 +102,15 @@ export const AdminRecoveryModal: React.FC<AdminRecoveryModalProps> = ({ onClose,
             <input
               type="text"
               readOnly
-              value={code}
+              value={savedCode ?? '••••-••••-••••-••••-••••'}
               className="flex-1 p-2.5 rounded-lg bg-white dark:bg-[#0c1322] border border-purple-300 dark:border-purple-700/50 font-mono text-sm font-bold text-center tracking-widest text-purple-700 dark:text-purple-300 select-all outline-none"
               dir="ltr"
             />
             <button
               type="button"
+              disabled={!savedCode}
               onClick={handleCopy}
-              className="px-3 py-2.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer shadow-xs"
+              className="px-3 py-2.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer shadow-xs disabled:opacity-40"
             >
               <span className="material-symbols-outlined text-sm">
                 {copied ? 'check' : 'content_copy'}
@@ -109,14 +120,16 @@ export const AdminRecoveryModal: React.FC<AdminRecoveryModalProps> = ({ onClose,
           </div>
 
           <p className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold mt-1">
-            ⚠️ انسخ هذا الرمز واحفظه في مكان آمن وخاص بك (مثل خزانة كلمات المرور).
+            {savedCode
+              ? '⚠️ انسخ هذا الرمز الآن واحفظه في مكان آمن وخاص بك (مثل خزانة كلمات المرور) — لن يظهر مرة أخرى.'
+              : '⚠️ لن يظهر الرمز هنا إلا بعد حفظه وتفعيله بالأسفل — رمز يُنسخ قبل الحفظ لن يعمل أبداً.'}
           </p>
         </div>
 
-        {/* Optional Current Admin Password */}
+        {/* Current Admin Password — required for verification */}
         <div>
           <label className="text-xs font-bold text-slate-700 dark:text-[#dde2f5] block mb-1">
-            كلمة مرور المدير الحالية (لربط المحفظة المشفرة):
+            كلمة مرور المدير الحالية (مطلوبة للتحقق قبل حفظ الرمز):
           </label>
           <input
             type="password"
@@ -136,19 +149,21 @@ export const AdminRecoveryModal: React.FC<AdminRecoveryModalProps> = ({ onClose,
             onClick={onClose}
             className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-[#859394] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
           >
-            إلغاء
+            {savedCode ? 'إغلاق (تم الحفظ)' : 'إلغاء'}
           </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={handleSave}
-            className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs transition-all cursor-pointer shadow-sm disabled:opacity-50"
-          >
-            <span className="material-symbols-outlined text-base">
-              {busy ? 'sync' : 'lock'}
-            </span>
-            <span>{busy ? 'جارٍ الحفظ والتشفير...' : 'تفعيل وتشفير الرمز في النظام'}</span>
-          </button>
+          {!savedCode && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={handleSave}
+              className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs transition-all cursor-pointer shadow-sm disabled:opacity-50"
+            >
+              <span className="material-symbols-outlined text-base">
+                {busy ? 'sync' : 'lock'}
+              </span>
+              <span>{busy ? 'جارٍ التحقق والحفظ...' : 'تحقق وحفظ وتفعيل الرمز'}</span>
+            </button>
+          )}
         </div>
       </div>
     </div>
