@@ -237,6 +237,21 @@ function getPhoneticEquivalents(query: string): string[] {
   return Array.from(new Set(equivalents));
 }
 
+/**
+ * ب22: one colloquial word can expand to several different drugs
+ * ("بيتاك" → betaserc, betaloc, betac). The external search must query
+ * several expansions and return all candidates for the doctor to choose
+ * from, instead of silently searching only the first expansion.
+ */
+function getExternalSearchKeywords(queryEquivalents: string[], query: string): string[] {
+  const keywords = queryEquivalents
+    .slice(1)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 2);
+  if (keywords.length === 0) keywords.push(query.trim());
+  return Array.from(new Set(keywords)).slice(0, 3);
+}
+
 // ---------------------------------------------------------------------------
 // 4. Medications Search (Local Clinic Catalog + Egyptian Drug Authority Archive + Online API Fallback)
 // ---------------------------------------------------------------------------
@@ -328,17 +343,21 @@ export async function searchClinicalDrugs(
       });
     } else {
       try {
-        const searchKeyword = queryEquivalents[1] || query.trim();
-        const url = `https://rxnav.nlm.nih.gov/REST/drugs.json?name=${encodeURIComponent(searchKeyword)}`;
-        const res = await fetch(url, { signal });
-        if (res.ok) {
+        const fetched: StandardDrugRecord[] = [];
+        const seenNames = new Set<string>();
+        for (const searchKeyword of getExternalSearchKeywords(queryEquivalents, query)) {
+          const url = `https://rxnav.nlm.nih.gov/REST/drugs.json?name=${encodeURIComponent(searchKeyword)}`;
+          const res = await fetch(url, { signal });
+          if (!res.ok) continue;
           const data = await res.json();
           const conceptGroup = data?.drugGroup?.conceptGroup;
           if (Array.isArray(conceptGroup)) {
-            const fetched: StandardDrugRecord[] = [];
             for (const group of conceptGroup) {
               if (Array.isArray(group.conceptProperties)) {
                 for (const prop of group.conceptProperties.slice(0, 4)) {
+                  const key = String(prop.name || '').toLowerCase();
+                  if (!key || seenNames.has(key)) continue;
+                  seenNames.add(key);
                   fetched.push({
                     id: `rxnorm-${prop.rxcui}`,
                     brandName: prop.name,
@@ -357,13 +376,13 @@ export async function searchClinicalDrugs(
                 }
               }
             }
-            if (fetched.length > 0) {
-              setCachedData(cacheKey, fetched);
-              fetched.forEach((item) => {
-                apiMatches.push({ item, source: 'api', score: 10 });
-              });
-            }
           }
+        }
+        if (fetched.length > 0) {
+          setCachedData(cacheKey, fetched);
+          fetched.forEach((item) => {
+            apiMatches.push({ item, source: 'api', score: 10 });
+          });
         }
       } catch (_e) {
         // Silently catch fetch or abort errors
@@ -466,17 +485,21 @@ export async function searchClinicalLabs(
       });
     } else {
       try {
-        const searchKeyword = queryEquivalents[1] || query.trim();
-        const url = `https://clinicaltables.nlm.nih.gov/api/loinc_items/v3/search?terms=${encodeURIComponent(searchKeyword)}&maxList=6`;
-        const res = await fetch(url, { signal });
-        if (res.ok) {
+        const fetchedItems: LabCatalogItem[] = [];
+        const seenCodes = new Set<string>();
+        for (const searchKeyword of getExternalSearchKeywords(queryEquivalents, query)) {
+          const url = `https://clinicaltables.nlm.nih.gov/api/loinc_items/v3/search?terms=${encodeURIComponent(searchKeyword)}&maxList=6`;
+          const res = await fetch(url, { signal });
+          if (!res.ok) continue;
           const data = await res.json();
           // Structure: [total, codes[], null, [[code, component, ...], ...]]
           if (Array.isArray(data) && Array.isArray(data[3])) {
-            const fetchedItems: LabCatalogItem[] = data[3].map((row: any[]) => {
+            for (const row of data[3]) {
               const code = row[0] || '';
+              if (!code || seenCodes.has(code)) continue;
+              seenCodes.add(code);
               const component = row[1] || row[0];
-              return {
+              fetchedItems.push({
                 id: `loinc-${code}`,
                 name: `${component} (${code})`,
                 category: 'مختبرات معتمدة (LOINC / NIH)',
@@ -484,13 +507,15 @@ export async function searchClinicalLabs(
                 fastingRequired: false,
                 isFavorite: false,
                 notes: `رمز LOINC الطبي: ${code}`,
-              };
-            });
-            setCachedData(cacheKey, fetchedItems);
-            fetchedItems.forEach((item) => {
-              apiMatches.push({ item, source: 'api', score: 10 });
-            });
+              });
+            }
           }
+        }
+        if (fetchedItems.length > 0) {
+          setCachedData(cacheKey, fetchedItems);
+          fetchedItems.forEach((item) => {
+            apiMatches.push({ item, source: 'api', score: 10 });
+          });
         }
       } catch (_e) {
         // Silently catch fetch or abort errors, preventing UI break
@@ -666,30 +691,36 @@ export async function searchClinicalDiagnoses(
       });
     } else {
       try {
-        const searchKeyword = queryEquivalents[1] || query.trim();
-        const url = `https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=${encodeURIComponent(searchKeyword)}&sf=code,name&df=code,name&maxList=8`;
-        const res = await fetch(url, { signal });
-        if (res.ok) {
+        const fetchedItems: DiagnosisCatalogItem[] = [];
+        const seenCodes = new Set<string>();
+        for (const searchKeyword of getExternalSearchKeywords(queryEquivalents, query)) {
+          const url = `https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=${encodeURIComponent(searchKeyword)}&sf=code,name&df=code,name&maxList=8`;
+          const res = await fetch(url, { signal });
+          if (!res.ok) continue;
           const data = await res.json();
           // Structure: [total, [codes...], null, [[code, description], ...]]
           if (Array.isArray(data) && Array.isArray(data[3])) {
-            const fetchedItems: DiagnosisCatalogItem[] = data[3].map((row: any[]) => {
+            for (const row of data[3]) {
               const code = row[0] || '';
+              if (!code || seenCodes.has(code)) continue;
+              seenCodes.add(code);
               const description = row[1] || '';
-              return {
+              fetchedItems.push({
                 id: `icd10-nlm-${code}`,
                 code: code,
                 nameAr: `${description} (${code})`,
                 nameEn: description,
                 category: 'منظمة الصحة العالمية ICD-10 (NLM)',
                 isFavorite: false,
-              };
-            });
-            setCachedData(cacheKey, fetchedItems);
-            fetchedItems.forEach((item) => {
-              apiMatches.push({ item, source: 'api', score: 10 });
-            });
+              });
+            }
           }
+        }
+        if (fetchedItems.length > 0) {
+          setCachedData(cacheKey, fetchedItems);
+          fetchedItems.forEach((item) => {
+            apiMatches.push({ item, source: 'api', score: 10 });
+          });
         }
       } catch (_e) {
         // Silently catch fetch/abort errors
