@@ -26,7 +26,6 @@ interface DiagnosisCardProps {
   onChangeDiagnoses: (diagnoses: PatientDiagnosis[]) => void;
   diagnosesCatalog: DiagnosisCatalogItem[];
   onAddDiagnosisToCatalog: (item: DiagnosisCatalogItem) => void;
-  frequentSuggestions?: Array<{ diagnosisName: string; count?: number }>;
 }
 
 export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({
@@ -34,7 +33,6 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({
   onChangeDiagnoses,
   diagnosesCatalog,
   onAddDiagnosisToCatalog,
-  frequentSuggestions = [],
 }) => {
   const { language } = useLanguage();
   const [showPicker, setShowPicker] = useState(true);
