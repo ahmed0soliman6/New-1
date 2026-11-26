@@ -12,7 +12,6 @@ export const StorageKeys = {
   CLINIC_DB_INITIALIZED: 'soli_clinic_db_initialized',
   CLINIC_EXPENSES: 'soli_clinic_expenses',
   VISIT_TYPES: 'soli_visit_types',
-  FREE_FOLLOWUP_DAYS: 'soli_free_followup_days',
   RECURRING_TEMPLATES: 'soli_recurring_templates',
   PRINTER_PAPER: 'soli_printer_paper',
   AUTO_PRINT: 'soli_auto_print',
