@@ -135,6 +135,7 @@ export const ClinicBranchesPanel: React.FC = () => {
     }
 
     let updatedList: ClinicBranchItem[];
+    let actionLabel: string;
     if (editingBranch) {
       updatedList = branches.map((b) =>
         b.id === editingBranch.id
@@ -150,7 +151,7 @@ export const ClinicBranchesPanel: React.FC = () => {
             }
           : b
       );
-      showToast(`تم تحديث بيانات "${branchName.trim()}" بنجاح ✓`);
+      actionLabel = `تم تحديث بيانات "${branchName.trim()}" بنجاح ✓`;
     } else {
       const newBranch: ClinicBranchItem = {
         id: `branch-${Date.now()}`,
@@ -163,22 +164,32 @@ export const ClinicBranchesPanel: React.FC = () => {
         endTime: branchEndTime.trim() || '22:00',
       };
       updatedList = [...branches, newBranch];
-      showToast(`تمت إضافة فرع "${branchName.trim()}" بنجاح ✓`);
+      actionLabel = `تمت إضافة فرع "${branchName.trim()}" بنجاح ✓`;
     }
 
     setBranches(updatedList);
     saveClinicBranches(updatedList);
     if (db) {
-      saveSettingsDocument(db, 'clinicBranches', {
-        branches: updatedList,
-        updatedAt: new Date().toISOString(),
-      }).catch((err) => console.warn('Firestore branch sync error:', err));
+      // د4: اللوحة تكتب settings/clinicBranches (العقد) — أظهر النجاح فقط بعد
+      // نجاح الكتابة السحابية، وإلا نبّه أن المزامنة فشلت.
+      try {
+        await saveSettingsDocument(db, 'clinicBranches', {
+          branches: updatedList,
+          updatedAt: new Date().toISOString(),
+        });
+        showToast(actionLabel);
+      } catch (err) {
+        console.warn('Firestore branch sync error:', err);
+        showToast('تم الحفظ محلياً فقط — فشلت مزامنة الفرع مع السحابة. أعد المحاولة.');
+      }
+    } else {
+      showToast(actionLabel);
     }
 
     setIsModalOpen(false);
   };
 
-  const handleDeleteBranch = (id: string, name: string) => {
+  const handleDeleteBranch = async (id: string, name: string) => {
     if (branches.length <= 1) {
       alert('يجب الإبقاء على فرع عيادة واحد على الأقل بالنظام.');
       return;
@@ -191,27 +202,41 @@ export const ClinicBranchesPanel: React.FC = () => {
     setBranches(updated);
     saveClinicBranches(updated);
     if (db) {
-      saveSettingsDocument(db, 'clinicBranches', {
-        branches: updated,
-        updatedAt: new Date().toISOString(),
-      }).catch((err) => console.warn('Firestore branch sync error:', err));
+      try {
+        await saveSettingsDocument(db, 'clinicBranches', {
+          branches: updated,
+          updatedAt: new Date().toISOString(),
+        });
+        showToast(`تم حذف فرع "${name}" بنجاح.`);
+      } catch (err) {
+        console.warn('Firestore branch sync error:', err);
+        showToast('تم الحذف محلياً فقط — فشلت مزامنة الحذف مع السحابة. أعد المحاولة.');
+      }
+    } else {
+      showToast(`تم حذف فرع "${name}" بنجاح.`);
     }
-    showToast(`تم حذف فرع "${name}" بنجاح.`);
   };
 
-  const handleSetPrimaryBranch = (index: number) => {
+  const handleSetPrimaryBranch = async (index: number) => {
     if (index === 0) return;
     const item = branches[index];
     const updated = [item, ...branches.filter((_, i) => i !== index)];
     setBranches(updated);
     saveClinicBranches(updated);
     if (db) {
-      saveSettingsDocument(db, 'clinicBranches', {
-        branches: updated,
-        updatedAt: new Date().toISOString(),
-      }).catch((err) => console.warn('Firestore branch sync error:', err));
+      try {
+        await saveSettingsDocument(db, 'clinicBranches', {
+          branches: updated,
+          updatedAt: new Date().toISOString(),
+        });
+        showToast(`تم تعيين فرع "${item.name}" كفرع رئيسي وافتراضي للعيادة ✓`);
+      } catch (err) {
+        console.warn('Firestore branch sync error:', err);
+        showToast('تم التعيين محلياً فقط — فشلت مزامنة الفرع الرئيسي مع السحابة. أعد المحاولة.');
+      }
+    } else {
+      showToast(`تم تعيين فرع "${item.name}" كفرع رئيسي وافتراضي للعيادة ✓`);
     }
-    showToast(`تم تعيين فرع "${item.name}" كفرع رئيسي وافتراضي للعيادة ✓`);
   };
 
   const activePreviewBranch = branches.find((b) => b.id === previewBranchId) || branches[0];
