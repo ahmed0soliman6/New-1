@@ -13,7 +13,7 @@ import { READ_OPT } from '../../config/readOpt';
 import { fetchVisitCounts } from '../../services/rangeStats';
 import { useFinanceRange } from '../../services/financeRange';
 import { buildTransactions } from '../../utils/buildTransactions';
-import { todayKey, addDaysToKey } from '../../utils/dayKey';
+import { todayKey, addDaysToKey, toDayKey } from '../../utils/dayKey';
 
 interface DashboardScreenProps {
   onNavigate: (screen: ScreenType) => void;
@@ -155,7 +155,7 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
       // Fallback
     }
 
-    setDashboardWhatsappToast(`تم تجهيز رسالة تذكير الواتساب وإرسالها لـ (${patientName})`);
+    setDashboardWhatsappToast(`تم فتح واتساب وتجهيز رسالة تذكير المتابعة لـ (${patientName}) — أكمل الإرسال يدوياً من واتساب`);
     setTimeout(() => setDashboardWhatsappToast(null), 4000);
   };
 
@@ -203,7 +203,7 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
       assertPermission('billing.create', 'إنشاء فاتورة سريعة');
       const netTotal = Math.max(0, cleanAmount - cleanDiscount);
       const finalPaid = invStatus === 'مدفوعة' ? netTotal : 0;
-      const receiptNo = `INV-${Math.floor(Math.random() * 9000) + 1000}`;
+      const receiptNo = `INV-${Date.now().toString(36).toUpperCase()}`; // ج18: فريد ومتصاعد زمنياً، لا عشوائي في 9000 احتمال
       const now = new Date();
       const localDayKey = todayKey();
 
@@ -254,9 +254,10 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
     return hour >= 5 && hour < 13 ? 'صباح الخير' : 'مساء الخير';
   }, [language]);
 
-  // Formatted today date (locale aware)
+  // Formatted today date (locale aware, Cairo time)
   const todayFormattedDate = useMemo(() => {
     return new Date().toLocaleDateString(language === 'en' ? 'en-US' : 'ar-EG', {
+      timeZone: 'Africa/Cairo',
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -264,7 +265,9 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
     });
   }, [language]);
 
-  // Timeframe date filtering helper
+  // Timeframe date filtering helper — كل التواريخ بتوقيت القاهرة (dayKey)
+  // ج4: «اليوم» = يوم القاهرة لا UTC؛ ج12: الأسبوع 7 أيام (اليوم − 6)
+  // والشهر 30 يوماً (اليوم − 29) — نفس نافذة عدّادات الخادم.
   const isInTimeframe = (dateStr?: string) => {
     if (dashboardTimeframe === 'all') return true;
     if (!dateStr) return true;
@@ -272,27 +275,31 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
     const targetDate = new Date(dateStr);
     if (isNaN(targetDate.getTime())) return true;
 
-    const now = new Date();
-    const targetYmd = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
-    const nowYmd = now.toISOString().split('T')[0];
+    const targetYmd = dateStr.includes('T') ? toDayKey(targetDate) : dateStr;
+    const nowYmd = todayKey();
 
     if (dashboardTimeframe === 'today') {
       return targetYmd === nowYmd;
     }
 
     if (dashboardTimeframe === 'week') {
-      const oneWeekAgo = new Date();
-      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-      return targetDate >= oneWeekAgo && targetDate <= now;
+      // مقارنة بأيام التقويم (dayKey) لا بالساعات، لتطابق نافذة الخادم.
+      return targetYmd >= addDaysToKey(nowYmd, -6) && targetYmd <= nowYmd;
     }
 
     if (dashboardTimeframe === 'month') {
-      const oneMonthAgo = new Date();
-      oneMonthAgo.setDate(oneMonthAgo.getDate() - 30);
-      return targetDate >= oneMonthAgo && targetDate <= now;
+      return targetYmd >= addDaysToKey(nowYmd, -29) && targetYmd <= nowYmd;
     }
 
     return true;
+  };
+
+  // ج13: عدّاد المتابعات القادمة يحترم الفترة المختارة (بأيام الباقي):
+  // اليوم = مستحقة اليوم، الأسبوع = خلال 7 أيام، الشهر = خلال 30 يوماً.
+  const countFollowUpsInTimeframe = (list: FollowUpItem[]) => {
+    if (dashboardTimeframe === 'all') return list.filter((f) => f.daysRemaining >= 0).length;
+    const maxDays = dashboardTimeframe === 'today' ? 0 : dashboardTimeframe === 'week' ? 6 : 29;
+    return list.filter((f) => f.daysRemaining >= 0 && f.daysRemaining <= maxDays).length;
   };
 
   // =========================================================================
@@ -334,7 +341,7 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
         actualVisitsCount: remoteVisitStats.total,
         scheduledOnlyCount,
         completedVisitsCount: remoteVisitStats.completed,
-        totalFollowUpsCount: followUps.length,
+        totalFollowUpsCount: countFollowUpsInTimeframe(followUps),
         liveWaitingCount: queue.length,
         avgWaitMinutes,
         revenueFormatted: totalRevenue.toLocaleString('en-US'),
@@ -355,9 +362,9 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
       (a) => a.status === 'مجدول' || a.status === 'بانتظار التأكيد'
     ).length;
 
-    // 3. Completed visits in this period
+    // 3. Completed visits in this period — ج5: COMPLETED فقط، مثل مسار الخادم.
     const completedVisitsCount = periodVisits.filter(
-      (v) => v.status === 'COMPLETED' || v.status === 'IN_PROGRESS'
+      (v) => v.status === 'COMPLETED'
     ).length;
 
     // 4. Live Cash Drawer Revenue in this period
@@ -378,8 +385,8 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
           )
         : 0;
 
-    // 6. Upcoming follow-ups
-    const totalFollowUpsCount = followUps.length;
+    // 6. Upcoming follow-ups — ج13: يحترم الفترة المختارة.
+    const totalFollowUpsCount = countFollowUpsInTimeframe(followUps);
 
     return {
       periodLabel: labelMap[dashboardTimeframe],
@@ -1028,7 +1035,7 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
             }`}
           >
             <span className="material-symbols-outlined text-base">event_repeat</span>
-            <span>المتابعات القادمة (&lt; يومين)</span>
+            <span>المتابعات القادمة (خلال 3 أيام)</span>
             <span
               className={`px-1.5 py-0.2 rounded-full text-[10px] font-black font-mono ${
                 activeAlertsCardTab === 'followups'
@@ -1272,13 +1279,13 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
           </div>
         )}
 
-        {/* Tab 3 Content: Upcoming Follow-ups (Strictly < 2 days remaining) */}
+        {/* Tab 3 Content: Upcoming Follow-ups — ج16: نافذة موحدة 3 أيام (اليوم وغداً وبعد غد) */}
         {activeAlertsCardTab === 'followups' && (
           <div className="space-y-3">
             <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-[#111A2E] p-2.5 rounded-xl border border-slate-200 dark:border-white/5">
               <span className="flex items-center gap-1 font-semibold text-purple-700 dark:text-purple-400">
                 <span className="material-symbols-outlined text-sm">schedule</span>
-                <span>تصفية تلقائية: تعرض فقط من لديه متابعة خلال أقل من يومين (بالترتيب)</span>
+                <span>تصفية تلقائية: تعرض فقط من لديه متابعة خلال 3 أيام (اليوم وغداً وبعد غد، بالترتيب)</span>
               </span>
               <button
                 type="button"
@@ -1332,11 +1339,11 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
                             {toEnglishDigits(item.dueDate)}
                           </span>
                           <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">
-                            {item.daysRemaining < 0
-                              ? `(متأخر ${toEnglishDigits(Math.abs(item.daysRemaining))} يوم)`
-                              : item.daysRemaining === 0
+                            {item.daysRemaining === 0
                               ? '(اليوم)'
-                              : '(غداً - متبقي 1 يوم)'}
+                              : item.daysRemaining === 1
+                              ? '(غداً - متبقي 1 يوم)'
+                              : '(بعد غد - متبقي 2 يوم)'}
                           </span>
                         </div>
                       </div>
@@ -1364,7 +1371,7 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
               <div className="p-6 text-center bg-slate-50 dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 space-y-1">
                 <span className="material-symbols-outlined text-2xl text-emerald-500">task_alt</span>
                 <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  لا توجد متابعات عاجلة خلال الـ 3 أيام القادمة (أقل من 3 أيام)
+                  لا توجد متابعات عاجلة خلال الـ 3 أيام القادمة
                 </p>
                 <p className="text-[11px] text-slate-400">
                   جميع المتابعات المجدولة تقع في مواعيد أبعد أو مسجلة بالكامل.
