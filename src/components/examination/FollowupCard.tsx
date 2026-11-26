@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '../../i18n/LanguageContext';
+import { todayKey, addDaysToKey } from '../../utils/dayKey';
 import {
   loadLifestylePresets,
   subscribeToLifestylePresets,
@@ -11,7 +12,6 @@ interface FollowupCardProps {
   onChangeFollowupDate: (date: string) => void;
   lifestyleAdvice: string;
   onChangeLifestyleAdvice: (advice: string) => void;
-  frequentSuggestions?: Array<{ text: string; count?: number }>;
 }
 
 export const FollowupCard: React.FC<FollowupCardProps> = ({
@@ -35,12 +35,8 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
     return () => unsubscribe();
   }, []);
 
-  // Helper to format date string YYYY-MM-DD for N days from today
-  const getDateForDays = (days: number) => {
-    const d = new Date();
-    d.setDate(d.getDate() + days);
-    return d.toISOString().split('T')[0];
-  };
+  // Helper to format date string YYYY-MM-DD for N days from today (ب6: Cairo dayKey, not UTC)
+  const getDateForDays = (days: number) => addDaysToKey(todayKey(), days);
 
   const date7 = getDateForDays(7);
   const date14 = getDateForDays(14);
@@ -288,7 +284,7 @@ export const FollowupCard: React.FC<FollowupCardProps> = ({
                 ref={dateInputRef}
                 type="date"
                 value={followupDate}
-                min={new Date().toISOString().split('T')[0]}
+                min={todayKey()}
                 onChange={(e) => onChangeFollowupDate(e.target.value)}
                 onClick={(e) => {
                   try {
