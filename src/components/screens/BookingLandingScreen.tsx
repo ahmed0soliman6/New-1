@@ -325,6 +325,34 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
     };
   }, []);
 
+  // أ1: مواعيد Firestore للتاريخ المختار — التخزين المحلي وحده لا يرى مواعيد
+  // الموظفين (تُحفظ في Firestore فقط)، فكانت تظهر «متاحة» للجمهور.
+  const [firestoreAppointments, setFirestoreAppointments] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!db || !scheduledDate) return;
+    let cancelled = false;
+    import('firebase/firestore').then(async ({ collection, getDocs, limit, query, where }) => {
+      try {
+        const snap = await getDocs(
+          query(collection(db, 'appointments'), where('scheduledDate', '==', scheduledDate), limit(500))
+        );
+        if (cancelled) return;
+        meterQuery('booking:appointmentsByDate', snap, 'حجوزات');
+        const items: any[] = [];
+        snap.forEach((docSnap) => {
+          if (docSnap.exists()) items.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        setFirestoreAppointments(items);
+      } catch (err) {
+        console.warn('Public Booking Appointments Fetch Error:', err);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [scheduledDate, selectedBranchId]);
+
   // Get active branch object
   const activeBranch = useMemo(() => {
     return branches.find((b) => b.id === selectedBranchId) || branches[0];
@@ -360,11 +388,14 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
     const targetDate = scheduledDate;
     const branchName = activeBranch.name.trim();
 
-    bookedAppointments.forEach((app: any) => {
-      const apptDate = app.date || app.appointmentDate;
+    // أ1: تُدمج مواعيد Firestore (ومنها مواعيد الموظفين) مع المحلية؛
+    // حقول Firestore هي scheduledDate/scheduledTime/clinicLocationId.
+    const allKnownAppointments = [...bookedAppointments, ...firestoreAppointments];
+    allKnownAppointments.forEach((app: any) => {
+      const apptDate = app.scheduledDate || app.date || app.appointmentDate;
       if (!apptDate || !apptDate.startsWith(targetDate)) return;
 
-      const apptBranch = app.branch || app.branchId || app.clinicBranch || '';
+      const apptBranch = app.branch || app.branchId || app.clinicBranch || app.clinicLocationId || '';
       const isSameBranch =
         !apptBranch ||
         apptBranch === branchName ||
@@ -376,7 +407,7 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
       const status = (app.status || '').toString().toUpperCase();
       if (status === 'CANCELLED' || app.status === 'ملغى') return;
 
-      const timeStr = app.timeSlot || app.time || app.startTime;
+      const timeStr = app.scheduledTime || app.timeSlot || app.time || app.startTime;
       const mins = normalizeTimeToMins(timeStr);
       if (mins !== null) {
         set.add(mins);
@@ -384,7 +415,7 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
     });
 
     return set;
-  }, [bookedAppointments, scheduledDate, activeBranch]);
+  }, [bookedAppointments, firestoreAppointments, scheduledDate, activeBranch]);
 
   // Generate dynamic 15-minute time slots based on selected branch's startTime & endTime
   const allTimeSlots = useMemo(() => {
@@ -491,20 +522,76 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
       const { db } = await import('../../services/firebase');
       if (!db) throw new Error('قاعدة البيانات غير متاحة حالياً');
 
-      const { doc, writeBatch } = await import('firebase/firestore');
+      const { collection, doc, getDocs, limit, query, where, writeBatch } = await import('firebase/firestore');
+
+      // أ1: فحص تعارض حقيقي في Firestore قبل الكتابة — زائران في نفس اللحظة
+      // أو موعد حُجز من داخل العيادة بعد تحميل الصفحة يجب أن يُرفَض برسالة واضحة.
+      const freshSnap = await getDocs(
+        query(collection(db, 'appointments'), where('scheduledDate', '==', scheduledDate), limit(500))
+      );
+      const freshApps: any[] = [];
+      freshSnap.forEach((docSnap) => {
+        if (docSnap.exists()) freshApps.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      const branchName = activeBranch?.name?.trim() || '';
+      const branchId = activeBranch?.id || '';
+      const slotTaken = freshApps.some((app: any) => {
+        const status = (app.status || '').toString().toUpperCase();
+        if (status === 'CANCELLED' || app.status === 'ملغى') return false;
+        const docBranch = (app.clinicLocationId || app.branch || app.branchId || app.clinicBranch || '').toString();
+        const isSameBranch =
+          !docBranch ||
+          docBranch === branchName ||
+          docBranch === branchId ||
+          branchName.includes(docBranch) ||
+          docBranch.includes(branchName);
+        if (!isSameBranch) return false;
+        const mins = normalizeTimeToMins(app.scheduledTime || app.timeSlot || app.time || app.startTime);
+        return mins !== null && mins === chosenSlotMins;
+      });
+      if (slotTaken) {
+        setFirestoreAppointments(freshApps);
+        setSubmitError('عذراً، تم حجز هذا الموعد للتو من مريض آخر. يرجى اختيار موعد آخر متاح من القائمة.');
+        return;
+      }
+
+      // أ7: البحث عن مريض موجود بالهاتف أولاً ثم بالاسم، وإعادة استخدام ملفه
+      // بدل إنشاء ملف مكرر (pat-online-*) عند كل حجز.
+      let existingPatientId: string | null = null;
+      let existingMedicalCode: string | null = null;
+      try {
+        let patientSnap = await getDocs(
+          query(collection(db, 'patients'), where('phone', '==', cleanedPhone), limit(5))
+        );
+        if (patientSnap.empty) {
+          patientSnap = await getDocs(
+            query(collection(db, 'patients'), where('fullName', '==', cleanedName), limit(5))
+          );
+        }
+        if (!patientSnap.empty) {
+          const found = patientSnap.docs[0];
+          existingPatientId = found.id;
+          const foundData = found.data() as any;
+          existingMedicalCode = foundData.medicalCode || null;
+        }
+      } catch (err) {
+        console.warn('Existing patient lookup failed, creating a new patient file:', err);
+      }
 
       const stamp = Date.now();
-      const patientId = `pat-online-${stamp}`;
+      const isNewPatient = existingPatientId === null;
+      const patientId = existingPatientId ?? `pat-online-${stamp}`;
       const appointmentId = `app-${stamp}`;
       const nowIso = new Date().toISOString();
       const dayKey = scheduledDate; // الحجز يُختم بتاريخ الموعد نفسه
+      const medicalCode = existingMedicalCode || `EG-ONL-${Math.floor(1000 + Math.random() * 9000)}`;
 
       const patientRecord = {
         patientId,
         fullName: cleanedName,
         phone: cleanedPhone,
         fileNumber: 9000 + Math.floor(Math.random() * 1000),
-        medicalCode: `EG-ONL-${Math.floor(1000 + Math.random() * 9000)}`,
+        medicalCode,
         chronicDiseases: [],
         allergies: [],
         address: '',
@@ -537,8 +624,11 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
       };
 
       // دفعة واحدة: إما ينجح الاثنان معًا أو يفشلان معًا
+      // (عند إعادة استخدام مريض موجود لا تُكتب سجله من جديد).
       const batch = writeBatch(db);
-      batch.set(doc(db, 'patients', patientId), patientRecord);
+      if (isNewPatient) {
+        batch.set(doc(db, 'patients', patientId), patientRecord);
+      }
       batch.set(doc(db, 'appointments', appointmentId), appointmentRecord);
       await batch.commit();
 
