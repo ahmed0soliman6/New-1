@@ -209,22 +209,14 @@ export function getSmartClinicalSuggestions(
     });
   });
 
-  // 3. Parse Database Visits
+  // 3. Parse Database Visits (diagnoses only)
+  // ب21: clinicalData.treatment is a ' + '-joined list of DRUG NAMES, not
+  // instructions — it must never be counted as repeated lifestyle advice.
   visits.forEach((v) => {
     v.clinicalData?.diagnosis?.forEach((d) => {
       const name = d.trim();
       if (name) diagnosisMap[name] = (diagnosisMap[name] || 0) + 1;
     });
-
-    if (v.clinicalData?.treatment) {
-      const lines = v.clinicalData.treatment.split('\n');
-      lines.forEach((line) => {
-        const clean = line.replace(/^[•\-\*]\s*/, '').trim();
-        if (clean && clean.length > 5) {
-          instructionMap[clean] = (instructionMap[clean] || 0) + 1;
-        }
-      });
-    }
   });
 
   // 4. Parse Database Lab Orders
@@ -278,20 +270,30 @@ export function getSmartClinicalSuggestions(
   }> = [];
 
   if (currentDiagnoses.length > 0) {
-    const diagNames = currentDiagnoses.map((d) => (d.nameAr || d.nameEn || '').toLowerCase());
+    const diagNames = currentDiagnoses
+      .map((d) => (d.nameAr || d.nameEn || '').trim().toLowerCase())
+      .filter((n) => n.length >= 2);
+    // ب21: dedupe identical treatments and cap the list so one short diagnosis
+    // name cannot flood the suggestions with every past visit.
+    const seenTreatments = new Set<string>();
 
     // Match visits with similar diagnosis
     visits.forEach((v) => {
+      if (contextualSuggestions.length >= 5) return;
       const hasMatch = v.clinicalData?.diagnosis?.some((d) =>
         diagNames.some((curr) => d.toLowerCase().includes(curr) || curr.includes(d.toLowerCase()))
       );
 
       if (hasMatch && v.clinicalData?.treatment) {
+        const treatment = v.clinicalData.treatment.trim();
+        // Skip drug-name lists joined with ' + ' — they are not instructions.
+        if (!treatment || treatment.includes(' + ') || seenTreatments.has(treatment)) return;
+        seenTreatments.add(treatment);
         contextualSuggestions.push({
           type: 'instruction',
           title: 'إرشاد متكرر مع هذا التشخيص',
-          subtitle: v.clinicalData.treatment.slice(0, 60) + '...',
-          data: v.clinicalData.treatment,
+          subtitle: treatment.slice(0, 60) + '...',
+          data: treatment,
           reason: 'موصى به استناداً لكشوفات سابقة لنفس التشخيص',
         });
       }
