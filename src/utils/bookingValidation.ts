@@ -61,6 +61,8 @@ export function cairoNowMinutes(): number {
   const m = Number(parts.find((p) => p.type === 'minute')?.value || 0);
   return h * 60 + m;
 }
+export type BookingField = 'name' | 'phone' | 'branch' | 'date' | 'time' | 'notes' | 'fee';
+
 export type BookingErrors = Partial<Record<BookingField, string>>;
 
 export interface BookingInput {
