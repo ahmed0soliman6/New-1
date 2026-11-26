@@ -160,8 +160,9 @@ import { safeStorage, StorageKeys } from './services/storage';
 import { setCachedRecurringTemplates } from './utils/recurringTemplatesManager';
 import { toEnglishDigits, formatAppDate, formatAppTime } from './utils/numberUtils';
 import { findBranch } from './utils/clinicBranches';
-import { toDayKey, todayKey, addDaysToKey } from './utils/dayKey';
+import { toDayKey, todayKey, addDaysToKey, calculateAge } from './utils/dayKey';
 import { buildTransactions } from './utils/buildTransactions';
+import { meterWrite } from './services/readMeter';
 import { READ_OPT, HOT_DAYS, APPT_PAST_DAYS } from './config/readOpt';
 import { subscribeMerged } from './services/repositories/windowed';
 import { invalidatePatientHistory } from './services/history';
@@ -622,9 +623,8 @@ function ClinicApp() {
   useEffect(() => {
     if (activeExamPatient) {
       const live = patientsCanonical.find((p) => p.patientId === activeExamPatient.id);
-      if (live && (live.fullName !== activeExamPatient.name || live.phone !== activeExamPatient.phone || live.address !== activeExamPatient.address)) {
-        const birthYear = live.dateOfBirth ? new Date(live.dateOfBirth).getFullYear() : undefined;
-        const calculatedAge = birthYear ? Math.max(1, new Date().getFullYear() - birthYear) : activeExamPatient.age;
+      if (live && (live.fullName !== activeExamPatient.name || live.phone !== activeExamPatient.phone || live.address !== activeExamPatient.address || (live.bloodType || 'غير محدد') !== activeExamPatient.bloodType)) {
+        const calculatedAge = calculateAge(live.dateOfBirth) ?? activeExamPatient.age;
         setActiveExamPatient((prev) => prev ? {
           ...prev,
           name: live.fullName,
@@ -846,7 +846,6 @@ function ClinicApp() {
           return (Number(b.fileNumber) || 0) - (Number(a.fileNumber) || 0);
         })
         .map((p) => {
-          const birthYear = p.dateOfBirth ? new Date(p.dateOfBirth).getFullYear() : undefined;
           const created = p.createdAt ? new Date(p.createdAt) : new Date();
           const last = p.lastVisitAt ? new Date(p.lastVisitAt) : undefined;
           return {
@@ -854,7 +853,7 @@ function ClinicApp() {
             medicalCode: p.medicalCode || `EG-${p.fileNumber || p.patientId.slice(0, 5)}`,
             fileNumber: p.fileNumber || 1,
             name: p.fullName,
-            age: birthYear ? Math.max(1, new Date().getFullYear() - birthYear) : 0,
+            age: calculateAge(p.dateOfBirth) ?? 0,
             gender: p.gender === 'female' ? 'female' : 'male',
             phone: p.phone || '',
             governorate: p.governorate || '',
@@ -904,8 +903,7 @@ function ClinicApp() {
       const lastVisit = [...pVisits].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
       const lastDiag = lastVisit?.clinicalData?.diagnosis?.[0] || p.lastDiagnosis || '';
       
-      const birthYear = p.dateOfBirth ? new Date(p.dateOfBirth).getFullYear() : undefined;
-      const calculatedAge = birthYear ? Math.max(1, new Date().getFullYear() - birthYear) : 0;
+      const calculatedAge = calculateAge(p.dateOfBirth) ?? 0;
 
       const createdDateObj = p.createdAt ? new Date(p.createdAt) : new Date();
       const registrationDate = formatAppDate(createdDateObj);
@@ -946,8 +944,7 @@ function ClinicApp() {
         const invoice = invoicesCanonical.find((i) => i.visitId === v.visitId);
         const payment = paymentsCanonical.find((p) => p.visitId === v.visitId);
 
-        const birthYear = pat?.dateOfBirth ? new Date(pat.dateOfBirth).getFullYear() : undefined;
-        const calculatedAge = birthYear ? Math.max(1, new Date().getFullYear() - birthYear) : 0;
+        const calculatedAge = calculateAge(pat?.dateOfBirth) ?? 0;
 
         return {
           id: v.visitId,
@@ -1124,9 +1121,7 @@ function ClinicApp() {
       return phoneMatch || nameMatch;
     });
 
-    const calculatedAge = matchedPatient?.dateOfBirth
-      ? Math.max(1, new Date().getFullYear() - new Date(matchedPatient.dateOfBirth).getFullYear())
-      : undefined;
+    const calculatedAge = calculateAge(matchedPatient?.dateOfBirth);
 
     setIntakeInitialData({
       patientId: matchedPatient?.patientId || app.patientId,
@@ -2419,8 +2414,7 @@ function ClinicApp() {
         ? targetVisit.receptionistData.chronicDiseases
         : (canonicalPat?.chronicDiseases || basePatient?.chronicConditions || []);
 
-    const birthYear = canonicalPat?.dateOfBirth ? new Date(canonicalPat.dateOfBirth).getFullYear() : undefined;
-    const calculatedAge = birthYear ? Math.max(1, new Date().getFullYear() - birthYear) : (basePatient?.age || 0);
+    const calculatedAge = calculateAge(canonicalPat?.dateOfBirth) ?? (basePatient?.age || 0);
 
     const matchedPatient: PatientListItem = {
       id: targetVisit.patientId,
@@ -2435,6 +2429,7 @@ function ClinicApp() {
       allergies: canonicalPat?.allergies || basePatient?.allergies || [],
       chronicConditions: registeredChronic,
       bloodGroup: canonicalPat?.bloodType || basePatient?.bloodType || basePatient?.bloodGroup || 'غير محدد',
+      bloodType: canonicalPat?.bloodType || basePatient?.bloodType || basePatient?.bloodGroup || 'غير محدد',
       visitsCount: basePatient?.visitsCount || 1,
       chiefComplaint: registeredComplaint,
       intakeSymptoms: registeredSymptoms,
@@ -2487,11 +2482,14 @@ function ClinicApp() {
             type: 'new_visit',
             title: 'تسجيل حضور موعد مسبق بالانتظار',
             message: `تم تأكيد حضور المريض (${patient.fullName}) وتحويله لصالة الانتظار.`,
-            ticket: String(nextFileNumber),
+            ticket: String(checkInResult.visit.queueNumber),
             timestamp: formatAppTime(new Date()),
           });
           scheduleBannerDismiss(5000, `new-${checkInResult.visit.visitId}`);
         }
+
+        // عدّاد الكتابات: تسجيل الحضور + الفاتورة حُفظا فعلاً
+        meterWrite(1);
       } catch (error) {
         alert(error instanceof Error ? error.message : 'فشل تسجيل حضور المريض في قاعدة البيانات');
       }
@@ -2499,11 +2497,11 @@ function ClinicApp() {
   };
 
   // Walk-in: Patient + Invoice + Payment + Visit are committed in one transaction
-  const handleAddPatientToQueue = async (item: QueueItem) => {
+  const handleAddPatientToQueue = async (item: QueueItem): Promise<{ queueNumber: number; fileNumber: number } | null> => {
     const cleanPhone = (item.phone || '').trim();
     const cleanName = (item.patientName || '').trim();
     const lockKey = `queue:${item.patientId || normalizePhoneDigits(cleanPhone) || normalizeArabicName(cleanName)}`;
-    if (inFlightActionsRef.current.has(lockKey)) return;
+    if (inFlightActionsRef.current.has(lockKey)) return null;
     inFlightActionsRef.current.add(lockKey);
 
     try {
@@ -2518,7 +2516,7 @@ function ClinicApp() {
 
       // Convert entered age to a valid dateOfBirth so the age calculation is perfectly synchronized and correct
       const calculatedDOB = item.age && Number(item.age) > 0
-        ? new Date(new Date().getFullYear() - Number(item.age), 0, 1).toISOString().split('T')[0]
+        ? `${new Date().getFullYear() - Number(item.age)}-01-01`
         : null;
 
       const patientGender: 'male' | 'female' | undefined = item.gender === 'female'
@@ -2604,11 +2602,15 @@ function ClinicApp() {
               type: 'new_visit',
               title: 'تسجيل كشف وزيارة جديدة',
               message: `تم تسجيل المريض (${item.patientName}) في قائمة الانتظار بنجاح.`,
-              ticket: String(item.ticketNumber || nextFileNumber),
+              ticket: String(registeredVisit.queueNumber),
               timestamp: formatAppTime(new Date()),
             });
             scheduleBannerDismiss(5000, `new-${registeredVisit.visitId}`);
           }
+
+          // عدّاد الكتابات: تسجيل الزيارة + المريض + الفاتورة حُفظت فعلاً
+          meterWrite(1);
+          return { queueNumber: registeredVisit.queueNumber, fileNumber: Number(patient.fileNumber) || nextFileNumber };
         } catch (error) {
           alert(error instanceof Error ? error.message : 'فشل إضافة المريض للانتظار في قاعدة البيانات');
         }
@@ -2616,6 +2618,7 @@ function ClinicApp() {
     } finally {
       inFlightActionsRef.current.delete(lockKey);
     }
+    return null;
   };
 
   // Add scheduled appointment: Patient first, then Appointment in one Firestore transaction
@@ -2799,6 +2802,8 @@ function ClinicApp() {
         return;
       }
       invalidatePatientHistory(activeWaiting?.patientId || activeExamPatient?.id);
+      // عدّاد الكتابات: إنهاء الكشف + الروشتة + الفاتورة حُفظت فعلاً
+      meterWrite(1);
     }
 
     // Play chime & show alert notification
