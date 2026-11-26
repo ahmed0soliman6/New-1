@@ -16,7 +16,7 @@ import {
 import { db } from './firebase';
 import { ID_FIELD_MAP, normalize } from './repositories/common';
 import { meterQuery } from './readMeter';
-import { todayKey } from '../utils/dayKey';
+import { todayKey, toDayKey } from '../utils/dayKey';
 import type { Invoice, Payment } from '../types/database';
 
 export const FINANCE_PAGE_SIZE = 25;
@@ -61,7 +61,24 @@ export async function fetchTotal(
   r: KeyRange
 ): Promise<{ total: number; count: number }> {
   if (!db) throw new Error('Firestore غير مهيأ');
-  const field = name === 'payments' ? 'dayKey' : 'date';
+  // ج21: إجمالي الوارد يحسب المدفوعات المدفوعة فقط. الدفعات القديمة بلا
+  // حقل status تُعامل كمدفوعة (أُنشئت قبل إضافة الحقل) حتى لا تسقط من الإجمالي.
+  if (name === 'payments') {
+    const snap = await getDocs(
+      query(collection(db, 'payments'), ...rangeConstraints('dayKey', r))
+    );
+    meterQuery('financeTotal:payments', snap);
+    let total = 0;
+    let n = 0;
+    snap.docs.forEach((d) => {
+      const p = mapDoc<Payment>('payments', d);
+      if (p.status && p.status !== 'PAID') return;
+      total += Math.max(0, Number(p.amount) || 0);
+      n += 1;
+    });
+    return { total, count: n };
+  }
+  const field = 'date';
   const snap = await getAggregateFromServer(
     query(collection(db, name), ...rangeConstraints(field, r)),
     { total: sum('amount'), n: count() }
@@ -151,14 +168,44 @@ export async function fetchPaymentsPage(
   return { items, invoices, cursor: pageDocs[pageDocs.length - 1] ?? null, hasNext };
 }
 
-/** الفواتير غير المسددة (عادة قليلة) */
-export async function fetchUnpaidInvoices(): Promise<Invoice[]> {
+export interface UnpaidInvoicesResult {
+  items: Invoice[];
+  /** true عند وجود فواتير غير مسددة أخرى بعد حد العرض — لا تُخفى بصمت */
+  hasMore: boolean;
+  totalUnpaid: number;
+}
+
+const UNPAID_DISPLAY_LIMIT = 100;
+
+/** الفواتير غير المسددة ضمن الفترة المختارة (عادة قليلة) */
+export async function fetchUnpaidInvoices(r: KeyRange = {}): Promise<UnpaidInvoicesResult> {
   if (!db) throw new Error('Firestore غير مهيأ');
+  // ج10: نجلب أكثر من حد العرض لنعرف إن كان هناك المزيد، ونطبّق فلتر
+  // الفترة محلياً (بتوقيت القاهرة) لأن بعض الفواتير القديمة بلا dayKey.
   const snap = await getDocs(
-    query(collection(db, 'invoices'), where('status', 'in', ['UNPAID', 'PARTIALLY_PAID']), limit(100))
+    query(
+      collection(db, 'invoices'),
+      where('status', 'in', ['UNPAID', 'PARTIALLY_PAID']),
+      limit(UNPAID_DISPLAY_LIMIT + 50)
+    )
   );
   meterQuery('financePage:unpaid', snap);
-  return snap.docs.map((d) => mapDoc<Invoice>('invoices', d));
+  const all = snap.docs
+    .map((d) => mapDoc<Invoice>('invoices', d))
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  const inRange = all.filter((inv) => {
+    if (!r.from && !r.to) return true;
+    const key = inv.dayKey || (inv.createdAt ? toDayKey(inv.createdAt) : '');
+    if (!key) return true; // بلا تاريخ قابل للتحديد: لا تُخفى
+    if (r.from && key < r.from) return false;
+    if (r.to && key > r.to) return false;
+    return true;
+  });
+  return {
+    items: inRange.slice(0, UNPAID_DISPLAY_LIMIT),
+    hasMore: inRange.length > UNPAID_DISPLAY_LIMIT || snap.docs.length === UNPAID_DISPLAY_LIMIT + 50,
+    totalUnpaid: inRange.length,
+  };
 }
 
 /** صفحة واحدة من المصروفات */
