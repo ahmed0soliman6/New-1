@@ -1,6 +1,7 @@
 import type { TransactionRecord } from '../types';
 import type { Invoice, Payment, Patient } from '../types/database';
 import { formatAppTime } from './numberUtils';
+import { toDayKey } from './dayKey';
 
 export function buildTransactions(args: {
   payments: Payment[];
@@ -35,9 +36,16 @@ export function buildTransactions(args: {
       type: 'in',
       paymentMethod: p.method === 'CARD' ? 'فيزا / كارت' : p.method === 'TRANSFER' ? 'إنستاباي' : 'نقدي',
       method: p.method === 'CARD' ? 'فيزا / كارت' : p.method === 'TRANSFER' ? 'إنستاباي' : 'نقدي',
-      status: inv?.status === 'PAID' || paidAmount >= totalAmount ? 'مدفوعة' : 'غير مدفوعة',
+      status:
+        inv?.status === 'PAID' || paidAmount >= totalAmount
+          ? 'مدفوعة'
+          : inv?.status === 'PARTIALLY_PAID'
+            ? 'مسددة جزئياً'
+            : 'غير مدفوعة',
+      remainingAmount: Math.max(0, totalAmount - paidAmount),
       time: formatAppTime(rawIso),
-      date: rawIso.includes('T') ? rawIso.split('T')[0] : rawIso,
+      // ج15: التاريخ المعروض بتوقيت القاهرة (dayKey) لا الجزء UTC من الطابع.
+      date: toDayKey(rawIso),
       rawTimestamp: rawIso,
       category: 'كشوفات وخدمات طبية',
     });
@@ -61,12 +69,20 @@ export function buildTransactions(args: {
         discountAmount: inv.discount || 0,
         paidAmount: inv.paidAmount || 0,
         amount: inv.paidAmount || inv.total,
+        // ج11: فاتورة بلا دفعة بعد — المتبقي هو الإجمالي ناقص المدفوع.
+        remainingAmount: Math.max(0, inv.total - (inv.paidAmount || 0)),
         type: 'in',
         paymentMethod: 'نقدي',
         method: 'نقدي',
-        status: inv.status === 'PAID' ? 'مدفوعة' : 'غير مدفوعة',
+        status:
+          inv.status === 'PAID'
+            ? 'مدفوعة'
+            : inv.status === 'PARTIALLY_PAID'
+              ? 'مسددة جزئياً'
+              : 'غير مدفوعة',
         time: formatAppTime(rawIso),
-        date: rawIso.includes('T') ? rawIso.split('T')[0] : rawIso,
+        // ج15: التاريخ المعروض بتوقيت القاهرة (dayKey) لا الجزء UTC من الطابع.
+        date: toDayKey(rawIso),
         rawTimestamp: rawIso,
         category: 'فواتير كشوفات',
       });
