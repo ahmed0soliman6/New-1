@@ -64,10 +64,14 @@ export function formatAppDate(
     const explicitLang = typeof optionsOrLang === 'string' ? optionsOrLang : lang;
     const currentLang = explicitLang || (typeof window !== 'undefined' ? localStorage.getItem('clinic_language') : 'ar') || 'ar';
     const locale = currentLang === 'en' ? 'en-US' : 'ar-EG-u-nu-latn';
-    const formatted = d.toLocaleDateString(locale, options || {
-      day: 'numeric',
-      month: currentLang === 'en' ? 'short' : 'long',
-      year: 'numeric',
+    // ج4: كل التواريخ بتوقيت القاهرة دائماً (لا بتوقيت جهاز المستخدم).
+    const formatted = d.toLocaleDateString(locale, {
+      ...(options || {
+        day: 'numeric',
+        month: currentLang === 'en' ? 'short' : 'long',
+        year: 'numeric',
+      }),
+      timeZone: 'Africa/Cairo',
     });
     return toEnglishDigits(formatted);
   } catch {
@@ -93,9 +97,13 @@ export function formatAppTime(
     const explicitLang = typeof optionsOrLang === 'string' ? optionsOrLang : lang;
     const currentLang = explicitLang || (typeof window !== 'undefined' ? localStorage.getItem('clinic_language') : 'ar') || 'ar';
     const locale = currentLang === 'en' ? 'en-US' : 'ar-EG-u-nu-latn';
-    const formatted = d.toLocaleTimeString(locale, options || {
-      hour: '2-digit',
-      minute: '2-digit',
+    // ج4: كل الأوقات بتوقيت القاهرة دائماً (لا بتوقيت جهاز المستخدم).
+    const formatted = d.toLocaleTimeString(locale, {
+      ...(options || {
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+      timeZone: 'Africa/Cairo',
     });
     return toEnglishDigits(formatted);
   } catch {
