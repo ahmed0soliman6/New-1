@@ -25,8 +25,10 @@ async function byPatient<T>(d: Firestore, name: string, patientId: string): Prom
     meterQuery(`history:${name}`, snap);
     return mapDocs<T>(name, snap);
   } catch (err) {
-    safeLogger.warn(`[fetchPatientHistory] Skipped collection "${name}"`, err);
-    return [];
+    safeLogger.warn(`[fetchPatientHistory] Failed collection "${name}"`, err);
+    // ج8: لا تبتلع فشل التحميل بصمت — ارمِ الخطأ ليظهر في الواجهة
+    // بدل عرض الملف فارغاً كأن المريض بلا تاريخ.
+    throw new Error(`تعذّر تحميل ${name}: ${(err as Error)?.message || 'خطأ غير معروف'}`);
   }
 }
 
