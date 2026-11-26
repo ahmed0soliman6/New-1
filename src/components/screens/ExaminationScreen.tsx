@@ -28,7 +28,7 @@ import { PreviousVisitCard } from '../examination/PreviousVisitCard';
 import { PatientDetailFullScreen } from './PatientDetailFullScreen';
 import { READ_OPT } from '../../config/readOpt';
 import { usePatientHistory, invalidatePatientHistory } from '../../services/history';
-import { recordExamToClinicalMemory, getSmartClinicalSuggestions } from '../../utils/clinicalRecommender';
+import { recordExamToClinicalMemory } from '../../utils/clinicalRecommender';
 import {
   Visit,
   Prescription,
@@ -84,7 +84,7 @@ interface ExaminationScreenProps {
     chiefComplaint?: string;
     examination?: string;
     history?: string;
-  }) => void;
+  }) => Promise<boolean>;
 
   // Catalogs and handlers
   radiologyCatalog: RadiologyCatalogItem[];
@@ -236,11 +236,14 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
   }, []);
 
   // Vital signs state for exam (re-evaluated per patient/visit to prevent cross-patient bleed - EMR-01)
+  // ب23: prefill ONLY from an ACTIVE visit (IN_PROGRESS/WAITING) — never from an
+  // old completed visit, even when currentVisitId falls back to one.
   const initialExamVitals = React.useMemo<Partial<VitalsData> | undefined>(() => {
     const activeVisit = visits.find(
       (v) =>
-        (currentVisitId && v.visitId === currentVisitId) ||
-        (patient?.id && v.patientId === patient.id && (v.status === 'IN_PROGRESS' || v.status === 'WAITING'))
+        (v.status === 'IN_PROGRESS' || v.status === 'WAITING') &&
+        ((currentVisitId && v.visitId === currentVisitId) ||
+          (patient?.id && v.patientId === patient.id))
     );
     const vs = activeVisit?.vitalSigns;
     if (!vs) return undefined;
@@ -260,6 +263,8 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
   // Consultation state - only loads registered data from visit registration if present
   const [complaint, setComplaint] = useState(patient?.chiefComplaint || '');
   const [physicalExam, setPhysicalExam] = useState('');
+  // ب18: medical history, entered by the doctor during the exam (was always saved as '')
+  const [medicalHistory, setMedicalHistory] = useState('');
   const [patientChronicConditions, setPatientChronicConditions] = useState<string[]>(patient?.chronicConditions || []);
   const [isAddingChronic, setIsAddingChronic] = useState(false);
   const [newChronicInput, setNewChronicInput] = useState('');
@@ -365,6 +370,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
 
       setExamVitals(initialExamVitals || {});
       setPhysicalExam('');
+      setMedicalHistory('');
       setRadiologyOrders([]);
       setLabOrders([]);
       setPatientDiagnoses([]);
@@ -419,21 +425,28 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
       })
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-    // Find the latest past visit that ACTUALLY has a registered prescription
-    let latestVisitWithRx: Visit | null = null;
+    // ب10: show the card for the latest past visit that has ANY data —
+    // prescription, labs or radiology — not only visits with a prescription.
+    let latestVisitWithData: Visit | null = null;
     let registeredRx: Prescription | null = null;
+    let latestLabs: LabOrder[] = [];
+    let latestRads: RadiologyOrder[] = [];
 
     for (const v of pastVisits) {
       const rx = (effPrescriptions || []).find((p) => p.visitId === v.visitId);
-      if (rx && rx.items && rx.items.length > 0) {
-        latestVisitWithRx = v;
-        registeredRx = rx;
+      const vLabs = (effLabOrders || []).filter((l) => l.visitId === v.visitId);
+      const vRads = (effRadOrders || []).filter((r) => r.visitId === v.visitId);
+      const hasRx = Boolean(rx && rx.items && rx.items.length > 0);
+      if (hasRx || vLabs.length > 0 || vRads.length > 0) {
+        latestVisitWithData = v;
+        registeredRx = hasRx ? rx! : null;
+        latestLabs = vLabs;
+        latestRads = vRads;
         break;
       }
     }
 
-    // STRICT RULE: Only show the previous visit card if there is a real previous visit AND a registered prescription
-    if (!latestVisitWithRx || !registeredRx) {
+    if (!latestVisitWithData) {
       return {
         hasPreviousVisit: false,
         previousVisit: null,
@@ -444,17 +457,14 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
       };
     }
 
-    const labs = (effLabOrders || []).filter((l) => l.visitId === latestVisitWithRx!.visitId);
-    const rads = (effRadOrders || []).filter((r) => r.visitId === latestVisitWithRx!.visitId);
-
-    const totalCount = Math.max(1, pastVisits.length > 0 ? pastVisits.length : patient.visitsCount || 1);
+    const totalCount = pastVisits.length + 1;
 
     return {
       hasPreviousVisit: true,
-      previousVisit: latestVisitWithRx,
+      previousVisit: latestVisitWithData,
       previousPrescription: registeredRx,
-      previousLabOrders: labs,
-      previousRadiologyOrders: rads,
+      previousLabOrders: latestLabs,
+      previousRadiologyOrders: latestRads,
       totalVisitsCount: totalCount,
     };
   }, [patient, effVisits, effPrescriptions, effLabOrders, effRadOrders, currentVisitId]);
@@ -560,17 +570,6 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  // Derive smart clinical suggestions based on patient complaint, diagnosis & history
-  const smartSuggestions = React.useMemo(() => {
-    return getSmartClinicalSuggestions(
-      effVisits || [],
-      effPrescriptions || [],
-      effLabOrders || [],
-      effRadOrders || [],
-      patientDiagnoses || []
-    );
-  }, [effVisits, effPrescriptions, effLabOrders, effRadOrders, patientDiagnoses]);
-
   // Add custom or preset chronic condition
   const handleToggleChronicCondition = (condition: string) => {
     if (patientChronicConditions.includes(condition)) {
@@ -590,6 +589,28 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
     }
   };
 
+  // ب19: readable follow-up date — parse YYYY-MM-DD as a LOCAL date (never UTC,
+  // which would shift the day on devices outside Cairo time).
+  const formatFollowupDateDisplay = (dateStr: string) => {
+    if (!dateStr) return '';
+    try {
+      const parts = dateStr.split('-').map(Number);
+      const d =
+        parts.length === 3 && parts.every((n) => !isNaN(n))
+          ? new Date(parts[0], parts[1] - 1, parts[2])
+          : new Date(dateStr);
+      return (
+        formatAppDate(
+          d,
+          { year: 'numeric', month: 'long', day: 'numeric' },
+          language
+        ) || dateStr
+      );
+    } catch {
+      return dateStr;
+    }
+  };
+
   // Generate WhatsApp formatted message
   const generateWhatsAppMessage = () => {
     const todayStr = formatAppDate(new Date(), {
@@ -605,10 +626,13 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
     let medsSection = '';
     if (activePrescription.length > 0) {
       const medsList = activePrescription
-        .map(
-          (item, idx) =>
-            `  ${idx + 1}. *${item.drugName}* ${item.dosageForm ? `(${item.dosageForm})` : ''}\n     • الجرعة والمدة: ${item.dosage || 'قرص'}${item.timing ? ` — ${item.timing}` : ''}${item.duration ? ` — ${item.duration}` : ''}${item.notes ? ` (${item.notes})` : ''}`
-        )
+        .map((item, idx) => {
+          // ب24: never invent 'قرص' for an empty dosage — omit it instead
+          const doseParts = [item.dosage, item.timing, item.duration].filter(
+            (p) => p && p.trim()
+          );
+          return `  ${idx + 1}. *${item.drugName}* ${item.dosageForm ? `(${item.dosageForm})` : ''}\n     • الجرعة والمدة: ${doseParts.join(' — ') || '—'}${item.notes ? ` (${item.notes})` : ''}`;
+        })
         .join('\n');
       medsSection = `\n\n💊 *الأدوية الموصوفة:*\n${medsList}`;
     }
@@ -636,16 +660,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
 
     let followUpSection = '';
     if (followupDate) {
-      try {
-        const formattedFollowUp = formatAppDate(followupDate, {
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric',
-        }, language);
-        followUpSection = `\n\n🗓 *موعد المتابعة الاستشارية القادمة:* ${formattedFollowUp}`;
-      } catch {
-        followUpSection = `\n\n🗓 *موعد المتابعة الاستشارية القادمة:* ${followupDate}`;
-      }
+      followUpSection = `\n\n🗓 *موعد المتابعة الاستشارية القادمة:* ${formatFollowupDateDisplay(followupDate)}`;
     }
 
     const activeBranch =
@@ -688,14 +703,16 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
   const handleSavePatientInfo = async () => {
     if (!patient) return;
     try {
-      const birthYear = new Date().getFullYear() - (parseInt(editablePatientAge, 10) || 30);
-      const dob = `${birthYear}-01-01`;
-      
+      // ب15: never fabricate a date of birth. This screen's patient record
+      // carries no real DOB (PatientListItem has no dateOfBirth field), so
+      // editing name/age must not write any DOB at all — a derived 1-January
+      // date would overwrite the real one stored in Firestore.
+      // Unknown gender stays unknown (''), never defaults to male.
+      const parsedAge = parseInt(editablePatientAge, 10);
       const updatedData = {
         fullName: editablePatientName.trim(),
         phone: editablePatientPhone.trim(),
-        dateOfBirth: dob,
-        gender: editablePatientGender === 'female' ? 'female' : 'male',
+        gender: editablePatientGender,
         address: editablePatientAddress.trim(),
         bloodType: editablePatientBloodType,
         updatedAt: new Date().toISOString(),
@@ -714,8 +731,8 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
         ...patient,
         name: editablePatientName.trim(),
         phone: editablePatientPhone.trim(),
-        age: parseInt(editablePatientAge, 10) || 30,
-        gender: editablePatientGender === 'female' ? 'female' : 'male',
+        age: !isNaN(parsedAge) ? parsedAge : patient.age,
+        gender: editablePatientGender,
         address: editablePatientAddress.trim(),
         bloodType: editablePatientBloodType,
         bloodGroup: editablePatientBloodType,
@@ -763,7 +780,12 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
   const isAllowed = canAccess('clinical-exam');
   const [isExamFinished, setIsExamFinished] = useState(false);
 
-  const handleFinish = () => {
+  // ب4/ب5: finish ONLY after the save actually succeeds. onFinishExam returns
+  // Promise<boolean> (contract with App.tsx): true = saved/updated, false =
+  // nothing was saved (e.g. no active visit). On false we show a clear error
+  // and do NOT mark the exam finished or show the success modal. Clinical
+  // memory is recorded only on a successful save (no double counting).
+  const handleFinish = async () => {
     if (!isAllowed) {
       alert('غير مصرح لك بإنهاء الكشف الطبي أو حفظ الزيارة.');
       return;
@@ -777,6 +799,25 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
     }
     try {
       assertPermission('clinical.complete', 'إنهاء الكشف وحفظ الزيارة');
+      // ب18: pass the doctor-entered medical history, and the full diagnosis
+      // objects (including the isPrimary flag) so the primary diagnosis is
+      // the one recorded as lastDiagnosis.
+      const saved = await onFinishExam({
+        prescriptionItems: activePrescription,
+        labOrders,
+        radiologyOrders,
+        diagnoses: patientDiagnoses,
+        followupDate,
+        lifestyleAdvice,
+        vitals: hasAnyVital(examVitals) ? examVitals : null,
+        chiefComplaint: complaint.trim(),
+        examination: physicalExam.trim(),
+        history: medicalHistory.trim(),
+      });
+      if (saved !== true) {
+        alert('تعذّر حفظ الزيارة: لا توجد زيارة نشطة لهذا المريض أو فشل الحفظ في قاعدة البيانات. لم يُحفظ الكشف — تحقق من وجود زيارة انتظار نشطة ثم حاول مرة أخرى.');
+        return;
+      }
       setIsExamFinished(true);
       recordExamToClinicalMemory({
         prescriptionItems: activePrescription,
@@ -788,18 +829,6 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
       if (patient?.id) {
         invalidatePatientHistory(patient.id);
       }
-      onFinishExam({
-        prescriptionItems: activePrescription,
-        labOrders,
-        radiologyOrders,
-        diagnoses: patientDiagnoses,
-        followupDate,
-        lifestyleAdvice,
-        vitals: hasAnyVital(examVitals) ? examVitals : null,
-        chiefComplaint: complaint.trim(),
-        examination: physicalExam.trim(),
-        history: '',
-      });
       setShowSuccessModal(true);
       setTimeout(() => {
         setShowSuccessModal(false);
@@ -1221,8 +1250,8 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
         </div>
       </div>
 
-      {/* 2. Standalone Previous Visit Card (Separated from patient details, ONLY rendered if previous visit exists AND has prescription) */}
-      {hasPreviousVisit && previousVisit && previousPrescription && (
+      {/* 2. Standalone Previous Visit Card (shown when a previous visit has any data: prescription, labs or radiology) */}
+      {hasPreviousVisit && previousVisit && (
         <div className="w-full">
           <PreviousVisitCard
             patient={patient}
@@ -1232,7 +1261,17 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
             labOrders={previousLabOrders}
             radiologyOrders={previousRadiologyOrders}
             onCopyMedications={(meds) => {
-              onChangeActivePrescription([...activePrescription, ...meds]);
+              // ب16: never duplicate a drug already on the current prescription
+              const norm = (s: string | undefined) => (s || '').trim().toLowerCase();
+              const fresh = meds.filter(
+                (m) =>
+                  !activePrescription.some(
+                    (it) => norm(it.drugName) === norm(m.drugName) && norm(it.strength) === norm(m.strength)
+                  )
+              );
+              if (fresh.length > 0) {
+                onChangeActivePrescription([...activePrescription, ...fresh]);
+              }
             }}
           />
         </div>
@@ -1444,6 +1483,21 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                     )}
                   </div>
                 </div>
+                {/* Medical History (ب18: saved with the exam instead of always '') */}
+                <div className="space-y-1.5">
+                  <span className="font-bold text-slate-700 dark:text-[#859394] block text-[11px]">
+                    {language === 'en' ? 'Medical History:' : 'التاريخ المرضي:'}
+                  </span>
+                  {medicalHistory ? (
+                    <p className="text-slate-700 dark:text-[#bbc9ca] font-medium leading-relaxed text-[11px] whitespace-pre-line">
+                      {medicalHistory}
+                    </p>
+                  ) : (
+                    <span className="text-slate-400 italic text-[11px]">
+                      {language === 'en' ? 'No medical history recorded' : 'لا يوجد تاريخ مرضي مسجل'}
+                    </span>
+                  )}
+                </div>
               </div>
             ) : (
               /* Edit Mode: Doctor can edit/add using both preset catalogs and custom inputs */
@@ -1650,6 +1704,21 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                   </div>
                 </div>
 
+                {/* Card 4: Medical History (ب18) */}
+                <div className="bg-white dark:bg-[#111A2E] p-4 sm:p-6 rounded-2xl border-2 border-amber-500 flex flex-col gap-4 shadow-sm">
+                  <div className="flex items-center gap-2 border-b border-slate-100 dark:border-white/5 pb-3">
+                    <span className="material-symbols-outlined text-amber-500 text-xl">history_edu</span>
+                    <span className="text-sm font-bold text-slate-900 dark:text-[#dde2f5]">4. التاريخ المرضي للمريض</span>
+                  </div>
+                  <textarea
+                    value={medicalHistory}
+                    onChange={(e) => setMedicalHistory(e.target.value)}
+                    rows={3}
+                    placeholder="اكتب التاريخ المرضي: أمراض سابقة، عمليات، أدوية مزمنة، حساسية، تاريخ عائلي..."
+                    className="w-full bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] placeholder:text-slate-400 text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-[#00c2cb] resize-y"
+                  />
+                </div>
+
                 {/* Submit Actions */}
                 <div className="flex items-center gap-3 mt-2 justify-end">
                   <button
@@ -1740,7 +1809,6 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
             onChangeOrders={setLabOrders}
             labCatalog={labCatalog}
             onAddLabToCatalog={onAddLabToCatalog}
-            frequentSuggestions={smartSuggestions.frequentLabs}
           />
         )}
 
@@ -1751,7 +1819,6 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
             onChangeOrders={setRadiologyOrders}
             radiologyCatalog={radiologyCatalog}
             onAddRadiologyToCatalog={onAddRadiologyToCatalog}
-            frequentSuggestions={smartSuggestions.frequentRadiology}
           />
         )}
 
@@ -1762,7 +1829,6 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
             onChangeDiagnoses={setPatientDiagnoses}
             diagnosesCatalog={diagnosesCatalog}
             onAddDiagnosisToCatalog={onAddDiagnosisToCatalog}
-            frequentSuggestions={smartSuggestions.frequentDiagnoses}
           />
         )}
 
@@ -1775,7 +1841,6 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
             onAddDrugToCatalog={onAddDrugToCatalog}
             onOpenPrescriptionPad={() => onNavigate('prescription-pad')}
             onPrintPrescription={handleDirectPrint}
-            frequentSuggestions={smartSuggestions.frequentDrugs}
           />
         )}
 
@@ -1786,7 +1851,6 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
             onChangeFollowupDate={setFollowupDate}
             lifestyleAdvice={lifestyleAdvice}
             onChangeLifestyleAdvice={setLifestyleAdvice}
-            frequentSuggestions={smartSuggestions.frequentInstructions}
           />
         )}
 
@@ -2491,7 +2555,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
             {/* Follow-up date below advice */}
             {followupDate && (
               <div className="p-2 rounded-lg bg-amber-50/40 border border-amber-100 text-[10px] text-amber-900 text-right font-bold" dir="rtl">
-                موعد الاستشارة القادمة: {followupDate}
+                موعد الاستشارة القادمة: {formatFollowupDateDisplay(followupDate)}
               </div>
             )}
           </div>
@@ -2726,7 +2790,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                     {/* Follow up below advice */}
                     {followupDate && (
                       <div className="p-1.5 rounded-lg bg-amber-50/40 border border-amber-100 text-[9px] text-amber-950 text-right font-bold" dir="rtl">
-                        موعد الاستشارة القادمة: {followupDate}
+                        موعد الاستشارة القادمة: {formatFollowupDateDisplay(followupDate)}
                       </div>
                     )}
                   </div>
@@ -2745,7 +2809,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                               : 'text-[9px]'
                           } text-slate-500`}
                         >
-                          {prescriptionConfig.branches.slice(0, 2).map((b: any, i: number) => (
+                          {prescriptionConfig.branches.map((b: any, i: number) => (
                             <div key={b.id || i} className="flex items-center gap-1 flex-wrap">
                               <span className="font-bold text-slate-800">{b.name}:</span>
                               <span>{b.address || ''}</span>
