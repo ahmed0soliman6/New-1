@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { QueueItem, ScreenType } from '../../types';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { usePermissions } from '../../context/AuthContext';
@@ -28,6 +28,30 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({
     patientName: string;
     visible: boolean;
   } | null>(null);
+
+  // أ11: إشعار «وصل مريض جديد» — كان ميتاً (setNotification لا يُستدعى أبداً).
+  // نراقب نموّ الطابور: أي عنصر جديد (id لم يكن موجوداً) يُظهر التنبيه باسمه.
+  const seenQueueIdsRef = useRef<Set<string>>(new Set(queue.map((q) => q.id)));
+  const notificationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const seen = seenQueueIdsRef.current;
+    const newcomers = queue.filter((q) => !seen.has(q.id));
+    queue.forEach((q) => seen.add(q.id));
+    if (newcomers.length === 0) return;
+    const latest = newcomers[newcomers.length - 1];
+    setNotification({ id: latest.id, patientName: latest.patientName, visible: true });
+    if (notificationTimerRef.current) clearTimeout(notificationTimerRef.current);
+    notificationTimerRef.current = setTimeout(() => setNotification(null), 5000);
+  }, [queue]);
+
+  // إغلاق مؤقّت الإشعار عند فكّ الشاشة فقط (لا عند كل تغيّر للطابور،
+  // حتى لا يبقى التنبيه ظاهراً للأبد إن تغيّر الطابور بلا وافد جديد).
+  useEffect(() => {
+    return () => {
+      if (notificationTimerRef.current) clearTimeout(notificationTimerRef.current);
+    };
+  }, []);
 
   const handleOpenExam = (item: QueueItem) => {
     onCallPatient(item.ticketNumber, item.patientName);
