@@ -15,7 +15,6 @@ interface LabCardProps {
   onChangeOrders: (orders: LabOrderItem[]) => void;
   labCatalog: LabCatalogItem[];
   onAddLabToCatalog: (item: LabCatalogItem) => void;
-  frequentSuggestions?: Array<{ testName: string; count?: number }>;
 }
 
 export const LabCard: React.FC<LabCardProps> = ({
@@ -23,7 +22,6 @@ export const LabCard: React.FC<LabCardProps> = ({
   onChangeOrders,
   labCatalog,
   onAddLabToCatalog,
-  frequentSuggestions = [],
 }) => {
   const { language } = useLanguage();
   const [showPicker, setShowPicker] = useState(true);
@@ -198,11 +196,19 @@ export const LabCard: React.FC<LabCardProps> = ({
     onChangeOrders(
       labOrders.map((ord) => {
         if (ord.id === id) {
+          // ب20: setting RESULT manually without a result must NOT stamp a resultDate;
+          // returning to REQUEST clears the (now meaningless) result date.
+          const hasResult = Boolean(
+            (ord.resultValue && ord.resultValue.trim()) ||
+            (ord.reportNotes && ord.reportNotes.trim())
+          );
           return {
             ...ord,
             status: newStatus,
             resultDate:
-              newStatus !== 'REQUEST' && !ord.resultDate
+              newStatus === 'REQUEST'
+                ? undefined
+                : newStatus !== 'REQUEST' && hasResult && !ord.resultDate
                 ? new Date().toLocaleDateString('ar-EG')
                 : ord.resultDate,
           };
@@ -217,12 +223,24 @@ export const LabCard: React.FC<LabCardProps> = ({
       labOrders.map((ord) => {
         if (ord.id === id) {
           const updated = { ...ord, [field]: val };
+          // ب20: clearing a result returns the status to REQUEST (and clears its date)
+          if (field === 'resultValue' && typeof val === 'string' && val.trim().length === 0) {
+            if (updated.status === 'RESULT') {
+              updated.status = 'REQUEST';
+            }
+            updated.resultDate = undefined;
+          }
           if (field === 'resultValue' && typeof val === 'string' && val.trim().length > 0) {
             if (ord.status === 'REQUEST') {
               updated.status = 'RESULT';
             }
             if (!updated.resultDate) {
               updated.resultDate = new Date().toLocaleDateString('ar-EG');
+            }
+          }
+          if (field === 'reportNotes' && typeof val === 'string' && val.trim().length === 0) {
+            if (updated.status === 'REPORT') {
+              updated.status = 'REQUEST';
             }
           }
           if (
