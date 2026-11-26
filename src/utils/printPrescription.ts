@@ -7,7 +7,7 @@
  */
 
 import QRCode from 'qrcode';
-import { toEnglishDigits } from './numberUtils';
+import { toEnglishDigits, formatDurationLabel } from './numberUtils';
 import { formatQrDestination } from '../components/QrCodeImage';
 
 /**
@@ -290,7 +290,7 @@ export async function generatePrescriptionHtml(data: PrintPrescriptionData): Pro
             ${idx + 1}. ${escapeHtml(it.drugName || '')} ${escapeHtml(it.strength || '')} ${escapeHtml(it.dosageForm || '')} ${it.scientificName ? `<span style="font-size: calc(${drugFontSize} - 1.5px); font-weight: normal; color: #475569;">(${escapeHtml(it.scientificName)})</span>` : ''}
           </div>
           <div style="font-size: ${instructionFontSize}; color: #0f766e; font-weight: 600;">
-            ${escapeHtml(it.dosageInstructions || it.dosage || '')} ${it.timing ? `&bull; ${escapeHtml(it.timing)}` : ''} ${it.duration ? `&bull; لمدة ${escapeHtml(it.duration)}` : ''}
+            ${escapeHtml(it.dosageInstructions || it.dosage || '')} ${it.timing ? `&bull; ${escapeHtml(it.timing)}` : ''} ${it.duration ? `&bull; ${escapeHtml(formatDurationLabel(it.duration))}` : ''}
           </div>
           ${it.notes ? `<div style="font-size: ${noteFontSize}; color: #64748b; font-style: italic; margin-top: 2px;">توجيهات: ${escapeHtml(it.notes)}</div>` : ''}
         </div>
@@ -772,7 +772,7 @@ export function printVisitReportDocument(data: PrintVisitReportData) {
               ${idx + 1}. ${escapeHtml(m.name)} ${m.strength ? `(${escapeHtml(m.strength)})` : ''}
             </div>
             <div style="font-size: 11px; color: #0f766e; font-weight: 600;">
-              ${escapeHtml(m.dose || 'قرص')} ${m.duration ? `• لمدة ${escapeHtml(m.duration)}` : ''}
+              ${escapeHtml(m.dose || 'قرص')} ${m.duration ? `• ${escapeHtml(formatDurationLabel(m.duration))}` : ''}
             </div>
             ${m.instructions ? `<div style="font-size: 10px; color: #64748b; font-style: italic;">${escapeHtml(m.instructions)}</div>` : ''}
           </div>
