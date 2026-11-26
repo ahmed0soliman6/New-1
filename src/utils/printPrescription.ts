@@ -7,8 +7,39 @@
  */
 
 import QRCode from 'qrcode';
-import { toEnglishDigits, formatDurationLabel } from './numberUtils';
+import { toEnglishDigits, formatDurationLabel, formatAppDate } from './numberUtils';
 import { formatQrDestination } from '../components/QrCodeImage';
+
+/**
+ * ب8: a strength already inside the drug name ("Betaserc 16 mg" + strength "16 mg")
+ * must not be printed twice.
+ */
+function displayStrength(drugName: string | undefined, strength: string | undefined): string {
+  const s = (strength || '').trim();
+  if (!s) return '';
+  return (drugName || '').toLowerCase().includes(s.toLowerCase()) ? '' : s;
+}
+
+/** ب8: a timing already inside the dosage text must not be repeated after it. */
+function timingAlreadyInDosage(dosageText: string | undefined, timing: string | undefined): boolean {
+  const t = (timing || '').trim();
+  if (!t) return false;
+  return (dosageText || '').toLowerCase().includes(t.toLowerCase());
+}
+
+/** ب19: format a YYYY-MM-DD follow-up date as a readable Arabic date (parsed as a local date, never UTC). */
+function formatFollowupDateAr(dateStr: string): string {
+  const parts = dateStr.split('-').map(Number);
+  const asLocalDate =
+    parts.length === 3 && parts.every((n) => !isNaN(n))
+      ? new Date(parts[0], parts[1] - 1, parts[2])
+      : new Date(dateStr);
+  return formatAppDate(
+    asLocalDate,
+    { year: 'numeric', month: 'long', day: 'numeric' },
+    'ar'
+  ) || dateStr;
+}
 
 /**
  * Escapes untrusted strings before interpolating into HTML templates
@@ -284,17 +315,21 @@ export async function generatePrescriptionHtml(data: PrintPrescriptionData): Pro
 
   // Build items HTML (escaped)
   const itemsHtml = items.length > 0
-    ? items.map((it, idx) => `
-        <div style="padding: ${itemPadding}; margin-bottom: ${itemMarginBottom}; border: 1px solid #e2e8f0; border-radius: 6px; background-color: #f8fafc; text-align: left; direction: ltr;">
+    ? items.map((it, idx) => {
+        const dosageText = it.dosageInstructions || it.dosage || '';
+        const showTiming = it.timing && !timingAlreadyInDosage(dosageText, it.timing);
+        return `
+        <div style="padding: ${itemPadding}; margin-bottom: ${itemMarginBottom}; border: 1px solid #e2e8f0; border-radius: 6px; background-color: #f8fafc; text-align: left; direction: ltr; break-inside: avoid;">
           <div style="font-size: ${drugFontSize}; font-weight: 700; color: #0f172a; margin-bottom: 2px;">
-            ${idx + 1}. ${escapeHtml(it.drugName || '')} ${escapeHtml(it.strength || '')} ${escapeHtml(it.dosageForm || '')} ${it.scientificName ? `<span style="font-size: calc(${drugFontSize} - 1.5px); font-weight: normal; color: #475569;">(${escapeHtml(it.scientificName)})</span>` : ''}
+            ${idx + 1}. ${escapeHtml(it.drugName || '')} ${escapeHtml(displayStrength(it.drugName, it.strength))} ${escapeHtml(it.dosageForm || '')} ${it.scientificName ? `<span style="font-size: calc(${drugFontSize} - 1.5px); font-weight: normal; color: #475569;">(${escapeHtml(it.scientificName)})</span>` : ''}
           </div>
           <div style="font-size: ${instructionFontSize}; color: #0f766e; font-weight: 600;">
-            ${escapeHtml(it.dosageInstructions || it.dosage || '')} ${it.timing ? `&bull; ${escapeHtml(it.timing)}` : ''} ${it.duration ? `&bull; ${escapeHtml(formatDurationLabel(it.duration))}` : ''}
+            ${escapeHtml(dosageText)} ${showTiming ? `&bull; ${escapeHtml(it.timing)}` : ''} ${it.duration ? `&bull; ${escapeHtml(formatDurationLabel(it.duration))}` : ''}
           </div>
           ${it.notes ? `<div style="font-size: ${noteFontSize}; color: #64748b; font-style: italic; margin-top: 2px;">توجيهات: ${escapeHtml(it.notes)}</div>` : ''}
         </div>
-      `).join('')
+      `;
+      }).join('')
     : `<div style="text-align: center; padding: 25px 0; color: #94a3b8; font-size: 12px;">لا توجد أدوية مضافة للروشتة حالياً.</div>`;
 
   // Build diagnoses HTML - strictly LTR and in English as requested
@@ -315,11 +350,11 @@ export async function generatePrescriptionHtml(data: PrintPrescriptionData): Pro
     `
     : '';
 
-  // Follow-up HTML
+  // Follow-up HTML (ب19: readable Arabic date, not raw YYYY-MM-DD)
   const followupHtml = followupDate
     ? `
       <div style="padding: ${followupPadding}; border: 1px solid #fef3c7; border-radius: 6px; background-color: #fffbeb; font-size: ${followupFontSize}; text-align: right; color: #78350f; font-weight: 600;">
-        موعد الاستشارة القادمة: ${escapeHtml(followupDate)}
+        موعد الاستشارة القادمة: ${escapeHtml(formatFollowupDateAr(followupDate))}
       </div>
     `
     : '';
@@ -364,23 +399,19 @@ export async function generatePrescriptionHtml(data: PrintPrescriptionData): Pro
           font-size: 12px;
           line-height: 1.4;
           width: 148mm;
-          height: 210mm;
-          min-height: 210mm;
-          max-height: 210mm;
-          overflow: hidden;
+          /* ب13: no fixed height / overflow hidden — long prescriptions paginate
+             onto further A5 pages instead of being silently cut off. */
         }
         .a5-container {
           width: 148mm;
-          height: 210mm;
           min-height: 210mm;
-          max-height: 210mm;
           padding-left: ${outerMargin};
           padding-right: ${outerMargin};
           padding-top: ${headerMargin};
           padding-bottom: ${footerMargin};
           display: flex;
           flex-direction: column;
-          justify-content: space-between;
+          justify-content: flex-start;
           background: #ffffff;
         }
         .header {
@@ -474,7 +505,7 @@ export async function generatePrescriptionHtml(data: PrintPrescriptionData): Pro
         }
         .content-body {
           flex: 1;
-          overflow: hidden;
+          overflow: visible;
         }
         .footer {
           border-top: 2.5px solid #00c2cb;
