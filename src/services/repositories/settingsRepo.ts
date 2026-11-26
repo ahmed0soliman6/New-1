@@ -1,6 +1,11 @@
 import {
+  addDoc,
+  collection,
   doc,
+  limit,
   onSnapshot,
+  orderBy,
+  query,
   setDoc,
   type Firestore,
   type Unsubscribe,
@@ -12,7 +17,7 @@ import type {
 } from '../../types/database';
 import { FirestoreCollections, SettingsDocs } from '../firebase/collections';
 import { handleFirestoreError, normalize, OperationType } from './common';
-import { meterDoc } from '../readMeter';
+import { meterDoc, meterQuery } from '../readMeter';
 
 export interface ClinicStatusState {
   status: 'available' | 'break';
@@ -273,6 +278,30 @@ export const subscribeToLatestAlert = <T = Record<string, unknown>>(
   );
 };
 
+// د15: مجموعة تنبيهات (مستند لكل تنبيه) بدل مستند واحد يُستبدَل.
+// ملاحظة: لا يوجد مفهوم deviceId في الكود إطلاقاً — لم يُخترع واحد؛ التمييز
+// بين الأجهزة يتم بحقل senderId الموجود أصلاً (اسم المستخدم المُرسل).
+export const ALERTS_COLLECTION = 'alerts';
+
+/** نصوص العرض الافتراضية حسب نوع التنبيه — تُشتق عندما لا يأتي عنوان/رسالة. */
+export function deriveAlertDisplayText(type: string): { title: string; message: string } {
+  switch (type) {
+    case 'new_visit':
+      return { title: 'وصل مريض جديد', message: 'تم تسجيل زيارة جديدة في الاستقبال.' };
+    case 'call':
+      return { title: 'نداء مريض للكشف', message: 'يرجى توجه المريض إلى غرفة الكشف.' };
+    case 'finish':
+      return { title: 'انتهاء الكشف الطبي', message: 'تم إنهاء الكشف الطبي.' };
+    default:
+      return { title: 'تنبيه من العيادة', message: 'حدث جديد في العيادة.' };
+  }
+}
+
+/**
+ * د15: ينشر التنبيه كمستند مستقل في مجموعة `alerts` (مستند لكل تنبيه)،
+ * فيحفظ تنبيهان متزامنان من جهازين معاً بدل أن يمحو أحدهما الآخر.
+ * يحمل المستند العنوان والرسالة ورقم التذكرة التي يحتاجها ClinicAlertPayload.
+ */
 export async function publishAlert(
   db: Firestore,
   alert: {
@@ -287,10 +316,40 @@ export async function publishAlert(
     senderId?: string;
   }
 ): Promise<void> {
-  const ref = doc(db, FirestoreCollections.SETTINGS, SettingsDocs.LATEST_ALERT);
-  await setDoc(ref, {
-    ...alert,
+  const fallback = deriveAlertDisplayText(alert.type);
+  await addDoc(collection(db, ALERTS_COLLECTION), {
+    id: alert.id,
+    type: alert.type,
+    title: alert.title?.trim() ? alert.title : fallback.title,
+    message: alert.message?.trim() ? alert.message : fallback.message,
+    ticket: alert.ticket ?? null,
+    timestamp: alert.timestamp,
+    patientId: alert.patientId ?? null,
+    visitId: alert.visitId ?? null,
+    senderId: alert.senderId ?? null,
     updatedAt: new Date().toISOString(),
   });
 }
+
+/**
+ * د15: اشتراك في أحدث التنبيهات من مجموعة `alerts` (الأحدث أولاً).
+ * تجاهل التنبيهات الأقدم من دقيقتين يبقى مسؤولية المستقبِل (كما كان مع
+ * المستند الواحد) — انظر App.tsx.
+ */
+export const subscribeToAlerts = <T = Record<string, unknown>>(
+  db: Firestore,
+  next: (alerts: T[]) => void,
+  error: (reason: Error) => void
+): Unsubscribe => {
+  return onSnapshot(
+    query(collection(db, ALERTS_COLLECTION), orderBy('updatedAt', 'desc'), limit(20)),
+    (snap) => {
+      meterQuery('alerts', snap);
+      next(snap.docs.map((d) => normalize({ id: d.id, ...d.data() }) as T));
+    },
+    (reason) => {
+      error(handleFirestoreError(reason, OperationType.LIST, ALERTS_COLLECTION));
+    }
+  );
+};
 
