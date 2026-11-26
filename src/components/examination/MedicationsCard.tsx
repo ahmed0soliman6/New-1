@@ -17,14 +17,6 @@ interface MedicationsCardProps {
   onAddDrugToCatalog: (item: DrugCatalogItem) => void;
   onOpenPrescriptionPad?: () => void;
   onPrintPrescription?: () => void;
-  frequentSuggestions?: Array<{
-    drugName: string;
-    strength?: string;
-    dosageForm?: string;
-    scientificName?: string;
-    instructions?: string;
-    count?: number;
-  }>;
 }
 
 export const MedicationsCard: React.FC<MedicationsCardProps> = ({
@@ -34,7 +26,6 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
   onAddDrugToCatalog,
   onOpenPrescriptionPad,
   onPrintPrescription,
-  frequentSuggestions = [],
 }) => {
   const { language } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
@@ -119,8 +110,22 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
     setTimeout(() => setSavedSuccessMsg(null), 3000);
   };
 
+  // ب16: prevent adding the same drug twice (same name + strength, case-insensitive)
+  const isDuplicateDrug = (drugName: string, strength?: string) => {
+    const norm = (s: string | undefined) => (s || '').trim().toLowerCase();
+    return prescriptionItems.some(
+      (it) => norm(it.drugName) === norm(drugName) && norm(it.strength) === norm(strength)
+    );
+  };
+
   // Add drug from catalog creating a decoupled SNAPSHOT into PrescriptionItem
   const handleAddFromCatalog = (drug: DrugCatalogItem | StandardDrugRecord) => {
+    if (isDuplicateDrug(drug.brandName, drug.strength)) {
+      setSavedSuccessMsg(`⚠️ ${drug.brandName} موجود بالفعل في الروشتة`);
+      setTimeout(() => setSavedSuccessMsg(null), 3000);
+      setSearchQuery('');
+      return;
+    }
     const snapshotItem: PrescriptionItem = {
       id: `rx-snap-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       drugName: drug.brandName,
@@ -163,6 +168,12 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
     if (!trimmedBrand) return;
 
     const fullBrandName = newStrength ? `${trimmedBrand} ${newStrength}`.trim() : trimmedBrand;
+
+    if (isDuplicateDrug(fullBrandName, newStrength.trim())) {
+      setSavedSuccessMsg(`⚠️ ${fullBrandName} موجود بالفعل في الروشتة`);
+      setTimeout(() => setSavedSuccessMsg(null), 3000);
+      return;
+    }
 
     if (saveToFavorites) {
       onAddDrugToCatalog({
@@ -245,6 +256,12 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
     }
 
     // Direct addition to visit with option to save
+    if (isDuplicateDrug(trimmed)) {
+      setSavedSuccessMsg(`⚠️ ${trimmed} موجود بالفعل في الروشتة`);
+      setTimeout(() => setSavedSuccessMsg(null), 3000);
+      setSearchQuery('');
+      return;
+    }
     const snapshotItem: PrescriptionItem = {
       id: `rx-snap-${Date.now()}`,
       drugName: trimmed,
@@ -798,7 +815,8 @@ export const MedicationsCard: React.FC<MedicationsCardProps> = ({
                     <select
                       onChange={(e) => {
                         if (e.target.value) {
-                          handleUpdateSnapshotField(item.id, 'dosage', e.target.value);
+                          // ب7: quick timing writes to the TIMING field, never overwrites dosage text
+                          handleUpdateSnapshotField(item.id, 'timing', e.target.value);
                           e.target.value = '';
                         }
                       }}
