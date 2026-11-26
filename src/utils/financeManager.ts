@@ -1,6 +1,6 @@
 import { db } from '../services/firebase';
 import { safeStorage, StorageKeys } from '../services/storage';
-import { doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, collection, onSnapshot } from 'firebase/firestore';
 
 export interface MedicalServiceItem {
   id: string;
@@ -72,10 +72,36 @@ let cachedServices: MedicalServiceItem[] = DEFAULT_MEDICAL_SERVICES;
 let cachedExpenseCategories: ExpenseCategoryItem[] = DEFAULT_EXPENSE_CATEGORIES;
 let cachedClinicExpenses: ClinicExpenseRecord[] = DEFAULT_CLINIC_EXPENSES;
 
+// د11: اشتراك لمرة واحدة في مجموعتي Firestore (services / expenseCategories)
+// حتى تتزامن الخدمات وبنود المصروفات بين الأجهزة؛ localStorage يبقى كاشاً فقط.
+// يُشغَّل بتكاسل عند أول قراءة، ويُحمى من الاشتراك المكرر.
+let financeSyncStarted = false;
+export function startFinanceSync(): void {
+  if (financeSyncStarted || !db) return;
+  financeSyncStarted = true;
+  onSnapshot(
+    collection(db, 'services'),
+    (snap) => {
+      const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as MedicalServiceItem[];
+      if (items.length > 0) setCachedMedicalServices(items);
+    },
+    (err) => console.warn('Firestore services sync error:', err)
+  );
+  onSnapshot(
+    collection(db, 'expenseCategories'),
+    (snap) => {
+      const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as ExpenseCategoryItem[];
+      if (items.length > 0) setCachedExpenseCategories(items);
+    },
+    (err) => console.warn('Firestore expense categories sync error:', err)
+  );
+}
+
 // ==========================================
 // 1. Medical Services (الوارد والخدمات الطبية والتسعير)
 // ==========================================
 export function loadMedicalServices(): MedicalServiceItem[] {
+  startFinanceSync();
   const saved = safeStorage.getJSON<MedicalServiceItem[] | null>(StorageKeys.SERVICES, null);
   if (Array.isArray(saved) && saved.length > 0) {
     cachedServices = saved;
@@ -116,6 +142,16 @@ export function saveMedicalServices(services: MedicalServiceItem[]) {
   cachedServices = services;
   safeStorage.setJSON(StorageKeys.SERVICES, services);
   window.dispatchEvent(new CustomEvent('soli_services_updated', { detail: services }));
+  // د11: اكتب القائمة كلها في Firestore أيضاً (الاستعادة الجماعية كانت محلية فقط).
+  if (db) {
+    services.forEach((s) => {
+      if (s?.id) {
+        setDoc(doc(db, 'services', s.id), s).catch((err) =>
+          console.warn('Firestore service sync error:', err)
+        );
+      }
+    });
+  }
 }
 
 export function addMedicalService(service: MedicalServiceItem): MedicalServiceItem[] {
@@ -158,6 +194,7 @@ export function updateMedicalService(id: string, updates: Partial<MedicalService
 // 2. Expense Categories (بنود المنصرف)
 // ==========================================
 export function loadExpenseCategories(): ExpenseCategoryItem[] {
+  startFinanceSync();
   const saved = safeStorage.getJSON<ExpenseCategoryItem[] | null>(StorageKeys.EXPENSE_CATEGORIES, null);
   if (Array.isArray(saved) && saved.length > 0) {
     cachedExpenseCategories = saved;
@@ -178,6 +215,16 @@ export function saveExpenseCategories(categories: ExpenseCategoryItem[]) {
   cachedExpenseCategories = categories;
   safeStorage.setJSON(StorageKeys.EXPENSE_CATEGORIES, categories);
   window.dispatchEvent(new CustomEvent('soli_expense_categories_updated', { detail: categories }));
+  // د11: اكتب القائمة كلها في Firestore أيضاً (الاستعادة الجماعية كانت محلية فقط).
+  if (db) {
+    categories.forEach((c) => {
+      if (c?.id) {
+        setDoc(doc(db, 'expenseCategories', c.id), c).catch((err) =>
+          console.warn('Firestore expense category sync error:', err)
+        );
+      }
+    });
+  }
 }
 
 export function addExpenseCategory(name: string): ExpenseCategoryItem[] {
