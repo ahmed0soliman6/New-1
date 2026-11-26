@@ -15,7 +15,6 @@ interface RadiologyCardProps {
   onChangeOrders: (orders: RadiologyOrderItem[]) => void;
   radiologyCatalog: RadiologyCatalogItem[];
   onAddRadiologyToCatalog: (item: RadiologyCatalogItem) => void;
-  frequentSuggestions?: Array<{ scanName: string; count?: number }>;
 }
 
 export const RadiologyCard: React.FC<RadiologyCardProps> = ({
@@ -23,7 +22,6 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
   onChangeOrders,
   radiologyCatalog,
   onAddRadiologyToCatalog,
-  frequentSuggestions = [],
 }) => {
   const { language } = useLanguage();
   const [showPicker, setShowPicker] = useState(true);
@@ -617,6 +615,9 @@ export const RadiologyCard: React.FC<RadiologyCardProps> = ({
                   >
                     <option value="REQUEST">
                       {language === 'en' ? 'Ordered (Request)' : 'مطلوب (Order)'}
+                    </option>
+                    <option value="RESULT">
+                      {language === 'en' ? 'Result Ready' : 'نتيجة جاهزة (Result)'}
                     </option>
                     <option value="REPORT">
                       {language === 'en' ? 'Report Ready' : 'تقرير مرفق (Reported)'}
