@@ -41,13 +41,17 @@ export async function exportPatientMedicalDossierPdf(data: MedicalRecordPdfData)
     prescriptions = [],
     labOrders = [],
     radiologyOrders = [],
+    followUps = [],
   } = data;
 
   const rawPatientName = patientCanonical?.fullName || patient.name || 'مريض';
   const patientName = escapeHtml(rawPatientName);
   const phone = escapeHtml(toEnglishDigits(patientCanonical?.phone || patient.phone || 'غير مسجل'));
-  const genderStr = (patientCanonical?.gender || patient.gender) === 'female' ? 'أنثى' : 'ذكر';
-  const age = escapeHtml(toEnglishDigits(patient.age || 30));
+  // ب17: never fabricate gender/age — unknown stays unknown
+  const genderValue = patientCanonical?.gender || patient.gender;
+  const genderStr = genderValue === 'female' ? 'أنثى' : genderValue === 'male' ? 'ذكر' : 'غير معروف';
+  const ageValue = patient.age;
+  const ageStr = ageValue ? `${escapeHtml(toEnglishDigits(ageValue))} سنة` : 'السن غير معروف';
   const bloodType = escapeHtml(patientCanonical?.bloodType || patient.bloodType || 'غير محدد');
   const address = escapeHtml(
     patientCanonical?.address || patient.address || patientCanonical?.governorate || patient.governorate || 'غير مسجل'
@@ -66,6 +70,8 @@ export async function exportPatientMedicalDossierPdf(data: MedicalRecordPdfData)
   const pLabOrders = labOrders.filter((l) => l.patientId === patient.id);
   const pRadiologyOrders = radiologyOrders.filter((r) => r.patientId === patient.id);
   const pInvoices = invoices.filter((i) => i.patientId === patient.id);
+  // ب17: include the patient's follow-ups in the dossier
+  const pFollowUps = followUps.filter((f) => f.patientId === patient.id);
 
   // Create temporary container for HTML rendering
   const container = document.createElement('div');
@@ -106,11 +112,11 @@ export async function exportPatientMedicalDossierPdf(data: MedicalRecordPdfData)
           <div><span style="color: #64748b;">اسم المريض:</span> <strong style="font-size: 14px; color: #0f172a;">${patientName}</strong></div>
           <div><span style="color: #64748b;">رقم الملف:</span> <strong style="color: #008f97; font-family: monospace;">#${escapeHtml(toEnglishDigits(patient.fileNumber || 1))}</strong></div>
           <div><span style="color: #64748b;">رقم الهاتف:</span> <strong>${phone}</strong></div>
-          <div><span style="color: #64748b;">السن / النوع:</span> <strong>${age} سنة • ${genderStr}</strong></div>
+          <div><span style="color: #64748b;">السن / النوع:</span> <strong>${ageStr} • ${genderStr}</strong></div>
           <div><span style="color: #64748b;">فصيلة الدم:</span> <strong style="color: #e11d48;">${bloodType}</strong></div>
           <div><span style="color: #64748b;">العنوان:</span> <strong>${address}</strong></div>
           <div><span style="color: #64748b;">طوارئ:</span> <strong>${emergencyName} (${emergencyPhone})</strong></div>
-          <div><span style="color: #64748b;">تاريخ التسجيل:</span> <strong>${escapeHtml(toEnglishDigits(patient.registrationDate || '2024-02-10'))}</strong></div>
+          <div><span style="color: #64748b;">تاريخ التسجيل:</span> <strong>${patient.registrationDate ? escapeHtml(formatAppDate(patient.registrationDate)) : 'غير مسجل'}</strong></div>
           <div><span style="color: #64748b;">إجمالي الزيارات:</span> <strong>${escapeHtml(toEnglishDigits(pVisits.length))} زيارة</strong></div>
         </div>
       </div>
@@ -206,6 +212,23 @@ export async function exportPatientMedicalDossierPdf(data: MedicalRecordPdfData)
                     <strong>الخطة العلاجية:</strong> ${escapeHtml(v.clinicalData.treatment)}
                   </div>
                 ` : ''}
+              </div>
+            `).join('')}
+          </div>
+        `}
+      </div>
+
+      <!-- Section: Follow-ups -->
+      <div style="margin-top: 20px; margin-bottom: 16px;">
+        <div style="background: #b45309; color: #ffffff; padding: 6px 12px; font-size: 13px; font-weight: bold; border-radius: 6px; margin-bottom: 10px;">
+          🗓 مواعيد المتابعة (${escapeHtml(toEnglishDigits(pFollowUps.length))})
+        </div>
+        ${pFollowUps.length === 0 ? '<div style="font-size: 11.5px; color: #94a3b8; padding: 8px;">لا توجد مواعيد متابعة مسجلة.</div>' : `
+          <div style="display: flex; flex-direction: column; gap: 6px; font-size: 11.5px;">
+            ${pFollowUps.map((f) => `
+              <div style="border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px; background: #fffbeb; display: flex; justify-content: space-between; gap: 8px;">
+                <span><strong>${escapeHtml(formatAppDate(f.scheduledDate))}</strong>${f.scheduledTime ? ` — ${escapeHtml(toEnglishDigits(f.scheduledTime))}` : ''}</span>
+                <span style="color: #92400e; font-weight: bold;">${f.status === 'COMPLETED' ? 'تمت' : f.status === 'CANCELLED' ? 'ملغاة' : 'مجدولة'}${f.isFree ? ' • مجانية' : f.fee ? ` • ${escapeHtml(toEnglishDigits(f.fee))} ج.م` : ''}</span>
               </div>
             `).join('')}
           </div>
