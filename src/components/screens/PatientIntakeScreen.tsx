@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { QueueItem, PatientListItem, ScreenType } from '../../types';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { formatAppTime } from '../../utils/numberUtils';
+import { cleanPhone } from '../../utils/bookingValidation';
 
 interface PatientIntakeScreenProps {
   onAddPatientToQueue: (item: QueueItem) => Promise<{ queueNumber: number; fileNumber: number } | null>;
@@ -83,11 +84,18 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [autoFilledPatientId, setAutoFilledPatientId] = useState<string | null>(null);
 
+  // أ9: حارس «طُبّق مرة واحدة» لبيانات التحويل — بلا حارس كان التأثير يعيد
+  // تعبئة النموذج عند كل تحديث لقائمة المرضى ويمسح تعديلات السكرتيرة.
+  // المفتاح هو الموعد المحوَّل؛ يعود فارغاً عند إلغاء التحويل فيُسمح بتحويل جديد.
+  const initialDataAppliedRef = React.useRef<string | null>(null);
+
   // Field-level validation error state for required fields
   const [formErrors, setFormErrors] = useState<{
     name?: string;
     gender?: string;
     visitType?: string;
+    phone?: string;
+    age?: string;
   }>({});
 
   // Requirement 3: Auto-suggest registered patient when typing name or phone
@@ -104,10 +112,21 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
   }, [name, phone, patients]);
 
   // Effect to automatically pre-populate from initialData (e.g. from Appointment Check-in)
+  // أ9: تُطبَّق مرة واحدة فقط لكل تحويل (حارس ref) — لا عند كل تحديث لقوائم المرضى/الزيارات.
   React.useEffect(() => {
-    if (!initialData) return;
+    if (!initialData) {
+      initialDataAppliedRef.current = null;
+      return;
+    }
+    const transferKey =
+      initialData.appointmentId ||
+      `${(initialData.patientName || '').trim()}|${(initialData.phone || '').trim()}`;
+    if (initialDataAppliedRef.current === transferKey) return;
+    initialDataAppliedRef.current = transferKey;
     const initialName = (initialData.patientName || '').trim();
-    const initialPhone = (initialData.phone || '').trim();
+    // أ8: النص «بدون هاتف» ليس رقماً — يُعامل كفارغ ولا يُعبَّأ في حقل الهاتف.
+    const initialPhoneRaw = (initialData.phone || '').trim();
+    const initialPhone = initialPhoneRaw === 'بدون هاتف' ? '' : initialPhoneRaw;
     if (!initialName && !initialPhone) return;
 
     // Search if patient already exists in clinic database (strictly by priority)
@@ -129,7 +148,8 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
 
     if (foundPatient) {
       setName(foundPatient.name || initialName);
-      setPhone(foundPatient.phone || initialPhone);
+      // أ8: لا يُعبَّأ النص «بدون هاتف» (مخزَّن قديماً) كهاتف.
+      setPhone(foundPatient.phone === 'بدون هاتف' ? '' : (foundPatient.phone || initialPhone));
       setAge(foundPatient.age ? String(foundPatient.age) : '');
       setGender(foundPatient.gender || '');
       setAddress(foundPatient.address || foundPatient.governorate || '');
@@ -171,7 +191,8 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
   const handleSelectExisting = (p: PatientListItem) => {
     if (!p) return;
     setName(p.name || '');
-    setPhone(p.phone || '');
+    // أ8: لا يُعبَّأ النص «بدون هاتف» (مخزَّن قديماً) كهاتف.
+    setPhone(p.phone === 'بدون هاتف' ? '' : (p.phone || ''));
     setAge(p.age || '');
     setGender(p.gender || '');
     setAddress(p.address || p.governorate || '');
@@ -249,10 +270,22 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const errors: { name?: string; gender?: string; visitType?: string } = {};
+    const errors: { name?: string; gender?: string; visitType?: string; phone?: string; age?: string } = {};
 
     if (!name.trim()) {
       errors.name = 'يرجى إدخال اسم المريض (ثلاثياً أو رباعياً)';
+    }
+
+    // أ8: التحقق من الهاتف إن أُدخل (اختياري لكن يجب أن يكون رقماً صالحاً 7–15 رقماً).
+    const cleanedPhone = cleanPhone(phone);
+    if (phone.trim() && !/^\d{7,15}$/.test(cleanedPhone)) {
+      errors.phone = 'رقم الهاتف يجب أن يكون من 7 إلى 15 رقماً';
+    }
+
+    // أ12: السن — إن أُدخل — يجب أن يكون بين 0 و120 سنة.
+    const ageNum = age === '' ? null : Number(age);
+    if (ageNum !== null && (!Number.isFinite(ageNum) || ageNum < 0 || ageNum > 120)) {
+      errors.age = 'السن يجب أن يكون بين 0 و120 سنة';
     }
 
     if (!gender || (gender !== 'male' && gender !== 'female')) {
@@ -293,7 +326,8 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
       fileNumber: autoFileNumber,
       patientName: name.trim(),
       medicalCode: `EG-${Math.floor(Math.random() * 90000) + 10000}`,
-      phone: phone.trim(),
+      // أ8: يُخزَّن الهاتف منظَّفاً، وفارغاً ('') عند غيابه — أبداً النص «بدون هاتف».
+      phone: cleanedPhone,
       age: Number(age) || 0,
       gender: gender || '',
       visitType: selectedVisitType?.name || 'كشف جديد',
@@ -550,27 +584,55 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
               </div>
 
               {/* Phone */}
-              <div className="flex flex-col gap-1.5">
+              <div id="field-phone" className="flex flex-col gap-1.5">
                 <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">رقم الهاتف / الواتساب</label>
                 <input
                   type="tel"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => {
+                    setPhone(e.target.value);
+                    if (formErrors.phone) setFormErrors((prev) => ({ ...prev, phone: undefined }));
+                  }}
                   placeholder="01xxxxxxxxx"
-                  className="bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] placeholder:text-slate-400 dark:placeholder:text-[#859394] text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 font-mono focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
+                  className={`bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] placeholder:text-slate-400 dark:placeholder:text-[#859394] text-xs px-3.5 py-2.5 rounded-xl border font-mono focus:outline-none focus:ring-1 focus:ring-[#00c2cb] ${
+                    formErrors.phone
+                      ? 'border-rose-500 ring-1 ring-rose-500 bg-rose-50/30 dark:bg-rose-950/20'
+                      : 'border-slate-200 dark:border-white/10'
+                  }`}
                 />
+                {formErrors.phone && (
+                  <span className="text-xs font-bold text-rose-500 flex items-center gap-1 mt-0.5">
+                    <span className="material-symbols-outlined text-sm">error</span>
+                    <span>{formErrors.phone}</span>
+                  </span>
+                )}
               </div>
 
               {/* Age - Requirement 4: Empty by default */}
-              <div className="flex flex-col gap-1.5">
+              <div id="field-age" className="flex flex-col gap-1.5">
                 <label className="text-xs font-bold text-slate-800 dark:text-[#dde2f5]">السن (بالسنوات)</label>
                 <input
                   type="number"
+                  min={0}
+                  max={120}
                   value={age}
-                  onChange={(e) => setAge(e.target.value)}
+                  onChange={(e) => {
+                    setAge(e.target.value);
+                    if (formErrors.age) setFormErrors((prev) => ({ ...prev, age: undefined }));
+                  }}
                   placeholder="أدخل السن..."
-                  className="bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] placeholder:text-slate-400 text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 font-mono focus:outline-none focus:ring-1 focus:ring-[#00c2cb]"
+                  className={`bg-slate-50 dark:bg-[#080e1b] text-slate-900 dark:text-[#dde2f5] placeholder:text-slate-400 text-xs px-3.5 py-2.5 rounded-xl border font-mono focus:outline-none focus:ring-1 focus:ring-[#00c2cb] ${
+                    formErrors.age
+                      ? 'border-rose-500 ring-1 ring-rose-500 bg-rose-50/30 dark:bg-rose-950/20'
+                      : 'border-slate-200 dark:border-white/10'
+                  }`}
                 />
+                {formErrors.age && (
+                  <span className="text-xs font-bold text-rose-500 flex items-center gap-1 mt-0.5">
+                    <span className="material-symbols-outlined text-sm">error</span>
+                    <span>{formErrors.age}</span>
+                  </span>
+                )}
               </div>
 
               {/* Gender - Requirement 5: Unselected by default */}
