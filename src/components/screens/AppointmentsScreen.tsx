@@ -5,6 +5,8 @@ import { CLINIC_INFO } from '../../data/previewClinicData';
 import { AppointmentListItem, ScreenType, PatientListItem } from '../../types';
 import { usePermissions } from '../../context/AuthContext';
 import { toEnglishDigits, formatAppDate } from '../../utils/numberUtils';
+import { toDayKey } from '../../utils/dayKey';
+import { parseBookingTimeToMinutes, cleanPhone } from '../../utils/bookingValidation';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { 
   getClinicBranches, 
@@ -35,7 +37,7 @@ interface AppointmentsScreenProps {
   followUps?: FollowUpItem[];
   onCheckInPatient: (appointment: AppointmentListItem) => void;
   onOpenNewAppointment?: () => void;
-  onAddAppointment?: (appointment: AppointmentListItem) => void;
+  onAddAppointment?: (appointment: AppointmentListItem) => void | Promise<void>;
   onNavigate: (screen: ScreenType) => void;
   onStartIntakeFromAppointment?: (appointment: AppointmentListItem) => void;
   patients?: PatientListItem[];
@@ -171,7 +173,8 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
   const [patientName, setPatientName] = useState('');
   const [phone, setPhone] = useState('');
   const [scheduledDate, setScheduledDate] = useState(() => {
-    return new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    // أ2: تاريخ القاهرة (toDayKey) لا UTC — toISOString كان يفتح على «أمس» بعد منتصف الليل.
+    return toDayKey();
   });
   const [scheduledTime, setScheduledTime] = useState('09:00');
   const [visitType, setVisitType] = useState(() => activeVisitTypes[0]?.name || 'كشف جديد');
@@ -217,10 +220,14 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
     const list = [...appointments];
 
     // Sort newest first by scheduled date & time descending
+    // أ3: الترتيب بالدقائق (parseBookingTimeToMinutes) — new Date('... 02:30 م') كان NaN.
     return list.sort((a, b) => {
-      const timeA = new Date(`${a.date || '2026-01-01'} ${a.time || '00:00'}`).getTime();
-      const timeB = new Date(`${b.date || '2026-01-01'} ${b.time || '00:00'}`).getTime();
-      if (!isNaN(timeB) && !isNaN(timeA) && timeB !== timeA) return timeB - timeA;
+      const dateA = a.date || '2026-01-01';
+      const dateB = b.date || '2026-01-01';
+      if (dateB !== dateA) return dateB.localeCompare(dateA);
+      const minsA = parseBookingTimeToMinutes(a.time || a.timeSlot || '') ?? -1;
+      const minsB = parseBookingTimeToMinutes(b.time || b.timeSlot || '') ?? -1;
+      if (minsB !== minsA) return minsB - minsA;
       return (b.id || '').localeCompare(a.id || '');
     });
   }, [appointments]);
@@ -333,19 +340,40 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
   // 1) "مجدول" (Default)
   // 2) "فى الانتظار حضر المريض" -> launches visit intake and moves patient to archive
   // 3) "ملغى" -> moves patient to archive under cancelled
-  const handleUpdateStatus = (app: AppointmentListItem, newStatus: AppointmentStatusType) => {
-    if (newStatus === 'فى الانتظار حضر المريض') {
-      setToastMessage(`تم تسجيل حضور المريض "${app.patientName}" وجارٍ فتح صفحة تسجيل الزيارة`);
-      setTimeout(() => setToastMessage(null), 3500);
+  // أ6: رسالة النجاح تظهر فقط بعد نجاح الكتابة في Firestore (await)؛
+  // وعند الفشل تظهر رسالة خطأ بدل نجاح كاذب.
+  const showStatusToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+  const showStatusErrorToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 4500);
+  };
 
-      // Persist to Firestore immediately
-      if (db && app.id) {
-        setDoc(
-          doc(db, 'appointments', app.id),
-          { status: 'ARRIVED', updatedAt: new Date().toISOString() },
-          { merge: true }
-        ).catch((err) => console.warn('Failed to update appointment status in Firestore:', err));
+  const persistAppointmentStatus = async (appId: string, status: string): Promise<boolean> => {
+    if (!db || !appId) return false;
+    try {
+      await setDoc(
+        doc(db, 'appointments', appId),
+        { status, updatedAt: new Date().toISOString() },
+        { merge: true }
+      );
+      return true;
+    } catch (err) {
+      console.warn('Failed to update appointment status in Firestore:', err);
+      return false;
+    }
+  };
+
+  const handleUpdateStatus = async (app: AppointmentListItem, newStatus: AppointmentStatusType) => {
+    if (newStatus === 'فى الانتظار حضر المريض') {
+      const saved = await persistAppointmentStatus(app.id, 'ARRIVED');
+      if (!saved) {
+        showStatusErrorToast(`تعذّر تسجيل حضور المريض "${app.patientName}" — تحقق من الاتصال وحاول مرة أخرى`);
+        return;
       }
+      showStatusToast(`تم تسجيل حضور المريض "${app.patientName}" وجارٍ فتح صفحة تسجيل الزيارة`);
 
       // Automatically launch intake screen
       if (onStartIntakeFromAppointment) {
@@ -358,47 +386,36 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
     }
 
     if (newStatus === 'ملغى') {
-      setToastMessage(`تم إلغاء موعد "${app.patientName}" ونقله تلقائياً إلى الأرشيف`);
-      setTimeout(() => setToastMessage(null), 3500);
-
-      if (db && app.id) {
-        setDoc(
-          doc(db, 'appointments', app.id),
-          { status: 'CANCELLED', updatedAt: new Date().toISOString() },
-          { merge: true }
-        ).catch((err) => console.warn('Failed to cancel appointment in Firestore:', err));
+      const saved = await persistAppointmentStatus(app.id, 'CANCELLED');
+      if (!saved) {
+        showStatusErrorToast(`تعذّر إلغاء موعد "${app.patientName}" — تحقق من الاتصال وحاول مرة أخرى`);
+        return;
       }
+      showStatusToast(`تم إلغاء موعد "${app.patientName}" ونقله تلقائياً إلى الأرشيف`);
       return;
     }
 
     // Default: "مجدول"
-    setToastMessage(`تم تحديث حالة موعد "${app.patientName}" إلى: مجدول`);
-    setTimeout(() => setToastMessage(null), 3500);
-
-    if (db && app.id) {
-      setDoc(
-        doc(db, 'appointments', app.id),
-        { status: 'SCHEDULED', updatedAt: new Date().toISOString() },
-        { merge: true }
-      ).catch((err) => console.warn('Failed to reschedule appointment in Firestore:', err));
+    const saved = await persistAppointmentStatus(app.id, 'SCHEDULED');
+    if (!saved) {
+      showStatusErrorToast(`تعذّر تحديث حالة موعد "${app.patientName}" — تحقق من الاتصال وحاول مرة أخرى`);
+      return;
     }
+    showStatusToast(`تم تحديث حالة موعد "${app.patientName}" إلى: مجدول`);
   };
 
   // Check-in / «حضر المريض» Flow:
   // Converts appointment to Waiting Queue via PatientIntakeScreen:
   // Pre-fills existing patient data automatically, lets secretary pick visit type & intake info, then registers to queue & financials!
-  const handlePatientArrived = (app: AppointmentListItem) => {
-    // Persist to Firestore immediately
-    if (db && app.id) {
-      setDoc(
-        doc(db, 'appointments', app.id),
-        { status: 'ARRIVED', updatedAt: new Date().toISOString() },
-        { merge: true }
-      ).catch((err) => console.warn('Failed to update appointment status in Firestore:', err));
+  const handlePatientArrived = async (app: AppointmentListItem) => {
+    // أ6: لا تنبيه نجاح ولا انتقال للاستقبال قبل نجاح الحفظ فعلاً.
+    const saved = await persistAppointmentStatus(app.id, 'ARRIVED');
+    if (!saved) {
+      showStatusErrorToast(`تعذّر تسجيل حضور المريض "${app.patientName}" — تحقق من الاتصال وحاول مرة أخرى`);
+      return;
     }
 
-    setToastMessage(`تم تسجيل حضور المريض "${app.patientName}" وجارٍ فتح صفحة تسجيل الزيارة`);
-    setTimeout(() => setToastMessage(null), 3500);
+    showStatusToast(`تم تسجيل حضور المريض "${app.patientName}" وجارٍ فتح صفحة تسجيل الزيارة`);
 
     // 2. Redirect to Patient Intake Screen with initial appointment info
     if (onStartIntakeFromAppointment) {
@@ -437,10 +454,18 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
   };
 
   // Save new appointment handler
-  const handleSaveNewAppointment = (e: React.FormEvent) => {
+  // د8: الدالة async وتُنتظر onAddAppointment قبل رسالة النجاح وتصفير النموذج.
+  const handleSaveNewAppointment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!patientName.trim()) {
       setFormFeedback('يرجى كتابة اسم المريض');
+      return;
+    }
+
+    // أ8: التحقق من الهاتف إن أُدخل (7–15 رقماً بعد التنظيف).
+    const cleanedPhone = cleanPhone(phone);
+    if (phone.trim() && !/^\d{7,15}$/.test(cleanedPhone)) {
+      setFormFeedback('رقم الهاتف يجب أن يكون من 7 إلى 15 رقماً');
       return;
     }
 
@@ -457,11 +482,18 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
       ? 150
       : 300;
 
+    // د18: كود فريد مبني على الطابع الزمني + عشوائي (بدل 900 احتمال فقط).
+    const uniqueMedicalCode = `EG-${Date.now().toString(36).toUpperCase()}${Math.floor(Math.random() * 1296)
+      .toString(36)
+      .toUpperCase()
+      .padStart(2, '0')}`;
+
     const newApp: AppointmentListItem = {
       id: `app-${Date.now()}`,
       patientName: patientName.trim(),
-      phone: phone.trim() || 'بدون هاتف',
-      medicalCode: `EG-${Math.floor(100 + Math.random() * 900)}`,
+      // أ8: يُخزَّن الهاتف منظَّفاً، وفارغاً ('') عند غيابه — أبداً النص «بدون هاتف».
+      phone: cleanedPhone,
+      medicalCode: uniqueMedicalCode,
       timeSlot: formattedTime,
       time: formattedTime,
       date: scheduledDate,
@@ -472,8 +504,9 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
       notes: appointmentNotes.trim() || undefined,
     };
 
+    // د8: انتظار نتيجة الحفظ قبل إعلان النجاح وتصفير النموذج.
     if (onAddAppointment) {
-      onAddAppointment(newApp);
+      await onAddAppointment(newApp);
     }
 
     // Reset Form
@@ -610,8 +643,14 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
     if (parsedDate && /^\d{4}-\d{2}-\d{2}$/.test(parsedDate)) {
       setScheduledDate(parsedDate);
     }
+    // أ10: التحقق من الوقت المستخرج — نص مثل «بعد العصر» كان يُحفظ كوقت موعد.
+    let parsedTimeInvalid = false;
     if (parsedTime) {
-      setScheduledTime(parsedTime);
+      if (parseBookingTimeToMinutes(parsedTime) !== null) {
+        setScheduledTime(parsedTime);
+      } else {
+        parsedTimeInvalid = true;
+      }
     }
     if (parsedNotes) {
       setAppointmentNotes(parsedNotes);
@@ -626,8 +665,12 @@ export const AppointmentsScreen: React.FC<AppointmentsScreenProps> = ({
     setIsWhatsappModalOpen(false);
     setWhatsappRawText('');
     setIsAddFormCollapsed(false);
-    setToastMessage('تم استخراج جميع بيانات الموعد تلقائياً وتعبئة النموذج بسرعة! ✓');
-    setTimeout(() => setToastMessage(null), 3500);
+    setToastMessage(
+      parsedTimeInvalid
+        ? 'تم استخراج بيانات الموعد، لكن الوقت في نص الواتساب غير صالح فلم يُستخدم — يرجى اختيار وقت صحيح من النموذج'
+        : 'تم استخراج جميع بيانات الموعد تلقائياً وتعبئة النموذج بسرعة! ✓'
+    );
+    setTimeout(() => setToastMessage(null), 5000);
   };
 
   return (
