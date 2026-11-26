@@ -62,7 +62,7 @@ export interface QueueItem {
   paidAmount: number;
   paymentMethod: string;
   complaint: string;
-  status: 'waiting' | 'in-room' | 'done' | 'delayed';
+  status: 'waiting' | 'in-progress' | 'in-room' | 'done' | 'delayed';
   isUrgent?: boolean;
   address?: string;
   bloodType?: string;
