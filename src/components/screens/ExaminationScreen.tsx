@@ -102,6 +102,14 @@ interface ExaminationScreenProps {
   activePrescription: PrescriptionItem[];
   onChangeActivePrescription: (items: PrescriptionItem[]) => void;
 
+  // Exam draft syncing (ب1/ب2): report draft diagnoses / follow-up / lifestyle
+  // to App so the prescription pad prints the real diagnosis.
+  onExamDraftChange?: (draft: {
+    diagnoses: PatientDiagnosis[];
+    followupDate: string;
+    lifestyleAdvice: string;
+  }) => void;
+
   // Visit history and records
   visits?: Visit[];
   prescriptions?: Prescription[];
@@ -130,6 +138,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
   onAddSymptomToCatalog,
   activePrescription,
   onChangeActivePrescription,
+  onExamDraftChange,
   visits = [],
   prescriptions = [],
   allLabOrders = [],
@@ -390,6 +399,16 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
       }
     }
   }, [patient?.id, initialExamVitals, onChangeActivePrescription]);
+
+  // ب1/ب2: report the exam draft (diagnoses / follow-up / lifestyle) to App so
+  // the prescription pad prints the REAL diagnosis instead of a fake one.
+  // Fires on mount too (empty draft), and whenever the patient-change reset
+  // above clears the draft — so App never shows a stale patient's diagnosis.
+  const onExamDraftChangeRef = React.useRef(onExamDraftChange);
+  onExamDraftChangeRef.current = onExamDraftChange;
+  useEffect(() => {
+    onExamDraftChangeRef.current?.({ diagnoses: patientDiagnoses, followupDate, lifestyleAdvice });
+  }, [patientDiagnoses, followupDate, lifestyleAdvice]);
 
   // Derive previous visit details for the current patient
   const {
