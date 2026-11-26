@@ -1,6 +1,10 @@
 // Alert and Notification Manager for Soli Medical Clinics
 // Handles 1-time single audio chimes and visual notifications with configurable settings
 
+import { doc, setDoc } from 'firebase/firestore';
+import { db } from '../services/firebase';
+import { FirestoreCollections, SettingsDocs } from '../services/firebase/collections';
+
 export interface AlertSettings {
   audioEnabled: boolean;
   visualEnabled: boolean;
@@ -39,21 +43,45 @@ export const getDefaultAlertSettings = (): AlertSettings => ({
 let cachedAlertSettings: AlertSettings = getDefaultAlertSettings();
 
 export const loadAlertSettings = (): AlertSettings => {
+  // د1: اقرأ القيم المحفوظة فعلياً (localStorage) بدل الكاش في الذاكرة فقط،
+  // حتى تبقى الإعدادات بعد إعادة تحميل الصفحة.
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<AlertSettings>;
+      cachedAlertSettings = { ...getDefaultAlertSettings(), ...parsed };
+    }
+  } catch {
+    // ignore — fall back to cached/default settings
+  }
   return cachedAlertSettings;
 };
 
 export const setCachedAlertSettings = (settings: AlertSettings): void => {
   cachedAlertSettings = { ...getDefaultAlertSettings(), ...settings };
-};
-
-export const saveAlertSettings = (settings: AlertSettings): void => {
-  cachedAlertSettings = { ...getDefaultAlertSettings(), ...settings };
+  // د1: احفظ نسخة محلية أيضاً حتى تنجو إعدادات الاشتراك السحابي من إعادة التحميل.
   try {
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem('audioAlerts');
-    localStorage.removeItem('visualAlerts');
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cachedAlertSettings));
   } catch {
     // ignore
+  }
+};
+
+/**
+ * د1: يحفظ الإعدادات فعلياً — في Firestore (settings/alertSettings) لتصل لكل
+ * الأجهزة، وفي localStorage كنسخة محلية. يرمي خطأً عند فشل الكتابة السحابية
+ * حتى لا تعرض الواجهة رسالة نجاح كاذبة.
+ */
+export const saveAlertSettings = async (settings: AlertSettings): Promise<void> => {
+  const merged = { ...getDefaultAlertSettings(), ...settings };
+  cachedAlertSettings = merged;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+  } catch {
+    // ignore local failures; Firestore is the source of truth
+  }
+  if (db) {
+    await setDoc(doc(db, FirestoreCollections.SETTINGS, SettingsDocs.ALERT_SETTINGS), merged, { merge: true });
   }
 };
 
