@@ -15,8 +15,18 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ onClos
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // د13: الحالية مطلوبة فعلاً (changeUserPassword يرمي إن كانت فارغة).
+    if (!currentPassword.trim()) {
+      setError('كلمة المرور الحالية مطلوبة للتحقق من هويتك قبل التغيير.');
+      return;
+    }
     if (newPassword.length < 8) {
       setError('كلمة المرور الجديدة يجب ألا تقل عن 8 أحرف.');
+      return;
+    }
+    // د13: الجديدة يجب أن تختلف عن الحالية.
+    if (newPassword === currentPassword) {
+      setError('كلمة المرور الجديدة يجب أن تختلف عن كلمة المرور الحالية.');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -70,10 +80,11 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ onClos
         <form onSubmit={handleSubmit} className="space-y-3.5">
           <div>
             <label className="text-xs font-bold text-slate-700 dark:text-[#dde2f5] block mb-1">
-              كلمة المرور الحالية (اختياري للتحقق):
+              كلمة المرور الحالية (مطلوبة للتحقق):
             </label>
             <input
               type="password"
+              required
               placeholder="••••••••"
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
