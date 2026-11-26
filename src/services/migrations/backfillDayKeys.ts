@@ -69,6 +69,12 @@ export async function backfillPatientClinicalFlags(db: Firestore) {
     getDocs(query(collection(db, 'patients'), limit(MAX_CLINICAL_SCAN))),
   ]);
 
+  // د16: المسح مقيَّد بـ MAX_CLINICAL_SCAN (1000) سجل لكل مجموعة — إن وصل أي
+  // استعلام للحد فقد تكون هناك سجلات لم تُفحص إطلاقاً، ويجب أن يقول التقرير ذلك.
+  const visitsCapped = visitsSnap.size >= MAX_CLINICAL_SCAN;
+  const prescriptionsCapped = rxSnap.size >= MAX_CLINICAL_SCAN;
+  const patientsCapped = patientsSnap.size >= MAX_CLINICAL_SCAN;
+
   const stats = new Map<string, { count: number; last: Date | null; diag: string }>();
   visitsSnap.forEach((d) => {
     const v = d.data();
@@ -92,9 +98,10 @@ export async function backfillPatientClinicalFlags(db: Firestore) {
   let batch = writeBatch(db);
   let n = 0;
   let total = 0;
+  let writeBudgetStopped = false;
   for (const pid of ids) {
     if (!existing.has(pid)) continue;
-    if (total >= WRITE_BUDGET) break;
+    if (total >= WRITE_BUDGET) { writeBudgetStopped = true; break; }
     const s = stats.get(pid);
     batch.update(doc(db, 'patients', pid), {
       hasClinicalFile: true,
@@ -106,5 +113,29 @@ export async function backfillPatientClinicalFlags(db: Firestore) {
     if (n === 400) { await batch.commit(); batch = writeBatch(db); n = 0; }
   }
   if (n) await batch.commit();
-  return { patientsUpdated: total };
+  // د16: التقرير يصرّح بوضوح إن كان المسح مقيَّداً أو توقف مبكراً، مع العدّادات.
+  const stoppedEarly = visitsCapped || prescriptionsCapped || patientsCapped || writeBudgetStopped;
+  return {
+    patientsUpdated: total,
+    patientsConsidered: ids.size,
+    visitsScanned: visitsSnap.size,
+    prescriptionsScanned: rxSnap.size,
+    patientsScanned: patientsSnap.size,
+    scanCap: MAX_CLINICAL_SCAN,
+    visitsCapped,
+    prescriptionsCapped,
+    patientsCapped,
+    writeBudgetStopped,
+    stoppedEarly,
+    stoppedEarlyReason: stoppedEarly
+      ? [
+          visitsCapped ? 'زيارات مكتملة فوق حد المسح (1000)' : '',
+          prescriptionsCapped ? 'روشتات فوق حد المسح (1000)' : '',
+          patientsCapped ? 'مرضى فوق حد المسح (1000)' : '',
+          writeBudgetStopped ? 'توقف عند حد الكتابة (8000)' : '',
+        ]
+          .filter(Boolean)
+          .join('؛ ')
+      : '',
+  };
 }
