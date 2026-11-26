@@ -208,7 +208,7 @@ export const LabCard: React.FC<LabCardProps> = ({
             resultDate:
               newStatus === 'REQUEST'
                 ? undefined
-                : newStatus !== 'REQUEST' && hasResult && !ord.resultDate
+                : hasResult && !ord.resultDate
                 ? new Date().toLocaleDateString('ar-EG')
                 : ord.resultDate,
           };
