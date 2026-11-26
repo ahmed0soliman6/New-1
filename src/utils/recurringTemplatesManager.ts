@@ -942,29 +942,107 @@ const STORAGE_KEY = 'soli_recurring_rx_templates';
 
 let cachedTemplates: RecurringRxTemplate[] = INITIAL_CLINICAL_GUIDES_TEMPLATES;
 
+// د6 (سباق التحميل): الكاش يبدأ كالأدلة الافتراضية فقط، وتأتي القوائم المحفوظة
+// من Firestore لاحقاً عبر App.tsx. أي حفظ قبل وصول المزامنة كان يكتب
+// الافتراضيات فوق Firestore فيمحو القوائم المخصصة. لذلك:
+// - لا تُدفع أي كتابة إلى Firestore قبل اكتمال أول مزامنة (firestoreLoaded).
+// - الحفظ المبكر يُحفظ محلياً ويُعلَّق (pendingTemplates)، وعند وصول المزامنة
+//   يُدمج مع القوائم المحفوظة (المعلَّق يفوز عند تعارض المعرّف) ثم يُدفع.
+let firestoreLoaded = false;
+let pendingTemplates: RecurringRxTemplate[] | null = null;
+let storageHydrated = false;
+
+function hydrateFromStorage(): void {
+  if (storageHydrated) return;
+  storageHydrated = true;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as RecurringRxTemplate[];
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        cachedTemplates = parsed;
+      }
+    }
+  } catch {
+    // ignore — keep defaults
+  }
+}
+
+function persistLocal(templates: RecurringRxTemplate[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(templates));
+  } catch {
+    // ignore
+  }
+}
+
+function pushToFirestore(templates: RecurringRxTemplate[]): void {
+  if (db) {
+    setDoc(doc(db, 'settings', 'recurringTemplates'), { items: templates }, { merge: true }).catch((err) => {
+      console.warn('Failed to sync recurring templates to Firestore:', err);
+    });
+  }
+}
+
+/** دمج قائمتين بالمعرّف: عناصر `overrides` تفوز عند التعارض، وعناصر القاعدة تُحفظ. */
+function mergeTemplateLists(
+  base: RecurringRxTemplate[],
+  overrides: RecurringRxTemplate[]
+): RecurringRxTemplate[] {
+  const byId = new Map<string, RecurringRxTemplate>();
+  base.forEach((t) => {
+    if (t?.id) byId.set(t.id, t);
+  });
+  overrides.forEach((t) => {
+    if (t?.id) byId.set(t.id, t);
+  });
+  return Array.from(byId.values());
+}
+
+/** هل وصلت أول مزامنة من Firestore؟ تستعمله الواجهة لمنع الحفظ المبكر. */
+export function areRecurringTemplatesLoaded(): boolean {
+  return firestoreLoaded;
+}
+
 export function loadRecurringTemplates(): RecurringRxTemplate[] {
+  hydrateFromStorage();
   return cachedTemplates;
 }
 
 export function setCachedRecurringTemplates(templates: RecurringRxTemplate[]): void {
   if (Array.isArray(templates) && templates.length > 0) {
-    cachedTemplates = templates;
+    if (pendingTemplates) {
+      // د6: دمج التعديلات المعلَّقة (قبل المزامنة) فوق القوائم المحفوظة بدل
+      // الكتابة فوقها — القوائم المخصصة لا تُمسح.
+      const merged = mergeTemplateLists(templates, pendingTemplates);
+      pendingTemplates = null;
+      cachedTemplates = merged;
+      persistLocal(merged);
+      pushToFirestore(merged);
+    } else {
+      cachedTemplates = templates;
+      persistLocal(templates);
+    }
+    firestoreLoaded = true;
+    window.dispatchEvent(new Event('soli_templates_updated'));
+  } else {
+    // مزامنة فارغة تعني أن Firestore بلا قوائم بعد — اعتبر التحميل مكتملاً
+    // حتى لا يبقى الحفظ معلَّقاً للأبد.
+    firestoreLoaded = true;
   }
 }
 
 export function saveRecurringTemplates(templates: RecurringRxTemplate[]): void {
   cachedTemplates = templates;
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // ignore
-  }
+  // د6: احتفظ بنسخة محلية دائماً (كان الكود يمسح المفتاح ولا يكتب فيه).
+  persistLocal(templates);
   window.dispatchEvent(new Event('soli_templates_updated'));
 
-  if (db) {
-    setDoc(doc(db, 'settings', 'recurringTemplates'), { items: templates }, { merge: true }).catch((err) => {
-      console.warn('Failed to sync recurring templates to Firestore:', err);
-    });
+  if (firestoreLoaded) {
+    pushToFirestore(templates);
+  } else {
+    // د6: المزامنة لم تصل بعد — علّق الدفع السحابي حتى تصل، وادمجه حينها.
+    pendingTemplates = templates;
   }
 }
 
