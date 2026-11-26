@@ -19,6 +19,12 @@ interface PrescriptionPadScreenProps {
   items?: PrescriptionItem[];
   onChangeItems?: (items: PrescriptionItem[]) => void;
   onUpdatePatient?: (updated: { patientId: string; fullName: string; dateOfBirth?: string; age?: number }) => void;
+  // ب1/ب2: the ACTUAL exam diagnoses / follow-up / advice, when the caller
+  // knows them. This screen itself has no exam data — it must never print
+  // fabricated fallbacks (no hardcoded I10, no past follow-up date).
+  diagnoses?: Array<{ id?: string; code?: string; nameAr?: string; nameEn?: string; isPrimary?: boolean }>;
+  followupDate?: string;
+  lifestyleAdvice?: string;
 }
 
 export interface PrescriptionLayoutSettings {
@@ -118,6 +124,9 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
   items = [],
   onChangeItems,
   onUpdatePatient,
+  diagnoses = [],
+  followupDate,
+  lifestyleAdvice = '',
 }) => {
   const { language, isRTL, t } = useLanguage();
   const { assertPermission } = usePermissions();
@@ -142,15 +151,15 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
     try {
       const trimmedName = editName.trim();
       const numAge = Number(editAge) || patient.age;
-      const birthYear = editAge ? new Date().getFullYear() - Number(editAge) : 1988;
-      const calculatedDOB = `${birthYear}-01-01`;
-
+      // ب15: never fabricate a date of birth. This screen's patient record
+      // carries no real DOB, so editing name/age must not write any DOB —
+      // a derived 1-January date (or '1988-01-01' for an empty age) would
+      // overwrite the real one stored in Firestore.
       if (db) {
         await setDoc(
           doc(db, 'patients', patient.id),
           {
             fullName: trimmedName,
-            dateOfBirth: calculatedDOB,
             updatedAt: new Date().toISOString(),
           },
           { merge: true }
@@ -160,7 +169,6 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
       onUpdatePatient?.({
         patientId: patient.id,
         fullName: trimmedName,
-        dateOfBirth: calculatedDOB,
         age: numAge,
       });
 
@@ -454,13 +462,15 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
   };
 
   const handlePrintTest = () => {
+    // ب1: print ONLY the actual exam data (empty when this screen has none) —
+    // never a hardcoded fake diagnosis or a past follow-up date.
     printPrescriptionDocument({
       config,
       patient,
       items,
-      diagnoses: [{ id: 'd1', code: 'I10', nameAr: 'ارتفاع ضغط الدم الأولي', nameEn: 'Essential Hypertension', isPrimary: true }],
-      lifestyleAdvice: 'تقليل الملح في الطعام، ممارسة المشي 30 دقيقة يومياً وشرب الماء بانتظام.',
-      followupDate: '2026-09-24',
+      diagnoses,
+      lifestyleAdvice,
+      followupDate,
     });
   };
 
@@ -469,9 +479,9 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
       config,
       patient,
       items,
-      diagnoses: [{ id: 'd1', code: 'I10', nameAr: 'ارتفاع ضغط الدم الأولي', nameEn: 'Essential Hypertension', isPrimary: true }],
-      lifestyleAdvice: 'تقليل الملح في الطعام، ممارسة المشي 30 دقيقة يومياً وشرب الماء بانتظام.',
-      followupDate: '2026-09-24',
+      diagnoses,
+      lifestyleAdvice,
+      followupDate,
     }, patient ? patient.name : 'مريض');
   };
 
@@ -1457,7 +1467,9 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
                   {/* Diagnosis Banner - now strictly placed ON TOP of treatments, strictly LTR and in English as requested */}
                   <div dir="ltr" className={`${diagPaddingClass} rounded-lg bg-slate-50/90 border border-slate-200 text-slate-800 text-left font-medium ${diagTextClass}`}>
                     <span className="font-bold text-[#008f97]">Diagnosis: </span>
-                    <span>{patient?.chronicConditions && patient.chronicConditions.length > 0 ? patient.chronicConditions.join(', ') : 'Essential Hypertension (I10)'}</span>
+                    {/* ب2: the ACTUAL exam diagnosis only — never chronic conditions,
+                        never a hardcoded I10 fallback */}
+                    <span>{diagnoses.length > 0 ? diagnoses.map((d) => d.nameEn || d.nameAr || d.code || '').filter(Boolean).join(', ') : '—'}</span>
                   </div>
 
                   {/* Treatment section with Rx symbol positioned NEXT to the medication list */}
@@ -1474,10 +1486,10 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
                           <div key={item.id || idx} className={`${itemPaddingClass} rounded-lg bg-slate-50/80 border border-slate-100 flex items-start justify-between gap-2`}>
                             <div className={drugTextClass}>
                               <div className="font-bold text-slate-900">
-                                {idx + 1}. {item.drugName} {item.strength || ''} {item.dosageForm || ''} {item.scientificName ? `(${item.scientificName})` : ''}
+                                {idx + 1}. {item.drugName} {item.strength && !(item.drugName || '').toLowerCase().includes(item.strength.toLowerCase()) ? item.strength : ''} {item.dosageForm || ''} {item.scientificName ? `(${item.scientificName})` : ''}
                               </div>
                               <div className={`text-teal-700 font-medium ${instructionTextClass}`}>
-                                {item.dosageInstructions || item.dosage || ''} {item.timing ? `• ${item.timing}` : ''} {item.duration ? `• ${formatDurationLabel(item.duration)}` : ''}
+                                {item.dosageInstructions || item.dosage || ''} {item.timing && !(item.dosageInstructions || item.dosage || '').toLowerCase().includes(item.timing.toLowerCase()) ? `• ${item.timing}` : ''} {item.duration ? `• ${formatDurationLabel(item.duration)}` : ''}
                               </div>
                               {item.notes && (
                                 <div className={`text-slate-500 italic mt-0.5 ${noteTextClass}`}>توجيهات إضافية: {item.notes}</div>
@@ -1486,29 +1498,22 @@ export const PrescriptionPadScreen: React.FC<PrescriptionPadScreenProps> = ({
                           </div>
                         ))
                       ) : (
-                        <>
-                          <div className={`${itemPaddingClass} rounded-lg bg-slate-50/80 border border-slate-100 flex items-start justify-between gap-2`}>
-                            <div className={drugTextClass}>
-                              <div className="font-bold text-slate-900">1. Nexium 40 mg Tab. (Esomeprazole)</div>
-                              <div className={`text-teal-700 font-medium ${instructionTextClass}`}>قرص واحد قبل الإفطار بنصف ساعة • لمدة 30 يوماً</div>
-                            </div>
+                        <div className={`${itemPaddingClass} rounded-lg bg-slate-50/80 border border-slate-100 flex items-start justify-between gap-2`}>
+                          <div className={drugTextClass}>
+                            {/* ب2: an empty prescription shows empty — never sample drugs */}
+                            <div className="font-bold text-slate-400 italic">لا توجد أدوية مضافة للروشتة حالياً.</div>
                           </div>
-
-                          <div className={`${itemPaddingClass} rounded-lg bg-slate-50/80 border border-slate-100 flex items-start justify-between gap-2`}>
-                            <div className={drugTextClass}>
-                              <div className="font-bold text-slate-900">2. Concor 5 Plus Tab. (Bisoprolol / HCTZ)</div>
-                              <div className={`text-teal-700 font-medium ${instructionTextClass}`}>قرص واحد صباحاً بعد الإفطار • مستمر</div>
-                            </div>
-                          </div>
-                        </>
+                        </div>
                       )}
                     </div>
                   </div>
 
-                  {/* Sample Advice */}
-                  <div className={`${advicePaddingClass} rounded-lg bg-teal-50/40 border border-teal-100 leading-relaxed ${adviceTextClass}`}>
-                    <span className="font-bold">تعليمات طبية:</span> تجنب الأطعمة الدسمة والمقليات، وممارسة رياضة المشي 30 دقيقة يومياً، والمتابعة الدورية.
-                  </div>
+                  {/* Medical Advice — only the actual advice, never sample text */}
+                  {lifestyleAdvice && (
+                    <div className={`${advicePaddingClass} rounded-lg bg-teal-50/40 border border-teal-100 leading-relaxed ${adviceTextClass}`}>
+                      <span className="font-bold">تعليمات طبية:</span> {lifestyleAdvice}
+                    </div>
+                  )}
                 </div>
               );
             })()}
