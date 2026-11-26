@@ -124,7 +124,12 @@ export async function createManagedUser(params: {
       credential = await createUserWithEmailAndPassword(secondaryAuth, internalEmail(username), params.password);
     } catch (cause) {
       if (!(cause instanceof Error) || !cause.message.includes('auth/email-already-in-use')) throw cause;
-      credential = await signInWithEmailAndPassword(secondaryAuth, internalEmail(username), params.password);
+      // د9: اسم مستخدم موجود بالفعل — لا تسجّل الدخول به ولا تعيد كتابة مستند
+      // مستخدم قائم عبر مسار "الإنشاء". على المدير حذف الحساب القديم من
+      // Authentication أولاً أو اختيار اسم مستخدم آخر.
+      throw new Error(
+        'يوجد حساب بهذا الاسم بالفعل في Firebase Authentication. احذف الحساب القديم من لوحة Firebase أولاً، أو اختر اسم مستخدم آخر.'
+      );
     }
     const now = serverTimestamp();
     await setDoc(
@@ -156,8 +161,9 @@ export async function updateManagedUser(
     displayName?: string;
     role?: UserRole;
     active?: boolean;
-    allowedScreens?: string[];
-    customPermissions?: CustomPermissionsMap;
+    // د3: يُسمح بـ null لمسح الصلاحيات المخصصة/الشاشات عند تغيير الدور.
+    allowedScreens?: string[] | null;
+    customPermissions?: CustomPermissionsMap | null;
   }
 ): Promise<void> {
   const { db } = requireFirebase();
@@ -210,12 +216,11 @@ export async function deleteManagedUser(uid: string, username?: string): Promise
       serverError.includes('غير مفعلة حالياً');
 
     if (isConfigError) {
-      await deleteDoc(doc(db, 'users', uid)).catch(() => undefined);
-      if (username) {
-        await deleteDoc(doc(db, 'usernames', normalizeUsername(username))).catch(() => undefined);
-      }
+      // د9: لا تحذف أي سجل من Firestore قبل حذف حساب Auth فعلياً — حذف
+      // السجلات هنا يحرق اسم المستخدم نهائياً (يبقى حساب Auth ويستحيل
+      // إعادة إنشاء الاسم). ولا تدّعِ النجاح في رسالة خطأ.
       throw new Error(
-        `تم حذف المستخدم من سجلات العيادة بنجاح. لحذفه تلقائياً من صفحة Authentication أيضاً، أضف مفتاح الخدمة في إعدادات الخادم.`
+        'تعذّر حذف المستخدم: إعدادات خادم الحذف (مفتاح الخدمة) غير مفعّلة، ولم يُحذف أي سجل. أضف مفتاح الخدمة في إعدادات الخادم ثم أعد محاولة الحذف.'
       );
     }
 
