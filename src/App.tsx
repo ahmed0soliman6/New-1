@@ -107,7 +107,7 @@ const BookingLandingScreen = lazy(() =>
   import('./components/screens/BookingLandingScreen').then((m) => ({ default: m.BookingLandingScreen }))
 );
 import { db } from './services/firebase';
-import { doc, getDoc, deleteDoc, setDoc, collection, getDocs, writeBatch, query, limit, where, type QueryConstraint } from 'firebase/firestore';
+import { doc, getDoc, deleteDoc, setDoc, collection, getDocs, writeBatch, query, limit, where, onSnapshot, type QueryConstraint } from 'firebase/firestore';
 import { logoutAccount } from './services/auth';
 import { AuthScreen } from './components/AuthScreen';
 import { AuthProvider, useAuth, usePermissions } from './context/AuthContext';
@@ -159,7 +159,7 @@ import {
 import { safeStorage, StorageKeys } from './services/storage';
 import { setCachedRecurringTemplates } from './utils/recurringTemplatesManager';
 import { toEnglishDigits, formatAppDate, formatAppTime } from './utils/numberUtils';
-import { findBranch } from './utils/clinicBranches';
+import { findBranch, type ClinicBranchItem } from './utils/clinicBranches';
 import { toDayKey, todayKey, addDaysToKey, calculateAge } from './utils/dayKey';
 import { buildTransactions } from './utils/buildTransactions';
 import { meterWrite } from './services/readMeter';
@@ -422,17 +422,40 @@ function ClinicApp() {
     ];
   });
 
-  const handleAddVisitType = (newType: { id: string; name: string; fee: number }) => {
+  // مرآة متزامنة لقائمة أنواع الزيارات: تُحدَّث فوراً داخل handleAddVisitType
+  // لأن الـ updater وحده لا يكفي لاتخاذ قرار كتابة Firestore المتزامن (انظر د5/د10).
+  const visitTypesListRef = useRef(visitTypesList);
+  useEffect(() => {
+    visitTypesListRef.current = visitTypesList;
+  }, [visitTypesList]);
+
+  const handleAddVisitType = (newType: { id: string; name: string; fee: number }): Promise<boolean> => {
+    const nameKey = newType.name.trim();
+    // د5: إزالة التكرار داخل الـ updater نفسه، لأن الاستعادة تستدعي هذه الدالة
+    // في حلقة forEach بلا await — فكل استدعاء يرى نتيجة سابقه.
+    // والمرآة (ref) تُحدَّث متزامنةً هنا لاتخاذ قرار كتابة Firestore في نفس الاستدعاء.
+    let addedList: { id: string; name: string; fee: number }[] | null = null;
+    if (!visitTypesListRef.current.some((v) => v.name.trim() === nameKey || v.id === newType.id)) {
+      addedList = [...visitTypesListRef.current, newType];
+      visitTypesListRef.current = addedList;
+      safeStorage.setJSON(StorageKeys.VISIT_TYPES, addedList);
+    }
     setVisitTypesList((prev) => {
+      if (prev.some((v) => v.name.trim() === nameKey || v.id === newType.id)) {
+        return prev;
+      }
       const updated = [...prev, newType];
       safeStorage.setJSON(StorageKeys.VISIT_TYPES, updated);
-      if (db) {
-        import('firebase/firestore').then(({ doc, setDoc }) => {
-          setDoc(doc(db!, 'settings', 'visitTypes'), { items: updated }, { merge: true }).catch(() => {});
-        });
-      }
       return updated;
     });
+    if (!addedList) return Promise.resolve(false);
+    const listToSave = addedList;
+    if (!db) return Promise.resolve(true);
+    // د10: لا يُبتلَع فشل Firestore بـ .catch(() => {}) — يُعاد رفضه
+    // ليُظهر المتصل خطأً حقيقياً بدل رسالة نجاح كاذبة.
+    return import('firebase/firestore').then(({ doc, setDoc }) =>
+      setDoc(doc(db!, 'settings', 'visitTypes'), { items: listToSave }, { merge: true }).then(() => true)
+    );
   };
 
   const handleRemoveVisitType = (id: string) => {
@@ -701,6 +724,12 @@ function ClinicApp() {
   // Firestore Realtime Subscriptions (Firestore -> onSnapshot -> Canonical State)
   const [syncRetryCounter, setSyncRetryCounter] = useState(0);
 
+  // د4: فروع settings/clinicBranches هي المصدر المفضل للفروع.
+  // تُزرع المرآة من localStorage حتى تسبق لقطة إعدادات الروشتة إن وصلت أولاً.
+  const clinicBranchesFirestoreRef = useRef<ClinicBranchItem[]>(
+    (safeStorage.getJSON<ClinicBranchItem[] | null>(StorageKeys.CLINIC_BRANCHES, null) as ClinicBranchItem[]) || []
+  );
+
   useEffect(() => {
     if (!db) {
       setSyncStatus('offline');
@@ -731,6 +760,9 @@ function ClinicApp() {
 
     const hotStart = addDaysToKey(dayStamp, -(HOT_DAYS - 1));
     const apptStart = addDaysToKey(dayStamp, -APPT_PAST_DAYS);
+    // ج14: نافذة التاريخ (90 يوماً) لعدّادات بطاقة المريض ونافذة تأكيد الحذف،
+    // فلا تُحسب من بيانات اليوم والأمس فقط.
+    const historyStart = addDaysToKey(dayStamp, -(90 - 1));
 
     const win = <T extends Record<string, any>>(
       name: string,
@@ -743,20 +775,27 @@ function ClinicApp() {
           // المرضى: كاملة عمدًا للحفاظ على تسلسل أرقام الملفات والبحث الفوري
           subscribeToPatients(db, (items) => { onDataSuccess(); setPatientsCanonical(items); }, onError),
 
+          // أ4: جلب المواعيد بكل الحالات ذات الصلة (مجدولة + حضر + ملغى)
+          // حتى يعمل الأرشيف وفلاتر «حضر/ملغى» بدل أن تبقى فارغة دائماً.
           win<Appointment>('appointments',
-            [[where('scheduledDate', '>=', apptStart)], [where('status', '==', 'SCHEDULED')]],
+            [[where('scheduledDate', '>=', apptStart)], [where('status', 'in', ['SCHEDULED', 'ARRIVED', 'CANCELLED'])]],
             setAppointmentsCanonical),
 
+          // ج14: الزيارات من آخر 90 يوماً (أي حالة) + النشطة من أي تاريخ،
+          // حتى تكون عدّادات بطاقة المريض ونافذة تأكيد الحذف صحيحة.
+          // ملاحظة: كل عنصر هنا استعلام مستقل يُدمج اتحاده عبر subscribeMerged.
           win<Visit>('visits',
-            [[where('dayKey', '>=', hotStart)], [where('status', 'in', ['WAITING', 'IN_PROGRESS'])]],
+            [[where('dayKey', '>=', historyStart)], [where('status', 'in', ['WAITING', 'IN_PROGRESS'])]],
             (items) => { setVisitsCanonical(items); setVisitsReady(true); }),
 
+          // ج14: الفواتير من آخر 90 يوماً (أي حالة) + غير المسددة من أي تاريخ.
           win<Invoice>('invoices',
-            [[where('dayKey', '>=', hotStart)], [where('status', 'in', ['UNPAID', 'PARTIALLY_PAID'])]],
+            [[where('dayKey', '>=', historyStart)], [where('status', 'in', ['UNPAID', 'PARTIALLY_PAID'])]],
             setInvoicesCanonical),
 
           win<Payment>('payments', [[where('dayKey', '>=', hotStart)]], setPaymentsCanonical),
-          win<Prescription>('prescriptions', [[where('dayKey', '>=', hotStart)]], setPrescriptionsCanonical),
+          // ج14: الروشتات من آخر 90 يوماً بدل اليوم والأمس فقط.
+          win<Prescription>('prescriptions', [[where('dayKey', '>=', historyStart)]], setPrescriptionsCanonical),
           win<FollowUp>('followUps', [[where('status', 'in', ['UPCOMING', 'TODAY', 'OVERDUE'])]], setFollowUpsCanonical),
           win<LabOrder>('labOrders', [[where('dayKey', '>=', hotStart)]], setLabOrdersCanonical),
           win<RadiologyOrder>('radiologyOrders', [[where('dayKey', '>=', hotStart)]], setRadiologyOrdersCanonical),
@@ -797,6 +836,30 @@ function ClinicApp() {
           localStorage.setItem('soli_visit_types', JSON.stringify(deduplicated));
         }
       }, onError),
+      // د4: الاشتراك في settings/clinicBranches (المستند الذي تكتب فيه لوحة الفروع)
+      // كمصدر مفضّل للفروع، بدل الاعتماد على فروع إعدادات الروشتة وحدها.
+      onSnapshot(
+        doc(db, 'settings', 'clinicBranches'),
+        (snap) => {
+          if (!snap.exists()) return;
+          const data = snap.data() as { branches?: unknown };
+          if (!Array.isArray(data.branches) || data.branches.length === 0) return;
+          onDataSuccess();
+          const branches = data.branches as ClinicBranchItem[];
+          clinicBranchesFirestoreRef.current = branches;
+          safeStorage.setJSON(StorageKeys.CLINIC_BRANCHES, branches);
+          // getClinicBranches() يقرأ فروع إعدادات الروشتة أولاً، فتُدمج فروع
+          // clinicBranches فيها حتى تكون هي المعروضة في كل الشاشات.
+          const cachedRx = safeStorage.getJSON<Record<string, unknown> | null>(StorageKeys.PRESCRIPTION_SETTINGS, null);
+          if (cachedRx) {
+            safeStorage.setJSON(StorageKeys.PRESCRIPTION_SETTINGS, { ...cachedRx, branches });
+          }
+          window.dispatchEvent(new Event('soli_branches_updated'));
+          window.dispatchEvent(new Event('soli_prescription_updated'));
+          window.dispatchEvent(new Event('storage'));
+        },
+        (reason) => onError(reason as Error)
+      ),
     ];
 
     // Stage secondary catalog and template subscriptions slightly after initial operational render
@@ -814,7 +877,13 @@ function ClinicApp() {
         subscribeToRecurringTemplates(db, (templates) => { if (templates) setCachedRecurringTemplates(templates); }, onError),
         subscribeToPrescriptionSettings(db, (settings) => {
           if (settings && Object.keys(settings).length > 0) {
-            localStorage.setItem('soli_prescription_settings', JSON.stringify(settings));
+            // د4: لا تدع لقطة إعدادات الروشتة تمحو تعديلات لوحة الفروع —
+            // فروع settings/clinicBranches (إن وُجدت) تبقى هي المصدر المفضل.
+            const mergedSettings: Record<string, unknown> = { ...(settings as Record<string, unknown>) };
+            if (clinicBranchesFirestoreRef.current.length > 0) {
+              mergedSettings.branches = clinicBranchesFirestoreRef.current;
+            }
+            localStorage.setItem('soli_prescription_settings', JSON.stringify(mergedSettings));
             window.dispatchEvent(new Event('soli_prescription_updated'));
             window.dispatchEvent(new Event('storage'));
           }
@@ -937,7 +1006,9 @@ function ClinicApp() {
 
   const queue: QueueItem[] = useMemo(() => {
     return visitsCanonical
-      .filter((v) => v.status === 'WAITING')
+      // أ5: إبقاء المريض في الطابور بعد بدء كشفه (IN_PROGRESS) بحالة «في الكشف»،
+      // بدل اختفائه من الشاشة — QueueScreen يعرض الشارة عند status === 'in-progress'.
+      .filter((v) => v.status === 'WAITING' || v.status === 'IN_PROGRESS')
       .sort((a, b) => (a.queueNumber || 0) - (b.queueNumber || 0))
       .map((v) => {
         const pat = patientsCanonical.find((p) => p.patientId === v.patientId);
@@ -965,7 +1036,9 @@ function ClinicApp() {
           paidAmount: payment?.amount || invoice?.paidAmount || 0,
           paymentMethod: (payment?.method === 'CARD' ? 'فيزا / كارت' : payment?.method === 'TRANSFER' ? 'إنستاباي' : 'نقدي') as any,
           complaint: v.receptionistData?.symptoms || 'كشف عيادة باطنة',
-          status: 'waiting',
+          // أ5: 'in-progress' هي القيمة التي يفحصها QueueScreen لشارة «في الكشف».
+          // (اتحاد QueueItem في types.ts لا يشملها بعد — يُمرَّر بتحويل صريح.)
+          status: (v.status === 'IN_PROGRESS' ? 'in-progress' : 'waiting') as unknown as QueueItem['status'],
         };
       });
   }, [visitsCanonical, patientsCanonical, invoicesCanonical, paymentsCanonical]);
@@ -2274,9 +2347,21 @@ function ClinicApp() {
         ? (typeof newTx.paidAmount === 'number' && newTx.paidAmount > 0 ? Math.min(finalTotal, newTx.paidAmount) : finalTotal)
         : 0;
 
+      // ج15: بناء الطابع الزمني من تاريخ القاهرة + وقت القاهرة معاً،
+      // بدل خلط تاريخ محلي مع مكوّن وقت UTC (كان يؤخّر الطابع ساعتين
+      // فيجعل تاريخ العرض مختلفاً عن dayKey القاهري).
+      const cairoTimeNow = new Date().toLocaleTimeString('en-GB', {
+        timeZone: 'Africa/Cairo', hour12: false, hourCycle: 'h23',
+      });
+      const cairoOffsetMatch = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Africa/Cairo', timeZoneName: 'shortOffset',
+      })
+        .formatToParts(new Date())
+        .find((p) => p.type === 'timeZoneName')?.value?.match(/GMT([+-])(\d+)/);
+      const cairoOffset = cairoOffsetMatch ? `${cairoOffsetMatch[1]}0${cairoOffsetMatch[2]}:00` : '+02:00';
       const txDateIso = newTx.date
-        ? `${newTx.date}T${new Date().toISOString().split('T')[1] || '12:00:00.000Z'}`
-        : new Date().toISOString();
+        ? `${newTx.date}T${cairoTimeNow}.000${cairoOffset}`
+        : `${toDayKey(new Date())}T${cairoTimeNow}.000${cairoOffset}`;
 
       const rawMethod = newTx.paymentMethod || newTx.method || 'نقدي';
       const resolvedPaymentMethod: 'CASH' | 'CARD' | 'TRANSFER' =
@@ -2622,15 +2707,19 @@ function ClinicApp() {
   };
 
   // Add scheduled appointment: Patient first, then Appointment in one Firestore transaction
-  const handleAddAppointment = async (app: AppointmentListItem) => {
+  // د8-App: يعيد Promise<boolean> — true إذا حُفظ الموعد (أو كان موجوداً أصلاً)،
+  // وfalse إذا لم يُحفظ (فشل الحفظ، أو بلا اتصال بقاعدة البيانات، أو استدعاء مكرر
+  // أثناء تنفيذ استدعاء سابق) — حتى تميّز الشاشة الفشل من النجاح بدل رسالة نجاح كاذبة.
+  // تنبيه الخطأ الداخلي يبقى كما هو.
+  const handleAddAppointment = async (app: AppointmentListItem): Promise<boolean> => {
     const apptId = app.appointmentId || app.id;
     if (apptId && appointmentsCanonical.some((a) => a.appointmentId === apptId)) {
-      return;
+      return true;
     }
     const cleanPhone = (app.phone || '').trim();
     const cleanName = (app.patientName || '').trim();
     const lockKey = `appt:${apptId || normalizePhoneDigits(cleanPhone) || normalizeArabicName(cleanName)}-${app.date || ''}`;
-    if (inFlightActionsRef.current.has(lockKey)) return;
+    if (inFlightActionsRef.current.has(lockKey)) return false;
     inFlightActionsRef.current.add(lockKey);
 
     try {
@@ -2666,7 +2755,7 @@ function ClinicApp() {
         patientName: cleanName || existingPatient?.fullName || 'مريض محجوز',
         phone: cleanPhone || existingPatient?.phone || '',
         clinicLocationId: resolvedBranch.id || resolvedBranch.name || 'loc-mohandessin',
-        scheduledDate: app.date || new Date().toISOString().split('T')[0],
+        scheduledDate: app.date || toDayKey(new Date()),
         scheduledTime: app.timeSlot || app.time || '07:30 م',
         visitType: app.visitType || 'كشف جديد',
         status: 'SCHEDULED',
@@ -2680,14 +2769,20 @@ function ClinicApp() {
           await createAppointmentTransaction({ db, patient: patientToSave, appointment: newApp });
         } catch (error) {
           alert(error instanceof Error ? error.message : 'تعذر حفظ الموعد في قاعدة البيانات');
+          return false;
         }
+      } else {
+        return false;
       }
+      return true;
     } finally {
       inFlightActionsRef.current.delete(lockKey);
     }
   };
 
   // Finish examination: ATOMIC COMPLETE VISIT WORKFLOW (UI Action -> Firestore Complete Visit -> onSnapshot -> UI)
+  // العقد مع ExaminationScreen: يعيد Promise<boolean> — true إذا حُفظ/حُدّث شيء فعلاً،
+  // وfalse إذا لم يُحفظ شيء (بلا زيارة، أو بلا اتصال، أو فشل الحفظ) — فلا نجاح كاذب أبداً.
   const handleFinishExam = async (examData?: {
     prescriptionItems: PrescriptionItem[];
     labOrders: LabOrderItem[];
@@ -2699,20 +2794,29 @@ function ClinicApp() {
     chiefComplaint?: string;
     examination?: string;
     history?: string;
-  }) => {
+  }): Promise<boolean> => {
     const resolvedDoctorId = userProfile?.username || userProfile?.uid;
     if (!resolvedDoctorId) {
       alert('تعذر التحقق من حساب الطبيب المسجل حاليًا. يرجى إعادة تسجيل الدخول قبل إنهاء الكشف.');
-      return;
+      return false;
     }
 
     const diagnosisStrings = (examData?.diagnoses || [])
       .map((d) => (typeof d === 'string' ? d.trim() : (d?.nameAr || d?.nameEn || '').trim()))
       .filter(Boolean);
 
+    // ب18: التشخيص الرئيسي (isPrimary) — يُمرَّر منفصلاً لأن diagnosisStrings
+    // سلاسل نصية بلا العلامة، فيُحفظ كـ lastDiagnosis بدل diagnosis[0].
+    const primaryDiagnosisEntry = (examData?.diagnoses || []).find(
+      (d) => d && typeof d === 'object' && (d as any).isPrimary
+    );
+    const primaryDiagnosisName = primaryDiagnosisEntry
+      ? (((primaryDiagnosisEntry as any).nameAr || (primaryDiagnosisEntry as any).nameEn || '') as string).trim()
+      : '';
+
     if (diagnosisStrings.length === 0) {
       alert('يرجى إدخال أو اختيار تشخيص طبي واحد على الأقل قبل إنهاء الكشف وحفظ الزيارة.');
-      return;
+      return false;
     }
 
     // EMR-02: Never fall back to another patient's waiting visit if activeExamPatient is set
@@ -2723,13 +2827,31 @@ function ClinicApp() {
       : (visitsCanonical.find((v) => v.status === 'IN_PROGRESS') ||
          visitsCanonical.find((v) => v.status === 'WAITING'));
 
+    // ب4: بعد إنهاء الكشف تصبح الزيارة COMPLETED — «حفظ التعديلات» يحدّثها
+    // بدل تخطي الحفظ بصمت. تُؤخذ أحدث زيارة مكتملة لنفس المريض فقط،
+    // ولا يُخمَّن أي مكتملة عامة لمريض آخر.
+    const completedVisit = !activeWaiting && activeExamPatient?.id
+      ? [...visitsCanonical]
+          .filter((v) => v.patientId === activeExamPatient.id && v.status === 'COMPLETED')
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+      : undefined;
+
+    const targetVisit = activeWaiting || completedVisit;
+
+    // ب5: بلا زيارة أصلاً (لا نشطة ولا مكتملة) لا يُحفظ شيء ولا يُدَّعى نجاح —
+    // يُعاد false لتُظهر الشاشة خطأً حقيقياً بدل مودال نجاح كاذب.
+    if (!targetVisit || !db) {
+      return false;
+    }
+
     const rxItems = examData ? examData.prescriptionItems : activePrescription;
 
     // Sync to Firestore if db is available
-    if (activeWaiting && db) {
+    {
       const rxSnapshots: PrescriptionItemSnapshot[] = rxItems.map((item) => ({
         name: item.drugName,
-        strength: item.scientificName || '',
+        // ب3: التركيز الحقيقي (item.strength) — لا الاسم العلمي.
+        strength: item.strength || '',
         form: item.dosageForm || '',
         dose: item.dosage || '',
         frequency: item.timing || item.dosage || '',
@@ -2741,7 +2863,7 @@ function ClinicApp() {
         chiefComplaint:
           examData?.chiefComplaint !== undefined
             ? examData.chiefComplaint
-            : (activeWaiting.receptionistData?.symptoms || activeExamPatient?.chiefComplaint || ''),
+            : (targetVisit.receptionistData?.symptoms || activeExamPatient?.chiefComplaint || ''),
         history: examData?.history ?? '',
         examination: examData?.examination ?? '',
         diagnosis: diagnosisStrings,
@@ -2750,15 +2872,22 @@ function ClinicApp() {
 
       const vitalSigns = examData?.vitals
         ? vitalsToVisit(examData.vitals)
-        : (activeWaiting.vitalSigns || {});
+        : (targetVisit.vitalSigns || {});
+
+      // د2: لا متابعة مجانية أبداً — المتابعة تُحاسَب برسوم نوع زيارة المتابعة
+      // من visitTypesList (الافتراضي 150 للاستشارة/متابعة إن لم يُوجد).
+      const followUpFee = visitTypesList.find(
+        (vt) => vt.name.includes('متابعة') || vt.name.includes('استشارة')
+      )?.fee ?? 150;
 
       try {
         await completeVisitTransaction({
           db,
-          visitId: activeWaiting.visitId,
+          visitId: targetVisit.visitId,
           doctorId: resolvedDoctorId,
           clinicalData,
           vitalSigns,
+          primaryDiagnosis: primaryDiagnosisName || undefined,
           prescriptionItems: rxSnapshots,
           prescriptionNotes: examData?.lifestyleAdvice ?? '',
           labOrders: examData?.labOrders?.map((l) => {
@@ -2771,7 +2900,14 @@ function ClinicApp() {
               testName: l.testName,
               status: resolvedStatus,
               result: l.resultValue || '',
-              notes: l.instructions || l.reportNotes || '',
+              // ب12: التعليمات وملاحظات التقرير حقلان منفصلان — لا تُدمجا.
+              notes: l.instructions || '',
+              // ب12: حفظ علامة «غير طبيعي» والمدى والوحدة وتاريخ النتيجة وملاحظات التقرير.
+              isAbnormal: l.isAbnormal || false,
+              referenceRange: l.referenceRange || '',
+              unit: l.unit || '',
+              resultDate: l.resultDate || '',
+              reportNotes: l.reportNotes || '',
             };
           }),
           radiologyOrders: examData?.radiologyOrders?.map((r) => {
@@ -2791,17 +2927,17 @@ function ClinicApp() {
           }),
           followUp: examData?.followupDate ? {
             scheduledDate: examData.followupDate,
-            fee: 0,
-            isFree: true,
+            fee: followUpFee,
+            isFree: false,
             notes: examData.lifestyleAdvice || '',
           } : undefined,
         });
       } catch (error) {
         console.error('Firestore completeVisitTransaction error:', error);
         alert(error instanceof Error ? error.message : 'تعذر حفظ بيانات الزيارة الطبية في قاعدة البيانات. يرجى المحاولة مرة أخرى.');
-        return;
+        return false;
       }
-      invalidatePatientHistory(activeWaiting?.patientId || activeExamPatient?.id);
+      invalidatePatientHistory(targetVisit?.patientId || activeExamPatient?.id);
       // عدّاد الكتابات: إنهاء الكشف + الروشتة + الفاتورة حُفظت فعلاً
       meterWrite(1);
     }
@@ -2812,17 +2948,18 @@ function ClinicApp() {
       playSingleAlertSound('finish');
     }
     if (alertConfig.visualEnabled && alertConfig.finishExamVisual) {
-      const visitId = activeWaiting?.visitId || activeExamPatient?.id || 'exam';
+      const visitId = targetVisit?.visitId || activeExamPatient?.id || 'exam';
       registerAlert({
         id: `finish-${visitId}`,
         type: 'finish',
         title: 'إشعار السكرتارية: انتهاء الكشف الطبي',
         message: `تم الانتهاء من كشف المريض (${activeExamPatient?.name || 'المريض'}) واعتماد الروشتة. العيادة جاهزة لاستقبال المريض التالي.`,
-        ticket: String(activeWaiting?.queueNumber || ''),
+        ticket: String(targetVisit?.queueNumber || ''),
         timestamp: formatAppTime(new Date()),
       });
       scheduleBannerDismiss(6000, `finish-${visitId}`);
     }
+    return true;
   };
 
   return (
