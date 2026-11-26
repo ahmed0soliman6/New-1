@@ -1,6 +1,45 @@
 import React, { useState, useMemo } from 'react';
 import { AppointmentListItem } from '../../types';
-import { getClinicBranches } from '../../utils/clinicBranches';
+import { getClinicBranches, isDateMatchingBranchDays } from '../../utils/clinicBranches';
+import { toDayKey } from '../../utils/dayKey';
+
+/** يحوّل وقتاً بصيغة 24 ساعة أو عربية (04:00 م) إلى دقائق منذ منتصف الليل. */
+function parseTimeToMinutes(timeStr?: string): number | null {
+  if (!timeStr) return null;
+  const s = timeStr.trim();
+  const isPM = s.includes('م') || /pm/i.test(s);
+  const isAM = s.includes('ص') || /am/i.test(s);
+  const digits = s.replace(/[^\d:]/g, '');
+  const parts = digits.split(':');
+  let h = parseInt(parts[0], 10);
+  const m = parts.length > 1 ? parseInt(parts[1], 10) : 0;
+  if (isNaN(h) || isNaN(m)) return null;
+  if (isPM && h < 12) h += 12;
+  if (isAM && h === 12) h = 0;
+  return h * 60 + m;
+}
+
+/** يوحّد وقتاً (24 ساعة أو عربي) إلى صيغة HH:MM الصالحة لحقل time. */
+function normalizeTimeInput(timeStr?: string, fallback = '16:00'): string {
+  const mins = parseTimeToMinutes(timeStr);
+  if (mins === null) return fallback;
+  const h = Math.floor(mins / 60) % 24;
+  const m = mins % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/** هل الوقت داخل دوام الفرع؟ (وقت الإغلاق نفسه غير قابل للحجز) */
+function isTimeWithinBranchHours(timeStr: string, branch?: { startTime?: string; endTime?: string }): boolean {
+  if (!branch) return true;
+  const t = parseTimeToMinutes(timeStr);
+  let start = parseTimeToMinutes(branch.startTime) ?? 16 * 60;
+  let end = parseTimeToMinutes(branch.endTime) ?? 22 * 60;
+  if (t === null) return false;
+  if (end <= start) end += 24 * 60; // فروع ليلية تعبر منتصف الليل
+  let tt = t;
+  if (tt < start) tt += 24 * 60;
+  return tt >= start && tt < end;
+}
 
 interface NewAppointmentModalProps {
   isOpen: boolean;
@@ -36,8 +75,11 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
   const clinicBranches = useMemo(() => getClinicBranches(), []);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [appointmentDate, setAppointmentDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [timeSlot, setTimeSlot] = useState('14:30');
+  // د7: التاريخ الافتراضي بتوقيت القاهرة (toDayKey) لا UTC — toISOString كان
+  // يفتح على «أمس» بين منتصف الليل و02:00 صباحاً.
+  const [appointmentDate, setAppointmentDate] = useState(() => toDayKey());
+  // د7: الوقت الافتراضي هو وقت فتح الفرع الأول، لا 14:30 الثابتة (خارج الدوام).
+  const [timeSlot, setTimeSlot] = useState(() => normalizeTimeInput(clinicBranches[0]?.startTime));
   const [branch, setBranch] = useState(() => clinicBranches[0]?.name || 'الفرع الرئيسي - المهندسين');
   const [visitType, setVisitType] = useState(() => activeVisitTypes[0]?.name || 'كشف جديد');
   const [fee, setFee] = useState(() => activeVisitTypes[0]?.fee ?? 300);
@@ -56,6 +98,25 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
     e.preventDefault();
     if (!name.trim() || !phone.trim()) {
       alert('يرجى إدخال اسم المريض ورقم الهاتف');
+      return;
+    }
+
+    // د7: نفس فحوصات النموذج المضمّن — لا حجز في تاريخ ماضٍ، ولا في يوم مغلق
+    // للفرع، ولا خارج ساعات عمل الفرع.
+    const todayKey = toDayKey();
+    if (!appointmentDate || appointmentDate < todayKey) {
+      alert('لا يمكن حجز موعد في تاريخ ماضٍ. اختر تاريخ اليوم أو تاريخاً قادماً.');
+      return;
+    }
+    const selectedBranch = clinicBranches.find((b) => b.name === branch) || clinicBranches[0];
+    if (selectedBranch && !isDateMatchingBranchDays(appointmentDate, selectedBranch.workingHours)) {
+      alert(`العيادة مغلقة في هذا اليوم بفرع "${selectedBranch.name}". اختر يوم عمل آخر.`);
+      return;
+    }
+    if (selectedBranch && !isTimeWithinBranchHours(timeSlot, selectedBranch)) {
+      alert(
+        `الوقت المختار خارج ساعات عمل فرع "${selectedBranch.name}" (${normalizeTimeInput(selectedBranch.startTime)} - ${normalizeTimeInput(selectedBranch.endTime, '22:00')}). اختر وقتاً داخل الدوام.`
+      );
       return;
     }
 
@@ -144,6 +205,7 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
                 <input
                   type="date"
                   required
+                  min={toDayKey()}
                   value={appointmentDate}
                   onChange={(e) => setAppointmentDate(e.target.value)}
                   onClick={(e) => {
@@ -207,7 +269,16 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
               <label className="text-xs text-[#dde2f5] font-bold block mb-1">الفرع:</label>
               <select
                 value={branch}
-                onChange={(e) => setBranch(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setBranch(val);
+                  // د7: عند تغيير الفرع، إن كان الوقت الحالي خارج دوامه أعد ضبطه
+                  // على وقت فتح الفرع الجديد.
+                  const nextBranch = clinicBranches.find((b) => b.name === val);
+                  if (nextBranch && !isTimeWithinBranchHours(timeSlot, nextBranch)) {
+                    setTimeSlot(normalizeTimeInput(nextBranch.startTime));
+                  }
+                }}
                 className="w-full bg-[#080e1b] text-[#dde2f5] text-xs p-2.5 rounded-xl border border-white/10 focus:outline-none cursor-pointer font-medium"
               >
                 {clinicBranches.map((b) => (
