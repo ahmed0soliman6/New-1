@@ -163,12 +163,25 @@ export const UserManagementPanel: React.FC = () => {
     setError('');
     setMessage('');
     try {
+      // د3: عند تغيير الدور فعلياً، امسح الصلاحيات المخصصة القديمة وأعد تعيين
+      // الشاشات المسموحة لافتراضيات الدور الجديد — المخصصة تتغلب على الدور.
+      const roleChanged = normalizeRole(editRole) !== normalizeRole(targetUser?.role);
       await updateManagedUser(uid, {
         displayName: editDisplayName.trim(),
         role: editRole,
+        ...(roleChanged
+          ? {
+              customPermissions: null,
+              allowedScreens: getDefaultAllowedScreens(editRole),
+            }
+          : {}),
       });
       setEditingUid(null);
-      setMessage('تم تحديث بيانات المستخدم والصلاحية بنجاح.');
+      setMessage(
+        roleChanged
+          ? 'تم تحديث بيانات المستخدم والدور بنجاح، وأُعيد تعيين صلاحياته لافتراضيات الدور الجديد.'
+          : 'تم تحديث بيانات المستخدم والصلاحية بنجاح.'
+      );
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'تعذر تحديث بيانات المستخدم.');
     } finally {
@@ -216,9 +229,22 @@ export const UserManagementPanel: React.FC = () => {
     setError('');
     setMessage('');
     try {
-      await updateManagedUser(user.uid, { role: newRole });
+      // د3: تغيير الدور يمسح الصلاحيات المخصصة القديمة ويعيد تعيين الشاشات
+      // المسموحة لافتراضيات الدور الجديد، وإلا احتفظ المستخدم بامتيازات دوره السابق.
+      const roleChanged = normalizeRole(newRole) !== normalizeRole(user.role);
+      await updateManagedUser(user.uid, {
+        role: newRole,
+        ...(roleChanged
+          ? {
+              customPermissions: null,
+              allowedScreens: getDefaultAllowedScreens(newRole),
+            }
+          : {}),
+      });
       setMessage(
-        `تم حفظ الدور الجديد للمستخدم "${user.displayName || user.username}" (${roleLabel(newRole)}) في Firestore بنجاح.`
+        `تم حفظ الدور الجديد للمستخدم "${user.displayName || user.username}" (${roleLabel(newRole)}) في Firestore بنجاح${
+          roleChanged ? '، وأُعيد تعيين صلاحياته المخصصة لافتراضيات الدور الجديد.' : '.'
+        }`
       );
       setRoleModalTarget(null);
     } catch (cause) {
