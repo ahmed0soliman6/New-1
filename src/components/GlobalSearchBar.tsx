@@ -6,7 +6,7 @@ import {
   TransactionRecord,
   ScreenType,
 } from '../types';
-import { INITIAL_SERVICES } from '../data/database';
+import { loadMedicalServices } from '../utils/financeManager';
 import { toEnglishDigits } from '../utils/numberUtils';
 import { useLanguage } from '../i18n/LanguageContext';
 import { READ_OPT } from '../config/readOpt';
@@ -42,18 +42,28 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
 
-  // Pre-load default medical services for search
+  // ج19: أسعار الخدمات من خدمات الإعدادات الحية (لا من قائمة ثابتة قديمة).
+  const [liveServices, setLiveServices] = useState(() => loadMedicalServices());
+  useEffect(() => {
+    const refresh = () => setLiveServices(loadMedicalServices());
+    refresh();
+    window.addEventListener('soli_services_updated', refresh);
+    return () => window.removeEventListener('soli_services_updated', refresh);
+  }, [isOpen]);
+
   const medicalServices = useMemo(
     () =>
-      INITIAL_SERVICES.map((s) => ({
-        id: s.serviceId,
-        name: s.nameAr,
-        category: 'خدمات العيادة',
-        price: s.price,
-        description: s.nameEn,
-        durationMinutes: 20,
-      })),
-    []
+      liveServices
+        .filter((s) => s.active !== false)
+        .map((s) => ({
+          id: s.id,
+          name: s.name,
+          category: s.category || 'خدمات العيادة',
+          price: s.price,
+          description: s.name,
+          durationMinutes: 20,
+        })),
+    [liveServices]
   );
 
   // Keyboard shortcut Ctrl+K or Cmd+K or /
@@ -202,6 +212,54 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
     setIsOpen(false);
   };
 
+  // ج19: التنقل بلوحة المفاتيح — قائمة مسطحة بالترتيب الظاهر على الشاشة
+  // (مرضى ثم طابور ثم مواعيد، حسب فلتر الفئة)، الأسهم للتنقل وEnter للاختيار.
+  const visiblePatients = (activeCategoryFilter === 'all' || activeCategoryFilter === 'patients')
+    ? searchResults.patients.slice(0, 8)
+    : [];
+  const visibleQueue = (activeCategoryFilter === 'all' || activeCategoryFilter === 'queue')
+    ? searchResults.queue
+    : [];
+  const visibleAppointments = (activeCategoryFilter === 'all' || activeCategoryFilter === 'appointments')
+    ? searchResults.appointments
+    : [];
+
+  const navigableResults = useMemo(() => {
+    const items: { run: () => void }[] = [];
+    visiblePatients.forEach((pt) => items.push({ run: () => handleSelectPatient(pt) }));
+    visibleQueue.forEach((q) => items.push({
+      run: () => {
+        const pat = patients.find((pp) => pp.name === q.patientName);
+        if (pat && onSelectPatient) onSelectPatient(pat);
+        if (onCallPatient) onCallPatient(q.ticketNumber || '#01', q.patientName);
+        onNavigate('clinical-exam');
+        setIsOpen(false);
+      },
+    }));
+    visibleAppointments.forEach((a) => items.push({ run: () => handleOpenAppointment(a) }));
+    return items;
+  }, [visiblePatients, visibleQueue, visibleAppointments, patients, onSelectPatient, onCallPatient, onNavigate]);
+
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [searchTerm, activeCategoryFilter]);
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIndex((i) => Math.min(i + 1, Math.max(0, navigableResults.length - 1)));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIndex((i) => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter') {
+      const item = navigableResults[selectedIndex];
+      if (item) {
+        e.preventDefault();
+        item.run();
+      }
+    }
+  };
+
   return (
     <>
       {/* =========================================================================
@@ -284,6 +342,7 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
+                  onKeyDown={handleSearchKeyDown}
                   placeholder={language === 'en' ? 'Type patient name, phone, file number (e.g. P-001), or service...' : 'اكتب اسم المريض، رقم الهاتف، كود الملف (P-001)، أو نوع الخدمة المطلوبة...'}
                   className={`w-full bg-white dark:bg-[#070d18] text-slate-900 dark:text-white text-sm sm:text-base ${isRTL ? 'pr-11 pl-10' : 'pl-11 pr-10'} py-3.5 rounded-2xl border-2 border-[#00c2cb] focus:outline-none focus:ring-4 focus:ring-[#00c2cb]/20 placeholder:text-slate-400 font-medium shadow-inner`}
                 />
@@ -419,10 +478,10 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          {searchResults.patients.slice(0, 8).map((p) => (
+                          {visiblePatients.map((p, idx) => (
                             <div
                               key={p.id}
-                              className="p-3.5 rounded-2xl bg-slate-50 dark:bg-[#111A2E] border border-slate-200 dark:border-white/10 hover:border-[#00c2cb]/50 transition-all flex flex-col justify-between space-y-2.5 shadow-2xs group"
+                              className={`p-3.5 rounded-2xl bg-slate-50 dark:bg-[#111A2E] border border-slate-200 dark:border-white/10 hover:border-[#00c2cb]/50 transition-all flex flex-col justify-between space-y-2.5 shadow-2xs group ${selectedIndex === idx ? 'ring-2 ring-[#00c2cb] border-[#00c2cb]/70' : ''}`}
                             >
                               <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0">
@@ -521,10 +580,10 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
                         </div>
 
                         <div className="space-y-2">
-                          {searchResults.queue.map((q, idx) => (
+                          {visibleQueue.map((q, idx) => (
                             <div
                               key={q.id || idx}
-                              className="p-3 rounded-2xl bg-slate-50 dark:bg-[#111A2E] border border-slate-200 dark:border-white/10 flex items-center justify-between gap-3 shadow-2xs"
+                              className={`p-3 rounded-2xl bg-slate-50 dark:bg-[#111A2E] border border-slate-200 dark:border-white/10 flex items-center justify-between gap-3 shadow-2xs ${selectedIndex === visiblePatients.length + idx ? 'ring-2 ring-[#00c2cb] border-[#00c2cb]/70' : ''}`}
                             >
                               <div className="flex items-center gap-3 min-w-0">
                                 <div className="w-9 h-9 rounded-xl bg-[#00c2cb] text-slate-950 flex flex-col items-center justify-center font-bold shrink-0">
@@ -591,10 +650,10 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
                         </div>
 
                         <div className="space-y-2">
-                          {searchResults.appointments.map((a) => (
+                          {visibleAppointments.map((a, idx) => (
                             <div
                               key={a.id}
-                              className="p-3 rounded-2xl bg-slate-50 dark:bg-[#111A2E] border border-slate-200 dark:border-white/10 flex items-center justify-between gap-3 shadow-2xs"
+                              className={`p-3 rounded-2xl bg-slate-50 dark:bg-[#111A2E] border border-slate-200 dark:border-white/10 flex items-center justify-between gap-3 shadow-2xs ${selectedIndex === visiblePatients.length + visibleQueue.length + idx ? 'ring-2 ring-[#00c2cb] border-[#00c2cb]/70' : ''}`}
                             >
                               <div className="flex items-center gap-3 min-w-0">
                                 <div className="w-10 h-10 rounded-xl bg-purple-500/15 text-purple-600 dark:text-purple-300 flex flex-col items-center justify-center font-mono font-bold text-xs shrink-0">
@@ -746,6 +805,12 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
                     Ctrl+K
                   </kbd>
                   <span>لفتح البحث بأي وقت</span>
+                </span>
+                <span className="hidden md:flex items-center gap-1">
+                  <kbd className="px-1.5 py-0.5 bg-white dark:bg-slate-800 rounded border border-slate-300 dark:border-white/10 font-mono text-[10px]">
+                    ↑↓ + Enter
+                  </kbd>
+                  <span>للتنقل والاختيار</span>
                 </span>
               </div>
 
