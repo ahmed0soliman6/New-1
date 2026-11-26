@@ -13,11 +13,10 @@ export interface VitalsData {
 
 interface VitalsCardProps {
   initialVitals?: Partial<VitalsData>;
-  onSave?: (vitals: VitalsData) => void;
   onChange?: (vitals: VitalsData) => void;
 }
 
-export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onSave, onChange }) => {
+export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onChange }) => {
   const { language, isRTL } = useLanguage();
 
   // Parse blood pressure string into systolic & diastolic
@@ -60,8 +59,6 @@ export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onSave, o
     onChangeRef.current?.(vitals);
   }, [vitals]);
 
-  const [savedFeedback, setSavedFeedback] = useState(false);
-
   // Sync blood pressure to vitals whenever systolic or diastolic changes
   useEffect(() => {
     let combined = '';
@@ -103,17 +100,6 @@ export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onSave, o
 
   const handleUpdate = (field: keyof VitalsData, val: string) => {
     setVitals((prev) => ({ ...prev, [field]: val }));
-  };
-
-  const handleSave = () => {
-    if (onSave) onSave(vitals);
-    try {
-      localStorage.setItem('soli_last_recorded_vitals', JSON.stringify(vitals));
-    } catch (e) {
-      // ignore
-    }
-    setSavedFeedback(true);
-    setTimeout(() => setSavedFeedback(false), 2000);
   };
 
   const handleApplyDefaults = () => {
@@ -229,21 +215,6 @@ export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onSave, o
             <span className="material-symbols-outlined text-sm">refresh</span>
           </button>
 
-          {savedFeedback && (
-            <span className="text-[10px] font-bold text-emerald-600 dark:text-[#10B981] flex items-center gap-0.5 animate-pulse px-1">
-              <span className="material-symbols-outlined text-xs">check_circle</span>
-              <span>{language === 'en' ? 'Saved' : 'تم الحفظ'}</span>
-            </span>
-          )}
-
-          <button
-            type="button"
-            onClick={handleSave}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-[11px] font-bold transition-all shadow-xs cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-xs">save</span>
-            <span>{language === 'en' ? 'Save' : 'حفظ'}</span>
-          </button>
         </div>
       </div>
 
