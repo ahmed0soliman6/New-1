@@ -159,3 +159,14 @@ export function initArabicToEnglishDigitsGlobalListener(): () => void {
     document.removeEventListener('paste', handleInputEvent, true);
   };
 }
+
+/**
+ * مدة الدواء بصيغة عرض موحّدة: تضيف «لمدة» فقط إن لم تكن موجودة أصلاً
+ * في القيمة المخزنة — تمنع «لمدة لمدة 7 أيام».
+ */
+export function formatDurationLabel(duration: string | null | undefined): string {
+  if (!duration) return '';
+  const clean = String(duration).trim();
+  if (!clean) return '';
+  return clean.startsWith('لمدة') ? clean : `لمدة ${clean}`;
+}
