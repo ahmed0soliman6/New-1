@@ -326,10 +326,10 @@ export function buildAppointmentReminderMessage(params: {
 }): string {
   const doctor = getPrescriptionDoctorInfo();
   const doctorName = doctor.doctorName || CLINIC_INFO.doctorName;
+  const branch = params.branch;
   // الافتراضي هو وقت فتح الفرع نفسه (مثلاً 04:00 م)، لا 09:00 ص
   const time = params.timeSlot || formatBranchTime(branch.startTime) || '04:00 م';
   const visitType = params.visitType || 'كشف';
-  const branch = params.branch;
   const contactPhone = branch.phone || branch.mobile || doctor.phone || '01092847162';
 
   let dateLine = '';
