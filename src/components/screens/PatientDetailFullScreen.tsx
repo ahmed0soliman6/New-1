@@ -99,7 +99,7 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
   const calculatedTotalPaid = useMemo(() => {
     if (READ_OPT) {
       return effPayments
-        .filter((pm) => pm.status === 'PAID' || pm.amount > 0)
+        .filter((pm) => pm.status === 'PAID')
         .reduce((sum, pm) => sum + (pm.amount || 0), 0);
     }
     return patient.totalPaid || 0;
@@ -263,16 +263,28 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
     .sort((a, b) => new Date(b.orderedAt).getTime() - new Date(a.orderedAt).getTime());
 
   const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
-  const formattedPhone = cleanPhone.startsWith('0') ? `2${cleanPhone}` : cleanPhone || '201092847162';
+  // ج7: بلا هاتف مسجل لا نرسل لرقم العيادة أبداً — formattedPhone فارغ
+  // فيعطَّل زر الواتساب ويُحذَّر المستخدم بدل فتح محادثة خاطئة.
+  const formattedPhone = cleanPhone ? (cleanPhone.startsWith('0') ? `2${cleanPhone}` : cleanPhone) : '';
+  const [whatsappNotice, setWhatsappNotice] = useState<string | null>(null);
+
+  const showWhatsappNotice = (msg: string) => {
+    setWhatsappNotice(msg);
+    setTimeout(() => setWhatsappNotice(null), 4500);
+  };
 
   // WhatsApp general card sender
   const handleSendPatientSummaryWhatsapp = () => {
+    if (!formattedPhone) {
+      showWhatsappNotice('لا يوجد رقم هاتف مسجل لهذا المريض — أضف رقم الهاتف أولاً قبل إرسال الملخص عبر واتساب.');
+      return;
+    }
     const branch = findBranch();
     const branchPhone = branch.phone || branch.mobile || '01092847162';
     const message = `مرحباً بك أستاذ/ة *${fullName || patient.name}* 🌸
 ملفكم الطبي مسجل لدى *عيادة ${CLINIC_INFO.doctorName}* 🩺
-رقم الملف: *#${toEnglishDigits(patient.fileNumber || 1)}*
-تاريخ فتح الملف: *${toEnglishDigits(patient.registrationDate || '2024-02-10')}*
+رقم الملف: *${patient.fileNumber ? `#${toEnglishDigits(patient.fileNumber)}` : 'غير مسجل'}*
+تاريخ فتح الملف: *${patient.registrationDate ? toEnglishDigits(patient.registrationDate) : 'غير مسجل'}*
 📍 ${branch.name}${branch.address ? `: ${branch.address}` : ''}
 📞 للتواصل والاستفسار: ${branchPhone}
 
@@ -303,6 +315,13 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
 
   return (
     <div className="flex flex-col w-full pb-20 space-y-6 text-slate-800 dark:text-[#dde2f5]" id="patient-detail-screen">
+      {/* ج7: تنبيه عند محاولة إرسال واتساب لمريض بلا هاتف مسجل */}
+      {whatsappNotice && (
+        <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs font-bold flex items-center gap-2">
+          <span className="material-symbols-outlined text-base">warning</span>
+          <span>{whatsappNotice}</span>
+        </div>
+      )}
       {/* ========================================================================= */}
       {/* TOP HEADER: BACK BUTTON & BREADCRUMBS & TOP SHORTCUTS */}
       {/* ========================================================================= */}
@@ -332,7 +351,7 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
             <div className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
               <span>{fullName || patient.name}</span>
               <span className="bg-[#00c2cb]/15 text-[#008f97] dark:text-[#45dee7] font-mono text-xs px-2 py-0.5 rounded-md border border-[#00c2cb]/20">
-                ملف #{toEnglishDigits(patient.fileNumber || 1)}
+                ملف #{toEnglishDigits(patient.fileNumber || '—')}
               </span>
               {READ_OPT && hist.loading && (
                 <span className="inline-flex items-center gap-1 text-[11px] text-teal-600 dark:text-[#00c2cb] font-normal animate-pulse">
@@ -377,8 +396,9 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
           <button
             type="button"
             onClick={handleSendPatientSummaryWhatsapp}
-            className="flex items-center gap-1 px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-xs font-bold transition-all cursor-pointer border border-emerald-200 dark:border-emerald-800/40"
-            title="إرسال بيانات وكود الملف للمريض عبر واتساب"
+            disabled={!formattedPhone}
+            className="flex items-center gap-1 px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-xs font-bold transition-all cursor-pointer border border-emerald-200 dark:border-emerald-800/40 disabled:opacity-40 disabled:cursor-not-allowed"
+            title={formattedPhone ? 'إرسال بيانات وكود الملف للمريض عبر واتساب' : 'لا يوجد رقم هاتف مسجل لهذا المريض'}
           >
             <span className="material-symbols-outlined text-base">chat</span>
             <span className="hidden md:inline">واتساب</span>
@@ -431,7 +451,7 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
                   {fullName || patient.name}
                 </h2>
                 <span className="bg-[#00c2cb]/15 text-[#008f97] dark:text-[#45dee7] text-xs font-mono font-bold px-2.5 py-0.5 rounded-lg border border-[#00c2cb]/30">
-                  ملف #{toEnglishDigits(patient.fileNumber || 1)}
+                  ملف #{toEnglishDigits(patient.fileNumber || '—')}
                 </span>
                 {bloodType && bloodType !== 'غير محدد' && (
                   <span className="bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 text-xs font-mono font-bold px-2.5 py-0.5 rounded-lg border border-rose-200/80 dark:border-rose-900/40 flex items-center gap-1">
@@ -457,7 +477,7 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
                 )}
                 <span className="flex items-center gap-1 font-mono text-[11px]">
                   <span className="material-symbols-outlined text-sm text-slate-400">calendar_today</span>
-                  <span>تاريخ التسجيل: {patient.registrationDate || '2024-02-10'}</span>
+                  <span>تاريخ التسجيل: {patient.registrationDate || 'غير مسجل'}</span>
                 </span>
               </div>
             </div>
@@ -635,7 +655,7 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
                     <span className="material-symbols-outlined text-[#008f97] dark:text-[#00c2cb] text-base">badge</span>
                     <span>البيانات الشخصية والتعريفية</span>
                   </span>
-                  <span className="text-[11px] text-slate-400 font-mono">ملف #{toEnglishDigits(patient.fileNumber || 1)}</span>
+                  <span className="text-[11px] text-slate-400 font-mono">ملف #{toEnglishDigits(patient.fileNumber || '—')}</span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 text-xs">
@@ -798,7 +818,7 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
                     </span>
                   </div>
                   <span className="text-xs bg-[#00c2cb]/15 text-[#008f97] dark:text-[#45dee7] px-2.5 py-1 rounded-md font-mono font-bold">
-                    ملف #{toEnglishDigits(patient.fileNumber || 1)}
+                    ملف #{toEnglishDigits(patient.fileNumber || '—')}
                   </span>
                 </div>
 
@@ -1118,21 +1138,30 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
             <div className="border-r-2 border-teal-300 dark:border-[#00c2cb]/40 pr-4 sm:pr-6 space-y-6">
               {pVisits.map((v) => {
                 const vPrescriptions = pPrescriptions.filter(
-                  (pr) => pr.visitId === v.visitId || pr.createdAt?.startsWith(v.createdAt?.split('T')[0])
+                  // ج1: المطابقة برقم الزيارة فقط — بلا احتياطي «نفس اليوم»
+                  // الذي كان يعرض روشتة زيارة أخرى تحت هذه الزيارة.
+                  (pr) => pr.visitId === v.visitId
                 );
                 const vLabs = pLabOrders.filter(
-                  (l) => l.visitId === v.visitId || l.orderedAt?.startsWith(v.createdAt?.split('T')[0])
+                  (l) => l.visitId === v.visitId
                 );
                 const vRads = pRadiologyOrders.filter(
-                  (r) => r.visitId === v.visitId || r.orderedAt?.startsWith(v.createdAt?.split('T')[0])
+                  (r) => r.visitId === v.visitId
                 );
                 const vFollowUp = effFollowUps.find(
-                  (fu) => (fu.sourceVisitId === v.visitId || fu.patientId === patient.id) && fu.status !== 'CANCELLED'
+                  // ج2: المتابعة تظهر تحت زيارتها فقط (sourceVisitId) —
+                  // بلا احتياطي patientId الذي كان يعرضها تحت كل زيارة.
+                  (fu) => fu.sourceVisitId === v.visitId && fu.status !== 'CANCELLED'
                 );
 
                 const allMeds = vPrescriptions.flatMap((pr) => pr.items || []);
 
                 const handleSendVisitWhatsapp = () => {
+                  // ج7: بلا هاتف مسجل لا نفتح واتساب على رقم العيادة.
+                  if (!formattedPhone) {
+                    showWhatsappNotice('لا يوجد رقم هاتف مسجل لهذا المريض — أضف رقم الهاتف أولاً قبل إرسال تفاصيل الزيارة عبر واتساب.');
+                    return;
+                  }
                   const visitDateStr = new Date(v.createdAt).toLocaleDateString(language === 'en' ? 'en-US' : 'ar-EG', {
                     year: 'numeric',
                     month: 'long',
@@ -1400,6 +1429,11 @@ export const PatientDetailFullScreen: React.FC<PatientDetailFullScreenProps> = (
             <div className="grid grid-cols-1 gap-4">
               {pPrescriptions.map((pr) => {
                 const handleSendRxWhatsapp = () => {
+                  // ج7: بلا هاتف مسجل لا نفتح واتساب على رقم العيادة.
+                  if (!formattedPhone) {
+                    showWhatsappNotice('لا يوجد رقم هاتف مسجل لهذا المريض — أضف رقم الهاتف أولاً قبل إرسال الروشتة عبر واتساب.');
+                    return;
+                  }
                   const medsList = pr.items
                     .map(
                       (it, idx) =>
@@ -1504,8 +1538,10 @@ ${pr.notes ? `📝 *إرشادات الطبيب:* ${pr.notes}\n\n` : ''}مع ت�
                               })),
                               diagnoses: diagnosesList,
                               lifestyleAdvice: pr.notes,
-                              followupDate: effFollowUps.find((f) => f.patientId === (patient.id || patient.patientId))
-                                ?.scheduledDate,
+                              followupDate: effFollowUps.find(
+                                // ج2: متابعة هذه الروشتة/الزيارة فقط، لا أول متابعة للمريض.
+                                (f) => f.sourceVisitId === pr.visitId && f.status !== 'CANCELLED'
+                              )?.scheduledDate,
                             });
                           }}
                           className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#18233C] dark:hover:bg-white/10 text-slate-800 dark:text-[#dde2f5] border border-slate-300 dark:border-white/10 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs"
@@ -1761,15 +1797,23 @@ ${pr.notes ? `📝 *إرشادات الطبيب:* ${pr.notes}\n\n` : ''}مع ت�
                     </span>
                   </div>
                   <div className="text-left font-mono">
+                    {/* ج11: المسددة جزئياً تعرض المتبقي لا الإجمالي الكامل */}
                     <span className="font-black text-base text-[#008f97] dark:text-[#45dee7] block">
-                      {inv.total} ج.م
+                      {inv.status === 'PARTIALLY_PAID'
+                        ? `${toEnglishDigits(inv.remainingAmount ?? Math.max(0, inv.total - (inv.paidAmount || 0)))} ج.م`
+                        : `${inv.total} ج.م`}
                     </span>
+                    {inv.status === 'PARTIALLY_PAID' && (
+                      <span className="text-[10px] text-slate-400 block mt-0.5">
+                        من إجمالي {toEnglishDigits(inv.total)} ج.م — المدفوع {toEnglishDigits(inv.paidAmount || 0)} ج.م
+                      </span>
+                    )}
                     <span
                       className={`text-[10px] font-bold block mt-0.5 ${
-                        inv.status === 'PAID' ? 'text-emerald-600 dark:text-[#10B981]' : 'text-amber-500'
+                        inv.status === 'PAID' ? 'text-emerald-600 dark:text-[#10B981]' : inv.status === 'PARTIALLY_PAID' ? 'text-sky-600 dark:text-sky-400' : 'text-amber-500'
                       }`}
                     >
-                      {inv.status === 'PAID' ? 'مسدد بالكامل ✓' : 'غير مسدد'}
+                      {inv.status === 'PAID' ? 'مسدد بالكامل ✓' : inv.status === 'PARTIALLY_PAID' ? 'مسددة جزئياً' : 'غير مسدد'}
                     </span>
                   </div>
                 </div>
@@ -1793,7 +1837,7 @@ ${pr.notes ? `📝 *إرشادات الطبيب:* ${pr.notes}\n\n` : ''}مع ت�
                 تأكيد حذف ملف المريض والسجلات المرتبطة نهائياً
               </h3>
               <p className="text-xs text-slate-500 dark:text-[#859394] leading-relaxed">
-                هل أنت متأكد من رغبتك في حذف ملف المريض <strong className="text-slate-800 dark:text-white">({fullName || patient.name})</strong> رقم الملف <strong className="text-[#008f97] dark:text-[#00c2cb] font-mono">#{toEnglishDigits(patient.fileNumber || 1)}</strong>؟
+                هل أنت متأكد من رغبتك في حذف ملف المريض <strong className="text-slate-800 dark:text-white">({fullName || patient.name})</strong> رقم الملف <strong className="text-[#008f97] dark:text-[#00c2cb] font-mono">#{toEnglishDigits(patient.fileNumber || '—')}</strong>؟
               </p>
               <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-right space-y-1">
                 <p className="text-[11px] text-rose-600 dark:text-rose-400 font-bold">
