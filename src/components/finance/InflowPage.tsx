@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { db } from '../../services/firebase';
 import type { Patient } from '../../types/database';
 import type { TransactionRecord } from '../../types';
 import {
@@ -42,10 +44,16 @@ export const InflowPage: React.FC<InflowPageProps> = ({
   const [totalLoading, setTotalLoading] = useState(false);
   const [totalError, setTotalError] = useState<string | null>(null);
 
-  // Unpaid invoices state (loaded only when unpaid tab is active)
+  // Unpaid invoices state — ج10: تُحمَّل دائماً (لا عند فتح التبويب فقط)
+  // حتى يظهر عدّاد التبويب فوراً، وضمن الفترة المختارة.
   const [unpaidRecords, setUnpaidRecords] = useState<TransactionRecord[]>([]);
   const [unpaidLoading, setUnpaidLoading] = useState(false);
   const [unpaidError, setUnpaidError] = useState<string | null>(null);
+  const [unpaidHasMore, setUnpaidHasMore] = useState(false);
+  const [unpaidTotal, setUnpaidTotal] = useState(0);
+  // ج23: عدّاد التحديثات الحية من قاعدة البيانات (جهاز آخر).
+  const [liveTick, setLiveTick] = useState(0);
+  const liveFirstSnap = useRef({ payments: true, invoices: true });
 
   // Load Aggregated Total
   useEffect(() => {
@@ -65,23 +73,24 @@ export const InflowPage: React.FC<InflowPageProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [period, refreshKey]);
+  }, [period, refreshKey, liveTick]);
 
-  // Load Unpaid Invoices
+  // Load Unpaid Invoices — ج10: ضمن الفترة المختارة، مع مؤشر «يوجد المزيد».
   useEffect(() => {
-    if (view !== 'unpaid') return;
     let cancelled = false;
     setUnpaidLoading(true);
     setUnpaidError(null);
-    fetchUnpaidInvoices()
-      .then((invs) => {
+    fetchUnpaidInvoices(periodToRange(period))
+      .then((res) => {
         if (cancelled) return;
         const txs = buildTransactions({
           payments: [],
-          invoices: invs,
+          invoices: res.items,
           patients: patientsCanonical,
         });
         setUnpaidRecords(txs);
+        setUnpaidHasMore(res.hasMore);
+        setUnpaidTotal(res.totalUnpaid);
       })
       .catch((err) => {
         if (!cancelled) setUnpaidError((err as Error).message);
@@ -92,7 +101,36 @@ export const InflowPage: React.FC<InflowPageProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [view, refreshKey, patientsCanonical]);
+  }, [period, refreshKey, patientsCanonical, liveTick]);
+
+  // ج23: اشتراك حي — أي دفعة/فاتورة تُسجَّل من جهاز آخر تُحدِث الجدول
+  // والإجمالي وعدّاد غير المسددة دون إعادة تحميل الصفحة.
+  useEffect(() => {
+    if (!db) return;
+    liveFirstSnap.current = { payments: true, invoices: true };
+    const range = periodToRange(period);
+    const payConstraints = [
+      ...(range.from ? [where('dayKey', '>=', range.from)] : []),
+      ...(range.to ? [where('dayKey', '<=', range.to)] : []),
+    ];
+    const unsubPayments = onSnapshot(
+      query(collection(db, 'payments'), ...payConstraints),
+      () => {
+        if (liveFirstSnap.current.payments) { liveFirstSnap.current.payments = false; return; }
+        setLiveTick((t) => t + 1);
+      },
+      (err) => console.warn('Inflow live payments sync error:', err)
+    );
+    const unsubInvoices = onSnapshot(
+      query(collection(db, 'invoices'), where('status', 'in', ['UNPAID', 'PARTIALLY_PAID'])),
+      () => {
+        if (liveFirstSnap.current.invoices) { liveFirstSnap.current.invoices = false; return; }
+        setLiveTick((t) => t + 1);
+      },
+      (err) => console.warn('Inflow live invoices sync error:', err)
+    );
+    return () => { unsubPayments(); unsubInvoices(); };
+  }, [period]);
 
   // Paginated Received Payments
   const fetchPage = useCallback(
@@ -121,7 +159,7 @@ export const InflowPage: React.FC<InflowPageProps> = ({
     next,
     prev,
     reload,
-  } = usePagedList(fetchPage, refreshKey);
+  } = usePagedList(fetchPage, refreshKey + liveTick);
 
   const formatCurrency = (val: number) => {
     return `${toEnglishDigits(
@@ -221,11 +259,9 @@ export const InflowPage: React.FC<InflowPageProps> = ({
           >
             <span className="material-symbols-outlined text-sm">pending_actions</span>
             <span>فواتير غير مسددة</span>
-            {unpaidRecords.length > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-black/20 font-mono">
-                {unpaidRecords.length}
-              </span>
-            )}
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-black/20 font-mono">
+              {unpaidLoading ? '…' : toEnglishDigits(unpaidTotal)}
+            </span>
           </button>
         </div>
 
@@ -253,7 +289,11 @@ export const InflowPage: React.FC<InflowPageProps> = ({
             </span>
           </h4>
           <span className="text-[11px] text-slate-400 dark:text-[#859394]">
-            {view === 'received' ? '25 سجل لكل صفحة من الخادم' : 'عرض مباشر للفواتير المعلقة'}
+            {view === 'received'
+              ? '25 سجل لكل صفحة من الخادم'
+              : unpaidHasMore
+                ? 'يوجد فواتير غير مسددة أخرى بعد حد العرض (100) — ضيّق الفترة لعرضها'
+                : 'عرض مباشر للفواتير المعلقة'}
           </span>
         </div>
 
@@ -263,7 +303,7 @@ export const InflowPage: React.FC<InflowPageProps> = ({
               <tr className="bg-slate-100 dark:bg-[#18233C] text-slate-700 dark:text-[#bbc9ca] border-b border-slate-200 dark:border-white/5 font-bold">
                 <th className="p-3">المريض</th>
                 <th className="p-3">الخدمة الطبية</th>
-                <th className="p-3 text-center">المبلغ الإجمالي</th>
+                <th className="p-3 text-center">المبلغ الإجمالي / المدفوع</th>
                 <th className="p-3 text-center">التاريخ والوقت</th>
                 <th className="p-3 text-center">الحالة</th>
                 <th className="p-3 text-center">إجراء</th>
@@ -352,7 +392,10 @@ function renderRow(
   onPrint: (tx: TransactionRecord) => void,
   onDelete?: (tx: TransactionRecord) => void
 ) {
-  const amountDisplay = tx.amount || tx.paidAmount || tx.totalAmount || 0;
+  // ج11: الإجمالي والمدفوع منفصلان ومسمّيان — لا يُعرض المدفوع كأنه الإجمالي.
+  const totalDisplay = tx.totalAmount ?? tx.amount ?? 0;
+  const paidDisplay = tx.paidAmount ?? tx.amount ?? 0;
+  const showPaidLine = (tx.totalAmount ?? 0) > 0 && paidDisplay !== totalDisplay;
   const isPaid = tx.status !== 'غير مدفوعة';
 
   return (
@@ -364,7 +407,15 @@ function renderRow(
         {tx.serviceName || tx.description || 'كشف واستشارة طبية'}
       </td>
       <td className="p-3 text-center font-mono font-bold text-sm text-emerald-600 dark:text-[#10B981]">
-        {toEnglishDigits(amountDisplay.toLocaleString('en-US'))} ج.م
+        <div>{toEnglishDigits(totalDisplay.toLocaleString('en-US'))} ج.م</div>
+        {showPaidLine && (
+          <div className="text-[10px] font-normal text-slate-500 dark:text-[#859394] mt-0.5">
+            المدفوع: {toEnglishDigits(paidDisplay.toLocaleString('en-US'))} ج.م
+            {tx.remainingAmount != null && tx.remainingAmount > 0 && (
+              <> • المتبقي: {toEnglishDigits(tx.remainingAmount.toLocaleString('en-US'))} ج.م</>
+            )}
+          </div>
+        )}
       </td>
       <td className="p-3 text-center font-mono text-[11px] whitespace-nowrap">
         <div className="text-slate-800 dark:text-slate-200 font-bold">{toEnglishDigits(tx.date || '—')}</div>
