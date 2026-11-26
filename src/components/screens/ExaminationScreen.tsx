@@ -42,7 +42,7 @@ import {
   ExamDisplaySettings,
 } from '../../utils/examDisplaySettings';
 import { useLanguage } from '../../i18n/LanguageContext';
-import { formatAppDate, formatAppTime } from '../../utils/numberUtils';
+import { formatAppDate, formatAppTime, formatDurationLabel } from '../../utils/numberUtils';
 import {
   RecurringRxTemplate,
   loadRecurringTemplates,
@@ -1679,9 +1679,8 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
         {/* 1. Vital Signs Card (Conditional on displaySettings.showVitals) */}
         {displaySettings.showVitals && (activeTab === 'all' || activeTab === 'vitals') && (
           <VitalsCard
-            initialVitals={initialExamVitals}
+            initialVitals={examVitals}
             onChange={(v) => setExamVitals(v)}
-            onSave={(v) => setExamVitals(v)}
           />
         )}
 
@@ -2465,7 +2464,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                           {idx + 1}. {item.drugName} {item.strength || ''} {item.dosageForm || ''} {item.scientificName ? `(${item.scientificName})` : ''}
                         </div>
                         <div className="text-[11px] text-teal-700 font-medium">
-                          {item.dosageInstructions || item.dosage || ''} {item.timing ? `• ${item.timing}` : ''} {item.duration ? `• لمدة ${item.duration}` : ''}
+                          {item.dosageInstructions || item.dosage || ''} {item.timing ? `• ${item.timing}` : ''} {item.duration ? `• ${formatDurationLabel(item.duration)}` : ''}
                         </div>
                         {item.notes && (
                           <div className="text-[10px] text-slate-500 italic mt-0.5">توجيهات إضافية: {item.notes}</div>
@@ -2700,7 +2699,7 @@ export const ExaminationScreen: React.FC<ExaminationScreenProps> = ({
                                   {idx + 1}. {item.drugName} {item.strength || ''} {item.dosageForm || ''} {item.scientificName ? `(${item.scientificName})` : ''}
                                 </div>
                                 <div className="text-[10px] text-teal-700 font-medium">
-                                  {item.dosageInstructions || item.dosage || ''} {item.timing ? `• ${item.timing}` : ''} {item.duration ? `• لمدة ${item.duration}` : ''}
+                                  {item.dosageInstructions || item.dosage || ''} {item.timing ? `• ${item.timing}` : ''} {item.duration ? `• ${formatDurationLabel(item.duration)}` : ''}
                                 </div>
                                 {item.notes && (
                                   <div className="text-[9px] text-slate-500 italic mt-0.5">توجيهات إضافية: {item.notes}</div>
