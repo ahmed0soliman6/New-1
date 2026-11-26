@@ -69,29 +69,20 @@ export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onChange 
     } else if (diastolic) {
       combined = `/${diastolic}`;
     }
-    setVitals((prev) => ({ ...prev, bp: combined }));
+    // Bail out when unchanged: otherwise every sync creates a new object,
+    // re-fires the onChange effect, and the parent re-renders in a loop.
+    setVitals((prev) => (prev.bp === combined ? prev : { ...prev, bp: combined }));
   }, [systolic, diastolic]);
 
-  // Sync when initialVitals prop changes
-  useEffect(() => {
-    if (initialVitals) {
-      const parsed = parseBp(initialVitals.bp);
-      if (initialVitals.bp !== undefined) {
-        setSystolic(parsed.sys);
-        setDiastolic(parsed.dia);
-      }
-      setVitals((prev) => ({
-        ...prev,
-        bp: initialVitals.bp ?? prev.bp,
-        pulse: initialVitals.pulse ?? prev.pulse,
-        temp: initialVitals.temp ?? prev.temp,
-        rbs: initialVitals.rbs ?? prev.rbs,
-        weight: initialVitals.weight ?? prev.weight,
-        height: initialVitals.height ?? prev.height,
-        spo2: initialVitals.spo2 ?? prev.spo2,
-      }));
-    }
-  }, [initialVitals]);
+  // NOTE: there is intentionally NO effect syncing `initialVitals` back into
+  // state. The parent passes the LIVE examVitals object here, so its identity
+  // changes on every keystroke; syncing on it overwrote what the user just
+  // typed and looped forever (parent setState -> new prop identity -> setState
+  // ...), which made the fields untypeable. `initialVitals` is now truly
+  // initial: it seeds state on mount only. A new patient/visit remounts this
+  // card via its `key` in ExaminationScreen, so switching patients still
+  // resets the card, and tab switches restore the typed values from the
+  // parent's examVitals on remount.
 
   // Real-time BMI calculation (formula: weight / (height/100)^2)
   const weightNum = parseFloat(vitals.weight) || 0;
@@ -246,7 +237,7 @@ export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onChange 
                 ref={systolicInputRef}
                 type="text"
                 inputMode="numeric"
-                placeholder={isBpFocused || systolic || diastolic ? "120" : ""}
+                placeholder=""
                 value={systolic}
                 onFocus={() => setIsBpFocused(true)}
                 onBlur={handleBpBlur}
@@ -259,7 +250,7 @@ export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onChange 
                 ref={diastolicInputRef}
                 type="text"
                 inputMode="numeric"
-                placeholder={isBpFocused || systolic || diastolic ? "80" : ""}
+                placeholder=""
                 value={diastolic}
                 onFocus={() => setIsBpFocused(true)}
                 onBlur={handleBpBlur}
@@ -293,7 +284,7 @@ export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onChange 
               <input
                 type="text"
                 inputMode="numeric"
-                placeholder="75"
+                placeholder=""
                 value={vitals.pulse}
                 onChange={(e) => handleUpdate('pulse', e.target.value.replace(/\D/g, '').slice(0, 3))}
                 className="w-full text-center bg-transparent text-slate-900 dark:text-[#45dee7] font-mono font-bold text-xs focus:outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600"
@@ -316,7 +307,7 @@ export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onChange 
               <input
                 type="text"
                 inputMode="decimal"
-                placeholder="37.0"
+                placeholder=""
                 value={vitals.temp}
                 onChange={(e) => handleUpdate('temp', e.target.value)}
                 className="w-full text-center bg-transparent text-slate-900 dark:text-[#45dee7] font-mono font-bold text-xs focus:outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600"
@@ -339,7 +330,7 @@ export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onChange 
               <input
                 type="text"
                 inputMode="numeric"
-                placeholder="110"
+                placeholder=""
                 value={vitals.rbs}
                 onChange={(e) => handleUpdate('rbs', e.target.value.replace(/\D/g, '').slice(0, 3))}
                 className="w-full text-center bg-transparent text-purple-700 dark:text-[#d0bcff] font-mono font-bold text-xs focus:outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600"
@@ -362,7 +353,7 @@ export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onChange 
               <input
                 type="text"
                 inputMode="numeric"
-                placeholder="98"
+                placeholder=""
                 value={vitals.spo2}
                 onChange={(e) => handleUpdate('spo2', e.target.value.replace(/\D/g, '').slice(0, 3))}
                 className="w-full text-center bg-transparent text-emerald-600 dark:text-[#10B981] font-mono font-bold text-xs focus:outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600"
@@ -385,7 +376,7 @@ export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onChange 
               <input
                 type="text"
                 inputMode="decimal"
-                placeholder="75"
+                placeholder=""
                 value={vitals.weight}
                 onChange={(e) => handleUpdate('weight', e.target.value)}
                 className="w-full text-center bg-transparent text-blue-600 dark:text-[#38BDF8] font-mono font-bold text-xs focus:outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600"
@@ -408,7 +399,7 @@ export const VitalsCard: React.FC<VitalsCardProps> = ({ initialVitals, onChange 
               <input
                 type="text"
                 inputMode="numeric"
-                placeholder="175"
+                placeholder=""
                 value={vitals.height}
                 onChange={(e) => handleUpdate('height', e.target.value.replace(/\D/g, '').slice(0, 3))}
                 className="w-full text-center bg-transparent text-indigo-600 dark:text-indigo-400 font-mono font-bold text-xs focus:outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600"
