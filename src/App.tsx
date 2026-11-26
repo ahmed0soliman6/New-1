@@ -145,7 +145,7 @@ import {
   subscribeToClinicStatus,
   updateClinicStatusInFirestore,
   subscribeToRecurringTemplates,
-  subscribeToLatestAlert,
+  subscribeToAlerts,
   publishAlert,
   saveCatalogItem,
   removeCatalogItem,
@@ -531,6 +531,7 @@ function ClinicApp() {
       setRadiologyOrdersCanonical([]);
       setActiveExamPatient(null);
       setActivePrescription([]);
+      setActiveExamDraft({ diagnoses: [], followupDate: '', lifestyleAdvice: '' });
 
       alert(
         `تم مسح سجلات المرضى والزيارات وقوائم الانتظار والمواعيد والفواتير بالكامل والبدء من جديد مع بقاء الإعدادات والأدلة الطبية الثابتة ✓\n\n${report.summaryText}`
@@ -560,6 +561,7 @@ function ClinicApp() {
       setRadiologyOrdersCanonical([]);
       setActiveExamPatient(null);
       setActivePrescription([]);
+      setActiveExamDraft({ diagnoses: [], followupDate: '', lifestyleAdvice: '' });
 
       // Force-reload / Re-fetch the registered database records from Firestore cloud
       setSyncRetryCounter((c) => c + 1);
@@ -599,6 +601,7 @@ function ClinicApp() {
       setRadiologyOrdersCanonical([]);
       setActiveExamPatient(null);
       setActivePrescription([]);
+      setActiveExamDraft({ diagnoses: [], followupDate: '', lifestyleAdvice: '' });
 
       alert(
         `تم حذف وتدمير سجلات المرضى والزيارات والمواعيد بالكامل من المتصفح ومن قاعدة بيانات السحابة (Firestore) نهائياً ✓\n\n${report.summaryText}`
@@ -615,6 +618,14 @@ function ClinicApp() {
 
   // Active Prescription sync state - starts clean
   const [activePrescription, setActivePrescription] = useState<PrescriptionItem[]>([]);
+
+  // ب1/ب2: draft diagnoses / follow-up / lifestyle of the current exam, reported
+  // by ExaminationScreen so the prescription pad prints the REAL diagnosis.
+  const [activeExamDraft, setActiveExamDraft] = useState<{
+    diagnoses: Array<{ id?: string; code?: string; nameAr?: string; nameEn?: string; isPrimary?: boolean }>;
+    followupDate: string;
+    lifestyleAdvice: string;
+  }>({ diagnoses: [], followupDate: '', lifestyleAdvice: '' });
 
   // =========================================================================
   // SOLI MEDICAL CANONICAL STATE (SINGLE SOURCE OF TRUTH: FIRESTORE)
@@ -1568,16 +1579,19 @@ function ClinicApp() {
       };
     } catch {}
 
-    // 2. Multi-device Firestore latestAlert subscription
+    // 2. Multi-device Firestore alerts subscription (د15: one doc per alert
+    // in the `alerts` collection, newest first — replaces the single
+    // settings/latestAlert document that concurrent alerts overwrote).
     if (!db) {
       return () => {
         channel?.close();
       };
     }
 
-    const unsubAlerts = subscribeToLatestAlert(
+    const unsubAlerts = subscribeToAlerts(
       db,
-      (remoteData: any) => {
+      (alerts: any[]) => {
+        const remoteData = alerts[0];
         if (!remoteData || !remoteData.id) return;
         if (remoteData.id === lastReceivedAlertIdRef.current) return;
         lastReceivedAlertIdRef.current = remoteData.id;
@@ -1620,7 +1634,7 @@ function ClinicApp() {
           scheduleBannerDismiss(6000, alertItem.id);
         }
       },
-      (err) => console.warn('Latest alert subscription error:', err)
+      (err) => console.warn('Alerts subscription error:', err)
     );
 
     return () => {
@@ -2257,6 +2271,7 @@ function ClinicApp() {
       if (activeExamPatient?.id === patientId) {
         setActiveExamPatient(null);
         setActivePrescription([]);
+        setActiveExamDraft({ diagnoses: [], followupDate: '', lifestyleAdvice: '' });
       }
     } catch (err) {
       safeLogger.error('Cascading patient deletion failed', err);
@@ -3185,6 +3200,7 @@ function ClinicApp() {
                   onAddSymptomToCatalog={handleAddSymptomToCatalog}
                   activePrescription={activePrescription}
                   onChangeActivePrescription={setActivePrescription}
+                  onExamDraftChange={setActiveExamDraft}
                   visits={visitsCanonical}
                   prescriptions={prescriptionsCanonical}
                   allLabOrders={labOrdersCanonical}
@@ -3205,6 +3221,9 @@ function ClinicApp() {
                   patient={activeExamPatient}
                   items={activePrescription}
                   onChangeItems={setActivePrescription}
+                  diagnoses={activeExamDraft.diagnoses}
+                  followupDate={activeExamDraft.followupDate}
+                  lifestyleAdvice={activeExamDraft.lifestyleAdvice}
                   onUpdatePatient={(up) => {
                     handleUpdatePatient(up.patientId, { fullName: up.fullName, dateOfBirth: up.dateOfBirth });
                     setActiveExamPatient((prev) => prev ? { ...prev, name: up.fullName, age: up.age ?? prev.age } : null);
