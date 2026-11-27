@@ -35,7 +35,7 @@ export interface HeaderProps {
   onDismissAlert?: (alertId: string) => void;
   onClearAllAlerts?: () => void;
   activeExamPatientName?: string | null;
-  onCallPatient?: (ticket: string, name: string) => void;
+  onCallPatient?: (visitId: string, name: string) => void;
   // Followups Data & Action
   followUpsList?: FollowUpItem[];
   // Global Search Data
@@ -369,7 +369,7 @@ Wishing you great health and wellness ✨`
                             {onCallPatient && (
                               <button
                                 onClick={() => {
-                                  onCallPatient(item.ticketNumber, item.patientName);
+                                  onCallPatient(item.id, item.patientName);
                                 }}
                                 className="px-2 py-1 bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] rounded-lg text-[10px] font-bold flex items-center gap-0.5 cursor-pointer active:scale-95"
                                 title="استدعاء المريض للدخول"
