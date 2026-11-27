@@ -26,7 +26,7 @@ interface DashboardScreenProps {
   doctorStatus?: 'available' | 'break';
   activeExamPatientName?: string;
   onConfirmCheckIn: (appointment: AppointmentListItem, fee: number, method: string) => void;
-  onCallPatient: (ticket: string, name: string) => void;
+  onCallPatient: (visitId: string, name: string) => void;
   onSelectPatient?: (patient: PatientListItem | null) => void;
   onStartIntakeFromAppointment?: (appointment: AppointmentListItem) => void;
   patients?: PatientListItem[];
@@ -1104,7 +1104,7 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
                     <div className="grid grid-cols-2 gap-2 pt-1">
                       <button
                         type="button"
-                        onClick={() => onCallPatient(item.ticketNumber || `#0${idx + 1}`, item.patientName)}
+                        onClick={() => onCallPatient(item.id, item.patientName)}
                         className="py-1.5 px-2 rounded-xl bg-white dark:bg-[#18233C] hover:bg-slate-100 dark:hover:bg-[#242f4c] text-teal-800 dark:text-[#45dee7] border border-teal-300 dark:border-[#00c2cb]/30 text-xs font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
                         title="نداء المريض صوتياً وعلى الشاشة"
                       >
@@ -1133,7 +1133,7 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
                             if (onSelectPatient) {
                               onSelectPatient(matchingPat as any);
                             }
-                            onCallPatient(item.ticketNumber || `#0${idx + 1}`, item.patientName);
+                            onCallPatient(item.id, item.patientName);
                             onNavigate('clinical-exam');
                           }}
                           className="py-1.5 px-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 text-xs font-black flex items-center justify-center gap-1 transition-colors cursor-pointer"
