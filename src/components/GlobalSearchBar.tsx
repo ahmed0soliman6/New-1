@@ -118,9 +118,19 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
   const matchesBilling = (t: TransactionRecord) => {
     const nameMatch = normalize(t.patientName || '').includes(cleanQuery);
     const receiptMatch = normalize(t.receiptNumber || t.receiptNo || '').includes(cleanQuery);
+    // رقم الفاتورة: معرّفها الكامل inv-<طابع زمني> لا يظهر في receiptNumber
+    // (REC- عشوائي)، وملف المريض يعرض أول 8 أحرف فقط (#inv-1795) — لذلك
+    // نطابق معرّف الفاتورة/السجل أيضاً، لكن فقط لاستعلام يشبه رقم فاتورة
+    // (inv-… أو 4 أرقام فأكثر) حتى لا يطابق رقم قصير كل سجلات الفترة.
+    const looksLikeInvoiceNo =
+      cleanQuery.length >= 4 && (/^inv/i.test(cleanQuery) || /^\d+$/.test(cleanQuery));
+    const invoiceMatch =
+      looksLikeInvoiceNo &&
+      (normalize(t.invoiceId || '').includes(cleanQuery) ||
+        normalize(t.id || '').includes(cleanQuery));
     const serviceMatch = normalize(t.serviceName || t.description || '').includes(cleanQuery);
     const methodMatch = normalize(t.paymentMethod || t.paymentMethodLabel || t.method || '').includes(cleanQuery);
-    return nameMatch || receiptMatch || serviceMatch || methodMatch;
+    return nameMatch || receiptMatch || invoiceMatch || serviceMatch || methodMatch;
   };
 
   // Real-time Search Engine
