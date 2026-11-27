@@ -64,8 +64,10 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
 
   // معاينة رقم الملف من عدّاد counters/patientFile (قراءة واحدة عند فتح
   // النموذج): الرقم المعروض = lastNumber + 1. إن لم يوجد العدّاد بعد أو
-  // فشلت القراءة، تُستخدم المعاينة الحالية من قائمة المرضى. الرقم النهائي
-  // يُخصَّص ذرياً عند التسجيل وقد يختلف عن المعاينة تحت التزامن.
+  // فشلت القراءة أو كانت القيمة غائبة/غير رقمية، تُستخدم المعاينة الحالية
+  // من قائمة المرضى. العدّاد المُصفَّر (lastNumber = 0) قيمة صحيحة —
+  // المعاينة عنده #1، لا الرجوع إلى max+1. الرقم النهائي يُخصَّص ذرياً
+  // عند التسجيل وقد يختلف عن المعاينة تحت التزامن.
   const [counterPreview, setCounterPreview] = useState<number | null>(null);
   useEffect(() => {
     if (!db) return;
@@ -74,8 +76,12 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
     getDoc(doc(db, 'counters', 'patientFile'))
       .then((snap) => {
         if (cancelled || !snap.exists()) return;
-        const last = Number((snap.data() as { lastNumber?: unknown }).lastNumber) || 0;
-        if (last > 0) setCounterPreview(last + 1);
+        const raw = (snap.data() as { lastNumber?: unknown }).lastNumber;
+        // غائب/فارغ = لا معاينة من العدّاد (رجوع إلى max+1)؛ أما 0
+        // فقيمة صحيحة تعني أن التخصيص التالي #1.
+        if (raw === null || raw === undefined) return;
+        const last = Number(raw);
+        if (Number.isFinite(last)) setCounterPreview(last + 1);
       })
       .catch(() => {});
     return () => {
