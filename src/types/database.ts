@@ -110,6 +110,8 @@ export interface Patient {
   hasClinicalFile?: boolean;
   visitsCount?: number;
   lastVisitAt?: string;
+  // W4: يوم آخر كشف مكتمل بصيغة dayKey (YYYY-MM-DD بتوقيت القاهرة).
+  lastVisitDate?: string;
   lastDiagnosis?: string;
 }
 
