@@ -9,6 +9,7 @@ import {
 import { loadMedicalServices } from '../utils/financeManager';
 import { toEnglishDigits } from '../utils/numberUtils';
 import { searchReceiptsOnDemand } from '../services/receiptSearchService';
+import { searchPatientsOnDemand, toPatientListItem } from '../services/patientSearchService';
 import { useLanguage } from '../i18n/LanguageContext';
 import { READ_OPT } from '../config/readOpt';
 
@@ -45,6 +46,12 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
   const [onDemandBilling, setOnDemandBilling] = useState<TransactionRecord[]>([]);
   const [onDemandLoading, setOnDemandLoading] = useState(false);
   const onDemandSeq = useRef(0);
+  // Hybrid: مرضى قدامى خارج نافذة الـ 90 يوماً — يُبحث عنهم في الخادم
+  // فقط عندما لا تطابق القائمة الحية أحداً، وتُدمج نتائجهم تحت
+  // النتائج الحية (لا تحل محلها أبداً).
+  const [onDemandPatients, setOnDemandPatients] = useState<PatientListItem[]>([]);
+  const [onDemandPatientsLoading, setOnDemandPatientsLoading] = useState(false);
+  const onDemandPatientsSeq = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
 
@@ -234,6 +241,52 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
     return () => clearTimeout(timer);
   }, [isOpen, searchTerm, searchResults.patients, patients]);
 
+  // البحث عند الطلب عن المرضى القدامى: يعمل فقط عندما لا تطابق
+  // القائمة الحية (نافذة 90 يوماً) أحداً، بمهلة 300ms، ويتجاهل
+  // الاستعلامات الأقصر من حرفين. النتائج الحية تظهر فوراً ولا تختفي
+  // أثناء انتظار الخادم؛ وعند ظهور تطابق حي تُلغى نتائج القدامى.
+  useEffect(() => {
+    if (!isOpen) {
+      setOnDemandPatients([]);
+      setOnDemandPatientsLoading(false);
+      return;
+    }
+    const raw = searchTerm.trim();
+    if (raw.length < 2 || searchResults.patients.length > 0) {
+      setOnDemandPatients([]);
+      setOnDemandPatientsLoading(false);
+      return;
+    }
+    const seq = ++onDemandPatientsSeq.current;
+    const timer = setTimeout(() => {
+      setOnDemandPatientsLoading(true);
+      searchPatientsOnDemand({ query: raw, localPatients: patients })
+        .then((rows) => {
+          if (onDemandPatientsSeq.current !== seq) return;
+          setOnDemandPatients(rows.map(toPatientListItem));
+        })
+        .catch(() => {
+          if (onDemandPatientsSeq.current === seq) setOnDemandPatients([]);
+        })
+        .finally(() => {
+          if (onDemandPatientsSeq.current === seq) setOnDemandPatientsLoading(false);
+        });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [isOpen, searchTerm, searchResults.patients, patients]);
+
+  // دمج نتائج المرضى: الحية أولاً + عند الطلب (قدامى)، بإزالة التكرار
+  // حسب المعرّف. البحث عن القدامى بادئة فقط (لا تطابق منتصف الاسم)
+  // وبحساسية حالة الأحرف اللاتينية — انظر patientSearchService.
+  const allMatchedPatients = useMemo(() => {
+    const byId = new Map<string, PatientListItem>();
+    searchResults.patients.forEach((p) => byId.set(p.id, p));
+    onDemandPatients.forEach((p) => {
+      if (!byId.has(p.id)) byId.set(p.id, p);
+    });
+    return [...byId.values()];
+  }, [searchResults.patients, onDemandPatients]);
+
   // دمج نتائج الفواتير: الحية + عند الطلب، بإزالة التكرار حسب المعرّف.
   // عند التعارض تُفضَّل نسخة البحث عند الطلب لأنها مربوطة بفاتورتها
   // (serviceName/total صحيحان — يصلح حالة الدفع المتأخر). الترتيب
@@ -256,9 +309,13 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
     });
   }, [searchResults.billing, onDemandBilling]);
 
-  // العدد الكلي الظاهر يشمل نتائج البحث عند الطلب في الفواتير.
+  // العدد الكلي الظاهر يشمل نتائج البحث عند الطلب في الفواتير والمرضى.
   const totalResults =
-    searchResults.total - searchResults.billing.length + billingResults.length;
+    searchResults.total -
+    searchResults.patients.length -
+    searchResults.billing.length +
+    allMatchedPatients.length +
+    billingResults.length;
 
   // Handle actions
   const handleSelectPatient = (patient: PatientListItem) => {
@@ -296,7 +353,7 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
   // ج19: التنقل بلوحة المفاتيح — قائمة مسطحة بالترتيب الظاهر على الشاشة
   // (مرضى ثم طابور ثم مواعيد، حسب فلتر الفئة)، الأسهم للتنقل وEnter للاختيار.
   const visiblePatients = (activeCategoryFilter === 'all' || activeCategoryFilter === 'patients')
-    ? searchResults.patients.slice(0, 8)
+    ? allMatchedPatients.slice(0, 8)
     : [];
   const visibleQueue = (activeCategoryFilter === 'all' || activeCategoryFilter === 'queue')
     ? searchResults.queue
@@ -444,7 +501,7 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
                 {[
                   { id: 'all', label: language === 'en' ? 'All' : 'الكل', count: totalResults },
-                  { id: 'patients', label: language === 'en' ? 'Patients' : 'سجلات المرضى', count: searchResults.patients.length },
+                  { id: 'patients', label: language === 'en' ? 'Patients' : 'سجلات المرضى', count: allMatchedPatients.length },
                   { id: 'appointments', label: language === 'en' ? 'Appointments' : 'المواعيد', count: searchResults.appointments.length },
                   { id: 'queue', label: language === 'en' ? 'Queue' : 'طابور الانتظار', count: searchResults.queue.length },
                   { id: 'services', label: language === 'en' ? 'Services' : 'الخدمات الطبية', count: searchResults.services.length },
@@ -519,7 +576,7 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
                     </button>
                   </div>
                 </div>
-              ) : totalResults === 0 && onDemandLoading ? (
+              ) : totalResults === 0 && (onDemandLoading || onDemandPatientsLoading) ? (
                 /* Still searching older records on the server */
                 <div className="py-12 text-center space-y-3">
                   <div className="w-14 h-14 rounded-3xl bg-[#00c2cb]/10 text-[#00c2cb] mx-auto flex items-center justify-center">
@@ -557,14 +614,25 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
                 <div className="space-y-6">
                   {/* SECTION 1: PATIENTS MATCHES */}
                   {(activeCategoryFilter === 'all' || activeCategoryFilter === 'patients') &&
-                    searchResults.patients.length > 0 && (
+                    allMatchedPatients.length > 0 && (
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <span className="material-symbols-outlined text-[#00c2cb] text-lg">folder_shared</span>
                             <h4 className="text-xs font-black text-slate-900 dark:text-white">
-                              سجلات المرضى المطابقة ({searchResults.patients.length})
+                              سجلات المرضى المطابقة ({allMatchedPatients.length})
                             </h4>
+                            {onDemandPatientsLoading && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#00c2cb]/15 text-[#008f97] dark:text-[#45dee7] flex items-center gap-1">
+                                <span className="material-symbols-outlined text-xs animate-spin">progress_activity</span>
+                                <span>جارٍ البحث في السجلات القديمة...</span>
+                              </span>
+                            )}
+                            {!onDemandPatientsLoading && onDemandPatients.length > 0 && (
+                              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal">
+                                (يشمل السجلات القديمة)
+                              </span>
+                            )}
                           </div>
                           <span className="text-[10px] font-mono text-slate-400 bg-slate-100 dark:bg-white/5 px-2 py-0.5 rounded-md">
                             السحابة ☁️ + التخزين المحلي 💾
