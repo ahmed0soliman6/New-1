@@ -526,33 +526,39 @@ export const BookingLandingScreen: React.FC<BookingLandingScreenProps> = ({
 
       // أ1: فحص تعارض حقيقي في Firestore قبل الكتابة — زائران في نفس اللحظة
       // أو موعد حُجز من داخل العيادة بعد تحميل الصفحة يجب أن يُرفَض برسالة واضحة.
-      const freshSnap = await getDocs(
-        query(collection(db, 'appointments'), where('scheduledDate', '==', scheduledDate), limit(500))
-      );
-      const freshApps: any[] = [];
-      freshSnap.forEach((docSnap) => {
-        if (docSnap.exists()) freshApps.push({ id: docSnap.id, ...docSnap.data() });
-      });
-      const branchName = activeBranch?.name?.trim() || '';
-      const branchId = activeBranch?.id || '';
-      const slotTaken = freshApps.some((app: any) => {
-        const status = (app.status || '').toString().toUpperCase();
-        if (status === 'CANCELLED' || app.status === 'ملغى') return false;
-        const docBranch = (app.clinicLocationId || app.branch || app.branchId || app.clinicBranch || '').toString();
-        const isSameBranch =
-          !docBranch ||
-          docBranch === branchName ||
-          docBranch === branchId ||
-          branchName.includes(docBranch) ||
-          docBranch.includes(branchName);
-        if (!isSameBranch) return false;
-        const mins = normalizeTimeToMins(app.scheduledTime || app.timeSlot || app.time || app.startTime);
-        return mins !== null && mins === chosenSlotMins;
-      });
-      if (slotTaken) {
-        setFirestoreAppointments(freshApps);
-        setSubmitError('عذراً، تم حجز هذا الموعد للتو من مريض آخر. يرجى اختيار موعد آخر متاح من القائمة.');
-        return;
+      // الزائر الخارجي (غير مسجّل) ليس له صلاحية قراءة الحجوزات، فإذا فشلت
+      // القراءة نكمل الحفظ مباشرة بدل إفشال الحجز كله (fail-open).
+      try {
+        const freshSnap = await getDocs(
+          query(collection(db, 'appointments'), where('scheduledDate', '==', scheduledDate), limit(500))
+        );
+        const freshApps: any[] = [];
+        freshSnap.forEach((docSnap) => {
+          if (docSnap.exists()) freshApps.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        const branchName = activeBranch?.name?.trim() || '';
+        const branchId = activeBranch?.id || '';
+        const slotTaken = freshApps.some((app: any) => {
+          const status = (app.status || '').toString().toUpperCase();
+          if (status === 'CANCELLED' || app.status === 'ملغى') return false;
+          const docBranch = (app.clinicLocationId || app.branch || app.branchId || app.clinicBranch || '').toString();
+          const isSameBranch =
+            !docBranch ||
+            docBranch === branchName ||
+            docBranch === branchId ||
+            branchName.includes(docBranch) ||
+            docBranch.includes(branchName);
+          if (!isSameBranch) return false;
+          const mins = normalizeTimeToMins(app.scheduledTime || app.timeSlot || app.time || app.startTime);
+          return mins !== null && mins === chosenSlotMins;
+        });
+        if (slotTaken) {
+          setFirestoreAppointments(freshApps);
+          setSubmitError('عذراً، تم حجز هذا الموعد للتو من مريض آخر. يرجى اختيار موعد آخر متاح من القائمة.');
+          return;
+        }
+      } catch (err) {
+        console.warn('Public Booking duplicate check unavailable, proceeding:', err);
       }
 
       // أ7: البحث عن مريض موجود بالهاتف أولاً ثم بالاسم، وإعادة استخدام ملفه
