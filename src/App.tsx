@@ -1019,7 +1019,9 @@ function ClinicApp() {
     return visitsCanonical
       // أ5: إبقاء المريض في الطابور بعد بدء كشفه (IN_PROGRESS) بحالة «في الكشف»،
       // بدل اختفائه من الشاشة — QueueScreen يعرض الشارة عند status === 'in-progress'.
-      .filter((v) => v.status === 'WAITING' || v.status === 'IN_PROGRESS')
+      // الطابور = زيارات اليوم فقط (dayKey بتوقيت القاهرة) — زيارات الأيام
+      // السابقة العالقة لا تظهر ولا تُطابَق (خطأ دينا رمضان).
+      .filter((v) => (v.status === 'WAITING' || v.status === 'IN_PROGRESS') && v.dayKey === todayKey())
       .sort((a, b) => (a.queueNumber || 0) - (b.queueNumber || 0))
       .map((v) => {
         const pat = patientsCanonical.find((p) => p.patientId === v.patientId);
@@ -1052,7 +1054,7 @@ function ClinicApp() {
           status: (v.status === 'IN_PROGRESS' ? 'in-progress' : 'waiting') as unknown as QueueItem['status'],
         };
       });
-  }, [visitsCanonical, patientsCanonical, invoicesCanonical, paymentsCanonical]);
+  }, [visitsCanonical, patientsCanonical, invoicesCanonical, paymentsCanonical, dayStamp]);
 
   const appointments: AppointmentListItem[] = useMemo(() => {
     // Sort canonical appointments newest first
@@ -2170,16 +2172,15 @@ function ClinicApp() {
   // =========================================================================
 
   // Delete queue item / visit & associated invoices/payments
-  const handleRemoveFromQueue = async (ticket: string) => {
+  const handleRemoveFromQueue = async (visitId: string) => {
     try {
       assertPermission('queue.manage', 'إزالة مريض من قائمة الانتظار');
     } catch {
       return;
     }
-    const targetQueueNum = parseInt(ticket.replace(/\D/g, ''), 10);
-    const targetVisit =
-      visitsCanonical.find((v) => v.visitId === ticket) ||
-      visitsCanonical.find((v) => v.queueNumber === targetQueueNum);
+    // الإزالة برقم الزيارة فقط (QueueScreen يمرّر item.id) — البحث برقم
+    // التذكرة كان قد يحذف زيارة قديمة بنفس الرقم.
+    const targetVisit = visitsCanonical.find((v) => v.visitId === visitId);
     if (targetVisit && db) {
       try {
         // 1. Delete visit document
@@ -2477,13 +2478,13 @@ function ClinicApp() {
   };
 
   // Call Patient
-  const handleCallPatient = async (ticket: string, name: string) => {
-    const targetQueueNum = parseInt(ticket.replace(/\D/g, ''), 10);
-    const targetVisit =
-      visitsCanonical.find((v) => v.queueNumber === targetQueueNum) ||
-      visitsCanonical.find((v) => v.visitId === ticket) ||
-      visitsCanonical.find((v) => patientsCanonical.find((p) => p.patientId === v.patientId)?.fullName === name);
-    const visitId = targetVisit ? targetVisit.visitId : ticket;
+  const handleCallPatient = async (visitId: string, name: string) => {
+    // الربط برقم الزيارة فقط — أرقام التذاكر تتكرر كل يوم ونافذة الزيارات
+    // 90 يوماً، فالبحث برقم التذكرة كان يطابق زيارة قديمة بنفس الرقم
+    // (خطأ دينا رمضان). لا بحث برقم تذكرة ولا بالاسم هنا أبداً.
+    const targetVisit = visitsCanonical.find((v) => v.visitId === visitId);
+    // رقم التذكرة للعرض فقط (في التنبيه)، من الزيارة المطابقة.
+    const displayTicket = targetVisit ? `#0${targetVisit.queueNumber || 1}` : visitId;
 
     const alertConfig = loadAlertSettings();
     if (alertConfig.audioEnabled && alertConfig.callPatientAudio) {
@@ -2494,8 +2495,8 @@ function ClinicApp() {
         id: `call-${visitId}`,
         type: 'call',
         title: 'نداء دخول المريض لغرفة الكشف',
-        message: `تذكرة (${ticket}) — المريض (${name}) يتفضل لغرفة الطبيب للكشف`,
-        ticket,
+        message: `تذكرة (${displayTicket}) — المريض (${name}) يتفضل لغرفة الطبيب للكشف`,
+        ticket: displayTicket,
         timestamp: formatAppTime(new Date()),
       });
       scheduleBannerDismiss(5000, `call-${visitId}`);
@@ -2834,13 +2835,21 @@ function ClinicApp() {
       return false;
     }
 
-    // EMR-02: Never fall back to another patient's waiting visit if activeExamPatient is set
-    const activeWaiting = activeExamPatient?.id
-      ? visitsCanonical.find(
+    // EMR-02: Never fall back to another patient's waiting visit if activeExamPatient is set.
+    // زيارة اليوم أولاً — زيارة عالقة من يوم سابق لنفس المريض لا تُؤخذ
+    // بدل زيارة اليوم (نفس فئة خطأ دينا رمضان)؛ ويُرجَع لأحدث زيارة
+    // نشطة فقط إن لم توجد زيارة اليوم (كشف يمتد بعد منتصف الليل).
+    const today = todayKey();
+    const activesForPatient = activeExamPatient?.id
+      ? visitsCanonical.filter(
           (v) => v.patientId === activeExamPatient.id && (v.status === 'IN_PROGRESS' || v.status === 'WAITING')
         )
-      : (visitsCanonical.find((v) => v.status === 'IN_PROGRESS') ||
-         visitsCanonical.find((v) => v.status === 'WAITING'));
+      : [];
+    const activeWaiting = activeExamPatient?.id
+      ? activesForPatient.find((v) => v.dayKey === today) ||
+        [...activesForPatient].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+      : (visitsCanonical.find((v) => v.status === 'IN_PROGRESS' && v.dayKey === today) ||
+         visitsCanonical.find((v) => v.status === 'WAITING' && v.dayKey === today));
 
     // ب4: بعد إنهاء الكشف تصبح الزيارة COMPLETED — «حفظ التعديلات» يحدّثها
     // بدل تخطي الحفظ بصمت. تُؤخذ أحدث زيارة مكتملة لنفس المريض فقط،
