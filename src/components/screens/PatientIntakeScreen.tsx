@@ -60,7 +60,10 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
   const [address, setAddress] = useState('');
   const [bloodType, setBloodType] = useState<string>('غير محدد');
 
-  // Requirement 6: Sequential auto-calculated file number
+  // Requirement 6: Sequential auto-calculated file number (معاينة فقط).
+  // الرقم النهائي يُخصَّص ذرياً من عدّاد counters/patientFile عند التسجيل
+  // في App (إصلاح ازدواج #9697)؛ هذه القيمة تُمرَّر كاحتياط فقط إن لم يوجد
+  // العدّاد بعد أو فشل التخصيص، وقد تختلف عن الرقم النهائي المعروض بعد الحفظ.
   const autoFileNumber = React.useMemo(() => {
     if (patients && patients.length > 0) {
       const maxNum = Math.max(...patients.map((p) => Number(p.fileNumber) || 0));
