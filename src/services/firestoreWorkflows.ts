@@ -170,6 +170,39 @@ export async function checkInAppointmentTransaction(params: {
   });
 }
 
+/**
+ * عدّاد أرقام الملفات (إصلاح ازدواج رقم الملف 2026-11-27).
+ *
+ * كان رقم الملف يُحسب كـ max+1 من قائمة المرضى المحمّلة محلياً، فتسجيلان
+ * متقاربان كانا يقرآن نفس الحد الأقصى قبل أن يكتب أحدهما (مريضان تجريبيان
+ * حصلا معاً على #9697 في 2026-11-27). العدّاد هنا يُزاد داخل معاملة
+ * Firestore، فتتسلسل المعاملات المتزامنة ويحصل كل تسجيل على رقم مختلف حتماً.
+ *
+ * حقل العدّاد `lastNumber` = آخر رقم مُخصَّص (نفس دلالة عدّادات الطابور
+ * `counters/queue_${today}`)؛ التخصيص التالي = lastNumber + 1.
+ * إن لم يوجد مستند العدّاد بعد، يُستخدم رقم الاحتياط (الحساب القديم max+1
+ * الذي يمرّره المتصل) ويُبذَر العدّاد به، حتى لا يتعطّل التسجيل أبداً.
+ * قواعد Firestore الحالية (`match /counters/{counterId}`) تسمح أصلاً
+ * بالقراءة والكتابة على هذا المستند لنفس أدوار التسجيل — لا حاجة لقاعدة جديدة.
+ */
+export const PATIENT_FILE_COUNTER_ID = 'patientFile';
+
+export async function allocatePatientFileNumber(db: Firestore, fallbackFileNumber: number): Promise<number> {
+  const fallback = Math.max(1, Math.floor(Number(fallbackFileNumber) || 1));
+  return runTransaction(db, async (tx) => {
+    const counterRef = doc(db, 'counters', PATIENT_FILE_COUNTER_ID);
+    const snap = await tx.get(counterRef);
+    if (snap.exists()) {
+      const last = Number((snap.data() as { lastNumber?: unknown }).lastNumber) || 0;
+      const next = last + 1;
+      tx.set(counterRef, { lastNumber: next }, { merge: true });
+      return next;
+    }
+    tx.set(counterRef, { lastNumber: fallback }, { merge: true });
+    return fallback;
+  });
+}
+
 export async function registerWalkInTransaction(params: {
   db: Firestore;
   patient: Patient;
