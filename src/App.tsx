@@ -978,9 +978,14 @@ function ClinicApp() {
             lastVisitTime: last && !lastIsDayKey ? formatAppTime(last) : undefined,
             registrationDate: formatAppDate(created),
             registrationTime: formatAppTime(created),
-            // W4: عدد الزيارات من الملخص إن وُجد، وإلا من النوافذ المحمّلة.
+            // إصلاح 2: الأكبر بين الملخص والنافذة — مريض قديم بلا ملخص
+            // كان يُحسب له 1 عند أول كشف بعد التغيير رغم زياراته السابقة.
+            // عدد أعلى من الحقيقة بعد حذف زيارة آمن (يبقى الملف ظاهراً)،
+            // وزر الترحيل في الإعدادات يصحّحه بدقة.
             visitsCount:
-              typeof p.visitsCount === 'number' ? p.visitsCount || 1 : wCompleted.length || 1,
+              typeof p.visitsCount === 'number'
+                ? Math.max(p.visitsCount, wCompleted.length) || 1
+                : wCompleted.length || 1,
             totalPaid: 0, // يُحسب عند فتح تفاصيل المريض فقط
             lastDiagnosis: p.lastDiagnosis || wLast?.clinicalData?.diagnosis?.[0] || '',
           };
@@ -1057,9 +1062,11 @@ function ClinicApp() {
         lastVisitTime: lastVisitDateObj && !lastIsDayKey ? formatAppTime(lastVisitDateObj) : undefined,
         registrationDate,
         registrationTime,
-        // W4: عدد الزيارات من الملخص إن وُجد، وإلا من النوافذ المحمّلة.
+        // إصلاح 2: الأكبر بين الملخص والنافذة (انظر الفرع أعلاه).
         visitsCount:
-          typeof p.visitsCount === 'number' ? p.visitsCount || 1 : pCompletedVisits.length || 1,
+          typeof p.visitsCount === 'number'
+            ? Math.max(p.visitsCount, pCompletedVisits.length) || 1
+            : pCompletedVisits.length || 1,
         totalPaid,
         lastDiagnosis: lastDiag,
       };
