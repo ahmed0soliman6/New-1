@@ -123,7 +123,7 @@ import {
 } from './services/firestoreWorkflows';
 import { safeLogger } from './utils/logger';
 import {
-  subscribeToPatients,
+  subscribeToRecentPatients,
   subscribeToAppointments,
   subscribeToVisits,
   subscribeToInvoices,
@@ -166,6 +166,7 @@ import { buildTransactions } from './utils/buildTransactions';
 import { meterWrite } from './services/readMeter';
 import { READ_OPT, HOT_DAYS, APPT_PAST_DAYS } from './config/readOpt';
 import { subscribeMerged } from './services/repositories/windowed';
+import { getPatientById, searchPatientsOnDemand } from './services/patientSearchService';
 import { invalidatePatientHistory } from './services/history';
 
 // Merged full initial reference catalogs combining database.ts and previewMedicalCatalogs.ts
@@ -522,6 +523,7 @@ function ClinicApp() {
       window.dispatchEvent(new CustomEvent('soli_clinic_expenses_updated'));
 
       setPatientsCanonical([]);
+      setExtraPatients([]);
       setAppointmentsCanonical([]);
       setVisitsCanonical([]);
       setInvoicesCanonical([]);
@@ -552,6 +554,7 @@ function ClinicApp() {
       window.dispatchEvent(new CustomEvent('soli_clinic_expenses_updated'));
 
       setPatientsCanonical([]);
+      setExtraPatients([]);
       setVisitsCanonical([]);
       setInvoicesCanonical([]);
       setPaymentsCanonical([]);
@@ -592,6 +595,7 @@ function ClinicApp() {
       window.dispatchEvent(new CustomEvent('soli_clinic_expenses_updated'));
 
       setPatientsCanonical([]);
+      setExtraPatients([]);
       setAppointmentsCanonical([]);
       setVisitsCanonical([]);
       setInvoicesCanonical([]);
@@ -654,10 +658,31 @@ function ClinicApp() {
   const [doctorSettingsCanonical, setDoctorSettingsCanonical] = useState<DoctorSettings>(INITIAL_DOCTOR_SETTINGS_CANONICAL);
   const [systemSettingsCanonical] = useState<SystemSettings>(INITIAL_SYSTEM_SETTINGS_CANONICAL);
 
+  // Hybrid search: مرضى قدامى جُلبوا عند الطلب (بالمعرّف أو بالبحث)
+  // لأنهم خارج نافذة الـ 90 يوماً الحية. يُدمجون مع القائمة الحية في
+  // patientsLookup أدناه حتى تحلّ كل عمليات البحث عن الاسم/الهاتف
+  // (طابور، مواعيد، متابعات، معاملات، تنبيهات) دون توسيع الاشتراك الحي.
+  // تُفرَّغ هذه القائمة مع مسح البيانات (handleClearAllData ونظائرها)
+  // حتى لا يبقى مريض محذوف ظاهراً بعد المسح.
+  const [extraPatients, setExtraPatients] = useState<Patient[]>([]);
+  const attemptedPatientIdsRef = useRef<Set<string>>(new Set());
+  const patientsLookup = useMemo(() => {
+    const map = new Map<string, Patient>();
+    extraPatients.forEach((p) => map.set(p.patientId, p));
+    patientsCanonical.forEach((p) => map.set(p.patientId, p));
+    return [...map.values()];
+  }, [patientsCanonical, extraPatients]);
+  const patientById = useMemo(
+    () => new Map(patientsLookup.map((p) => [p.patientId, p] as const)),
+    [patientsLookup]
+  );
+
   // Keep activeExamPatient in sync with real-time patient canonical changes
+  // (Hybrid: يقرأ من patientsLookup حتى يبقى مريض قديم جُلب عند الطلب
+  // متزامناً أيضاً، لا من النافذة الحية وحدها.)
   useEffect(() => {
     if (activeExamPatient) {
-      const live = patientsCanonical.find((p) => p.patientId === activeExamPatient.id);
+      const live = patientById.get(activeExamPatient.id);
       if (live && (live.fullName !== activeExamPatient.name || live.phone !== activeExamPatient.phone || live.address !== activeExamPatient.address || (live.bloodType || 'غير محدد') !== activeExamPatient.bloodType)) {
         const calculatedAge = calculateAge(live.dateOfBirth) ?? activeExamPatient.age;
         setActiveExamPatient((prev) => prev ? {
@@ -671,7 +696,7 @@ function ClinicApp() {
         } : null);
       }
     }
-  }, [patientsCanonical, activeExamPatient]);
+  }, [patientsLookup, activeExamPatient]);
 
   // Auto-seed Firestore catalog references if empty on first-ever install (never seed mock patients/visits)
   useEffect(() => {
@@ -775,6 +800,10 @@ function ClinicApp() {
     // ج14: نافذة التاريخ (30 يوماً) لعدّادات بطاقة المريض ونافذة تأكيد الحذف،
     // فلا تُحسب من بيانات اليوم والأمس فقط.
     const historyStart = addDaysToKey(dayStamp, -(30 - 1));
+    // Hybrid: نافذة المرضى 90 يوماً (انظر subscribeToRecentPatients):
+    // lastVisitDate حديث أو تسجيل حديث بسلسلة ISO. تسلسل أرقام الملفات
+    // لم يعد يحتاج القائمة الكاملة — العدّاد الذري هو المرجع.
+    const patientsStart = addDaysToKey(dayStamp, -(90 - 1));
     // الروشتات تُبقي نافذة 90 يوماً عمداً: عدّاد الروشتات في بطاقة المريض
     // يُحسب مباشرة من الاشتراك بلا حقل ملخّص يحميه (بخلاف عدّاد الزيارات)،
     // فتضييقها إلى 30 يوماً كان سيُظهر عدداً أقل على البطاقة.
@@ -788,8 +817,13 @@ function ClinicApp() {
 
     const operational = READ_OPT
       ? [
-          // المرضى: كاملة عمدًا للحفاظ على تسلسل أرقام الملفات والبحث الفوري
-          subscribeToPatients(db, (items) => { onDataSuccess(); setPatientsCanonical(items); }, onError),
+          // المرضى: نافذة 90 يوماً فقط (Hybrid) — الاشتراك الكامل أُلغي:
+          // تسلسل أرقام الملفات صار من العدّاد الذري، والبحث الفوري
+          // للحديثين يبقى محلياً، والقدامى يُجلبون عند الطلب
+          // (patientSearchService). ذراعا النافذة في patientsRepo.
+          win<Patient>('patients',
+            [[where('lastVisitDate', '>=', patientsStart)], [where('createdAt', '>=', `${patientsStart}T00:00:00.000Z`)]],
+            setPatientsCanonical),
 
           // أ4: جلب المواعيد بكل الحالات ذات الصلة (مجدولة + حضر + ملغى)
           // حتى يعمل الأرشيف وفلاتر «حضر/ملغى» بدل أن تبقى فارغة دائماً.
@@ -818,7 +852,9 @@ function ClinicApp() {
           win<RadiologyOrder>('radiologyOrders', [[where('dayKey', '>=', hotStart)]], setRadiologyOrdersCanonical),
         ]
       : [
-          subscribeToPatients(db, (items) => { onDataSuccess(); setPatientsCanonical(items); }, onError),
+          win<Patient>('patients',
+            [[where('lastVisitDate', '>=', patientsStart)], [where('createdAt', '>=', `${patientsStart}T00:00:00.000Z`)]],
+            setPatientsCanonical),
           subscribeToAppointments(db, (items) => { onDataSuccess(); setAppointmentsCanonical(items); }, onError),
           subscribeToVisits(db, (items) => { onDataSuccess(); setVisitsCanonical(items); }, onError),
           subscribeToInvoices(db, (items) => { onDataSuccess(); setInvoicesCanonical(items); }, onError),
@@ -915,6 +951,44 @@ function ClinicApp() {
     };
   }, [syncRetryCounter, READ_OPT ? dayStamp : 'static']);
 
+  // Hybrid: حلّ معرّفات المرضى التي تشير إليها المجموعات المقيدة
+  // بالنوافذ (متابعات، مواعيد، زيارات، فواتير، مدفوعات) لكنها خارج
+  // نافذة المرضى الـ 90 يوماً — جلبة واحدة getDoc لكل معرّف غير
+  // معروف، تُدمج في extraPatients فتظهر أسماؤهم في الطابور والمواعيد
+  // والمتابعات والمعاملات بدل «مريض غير مسجل» أو إسقاط الصف. حارس
+  // attempted يمنع إعادة الجلب عند كل تحديث للقوائم؛ والذاكرة في
+  // getPatientById تمنع تكرار القراءة عبر المسارات.
+  useEffect(() => {
+    if (!db) return;
+    const referenced = new Set<string>();
+    followUpsCanonical.forEach((fu) => fu.patientId && referenced.add(fu.patientId));
+    appointmentsCanonical.forEach((a) => a.patientId && referenced.add(a.patientId));
+    visitsCanonical.forEach((v) => v.patientId && referenced.add(v.patientId));
+    invoicesCanonical.forEach((i) => i.patientId && referenced.add(i.patientId));
+    paymentsCanonical.forEach((p) => p.patientId && referenced.add(p.patientId));
+    const known = new Set(patientsCanonical.map((p) => p.patientId));
+    const missing = [...referenced].filter(
+      (id) => !known.has(id) && !attemptedPatientIdsRef.current.has(id)
+    );
+    if (missing.length === 0) return;
+    missing.forEach((id) => attemptedPatientIdsRef.current.add(id));
+    let cancelled = false;
+    Promise.all(missing.map((id) => getPatientById(id))).then((found) => {
+      if (cancelled) return;
+      const fresh = found.filter((p): p is Patient => Boolean(p));
+      if (fresh.length > 0) {
+        setExtraPatients((prev) => {
+          const ids = new Set(prev.map((p) => p.patientId));
+          const add = fresh.filter((p) => !ids.has(p.patientId));
+          return add.length > 0 ? [...prev, ...add] : prev;
+        });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [db, followUpsCanonical, appointmentsCanonical, visitsCanonical, invoicesCanonical, paymentsCanonical, patientsCanonical]);
+
   // Database Architecture Inspector Modal
   const [isDatabaseInspectorOpen, setIsDatabaseInspectorOpen] = useState(false);
 
@@ -923,6 +997,9 @@ function ClinicApp() {
   // =========================================================================
   const patients: PatientListItem[] = useMemo(() => {
     if (READ_OPT) {
+      // Hybrid: المدخل هنا نافذة المرضى الـ 90 يوماً فقط — قائمة
+      // «ملفات المرضى» نفسها صارت مصدرها استعلام مرقّم مستقل
+      // (hasClinicalFile) في PatientFilesScreen، لا هذه القائمة.
       return [...patientsCanonical]
         // W4: الملخص على مستند المريض (hasClinicalFile) هو مصدر القبول الأول،
         // والاشتقاق من النوافذ المحمّلة احتياطي للمرضى القدامى بلا حقول
@@ -1088,7 +1165,7 @@ function ClinicApp() {
       .filter((v) => (v.status === 'WAITING' || v.status === 'IN_PROGRESS') && v.dayKey === todayKey())
       .sort((a, b) => (a.queueNumber || 0) - (b.queueNumber || 0))
       .map((v) => {
-        const pat = patientsCanonical.find((p) => p.patientId === v.patientId);
+        const pat = patientById.get(v.patientId);
         const invoice = invoicesCanonical.find((i) => i.visitId === v.visitId);
         const payment = paymentsCanonical.find((p) => p.visitId === v.visitId);
 
@@ -1118,7 +1195,7 @@ function ClinicApp() {
           status: (v.status === 'IN_PROGRESS' ? 'in-progress' : 'waiting') as unknown as QueueItem['status'],
         };
       });
-  }, [visitsCanonical, patientsCanonical, invoicesCanonical, paymentsCanonical, dayStamp]);
+  }, [visitsCanonical, patientsLookup, invoicesCanonical, paymentsCanonical, dayStamp]);
 
   const appointments: AppointmentListItem[] = useMemo(() => {
     // Sort canonical appointments newest first
@@ -1130,7 +1207,7 @@ function ClinicApp() {
     });
 
     return sortedAppts.map((a) => {
-      const pat = patientsCanonical.find((p) => p.patientId === a.patientId);
+      const pat = patientById.get(a.patientId);
       const matchingVisitType = visitTypesList.find(
         (vt) => vt.name.trim().toLowerCase() === (a.visitType || '').trim().toLowerCase(),
       );
@@ -1157,11 +1234,11 @@ function ClinicApp() {
         notes: a.notes,
       };
     });
-  }, [appointmentsCanonical, patientsCanonical, visitTypesList]);
+  }, [appointmentsCanonical, patientsLookup, visitTypesList]);
 
   const transactions: TransactionRecord[] = useMemo(
-    () => buildTransactions({ payments: paymentsCanonical, invoices: invoicesCanonical, patients: patientsCanonical }),
-    [paymentsCanonical, invoicesCanonical, patientsCanonical]
+    () => buildTransactions({ payments: paymentsCanonical, invoices: invoicesCanonical, patients: patientsLookup }),
+    [paymentsCanonical, invoicesCanonical, patientsLookup]
   );
 
   // Catalogs derived
@@ -1258,18 +1335,26 @@ function ClinicApp() {
     chronicConditions?: string[];
   } | null>(null);
 
-  const handleStartIntakeFromAppointment = (app: AppointmentListItem) => {
+  const handleStartIntakeFromAppointment = async (app: AppointmentListItem) => {
     const cleanPhone = (app.phone || '').trim().replace(/[^0-9]/g, '');
     const cleanName = (app.patientName || '').trim().toLowerCase();
 
-    const matchedPatient = patientsCanonical.find((p) => {
-      if (app.patientId && p.patientId === app.patientId) return true;
-      const pPhone = (p.phone || '').trim().replace(/[^0-9]/g, '');
-      const pName = (p.fullName || '').trim().toLowerCase();
-      const phoneMatch = cleanPhone.length >= 7 && pPhone.includes(cleanPhone);
-      const nameMatch = pName !== '' && cleanName !== '' && pName === cleanName;
-      return phoneMatch || nameMatch;
-    });
+    const matchedPatient =
+      patientsCanonical.find((p) => {
+        if (app.patientId && p.patientId === app.patientId) return true;
+        const pPhone = (p.phone || '').trim().replace(/[^0-9]/g, '');
+        const pName = (p.fullName || '').trim().toLowerCase();
+        const phoneMatch = cleanPhone.length >= 7 && pPhone.includes(cleanPhone);
+        const nameMatch = pName !== '' && cleanName !== '' && pName === cleanName;
+        return phoneMatch || nameMatch;
+      }) ??
+      // Hybrid: موعد قديم ومريضه خارج النافذة — ابحث في الخادم قبل
+      // التحويل ببيانات ناقصة (وإلا فُتح الاستقبال بلا ملف).
+      (await findMatchingPatientOnDemand({
+        patientId: app.patientId,
+        phone: app.phone,
+        fullName: app.patientName,
+      }));
 
     const calculatedAge = calculateAge(matchedPatient?.dateOfBirth);
 
@@ -1359,6 +1444,55 @@ function ClinicApp() {
     if (targetName) {
       const byName = patientsCanonical.find((p) => normalizeArabicName(p.fullName) === targetName);
       if (byName) return byName;
+    }
+    return undefined;
+  };
+
+  /**
+   * Hybrid: النسخة غير المتزامنة من findMatchingPatient — عند غياب
+   * المريض عن النافذة الحية (90 يوماً) تبحث في الخادم قبل الاستسلام:
+   * بالمعرّف أولاً (قراءة واحدة)، ثم ببادئة الهاتف/الاسم. المريض
+   * الذي يُوجد يُدمج في extraPatients حتى تحلّه كل القوائم بعدها.
+   * تُستخدم قبل أي إنشاء لمستند مريض جديد (تسجيل حضور، إضافة للطابور،
+   * حجز موعد، فاتورة) حتى لا يُخلق ملف مكرر لمريض قديم.
+   */
+  const findMatchingPatientOnDemand = async (criteria: {
+    patientId?: string;
+    phone?: string;
+    fullName?: string;
+  }): Promise<Patient | undefined> => {
+    const local = findMatchingPatient(criteria);
+    if (local) return local;
+    if (!db) return undefined;
+    try {
+      if (criteria.patientId) {
+        const byId = await getPatientById(criteria.patientId);
+        if (byId) {
+          setExtraPatients((prev) =>
+            prev.some((p) => p.patientId === byId.patientId) ? prev : [...prev, byId]
+          );
+          return byId;
+        }
+      }
+      const q = criteria.phone || criteria.fullName || '';
+      if (q.trim().length >= 2) {
+        const results = await searchPatientsOnDemand({ query: q, localPatients: [] });
+        const targetPhone = normalizePhoneDigits(criteria.phone);
+        const targetName = normalizeArabicName(criteria.fullName);
+        const hit = results.find(
+          (p) =>
+            (targetPhone.length >= 8 && normalizePhoneDigits(p.phone) === targetPhone) ||
+            (targetName !== '' && normalizeArabicName(p.fullName) === targetName)
+        );
+        if (hit) {
+          setExtraPatients((prev) =>
+            prev.some((p) => p.patientId === hit.patientId) ? prev : [...prev, hit]
+          );
+          return hit;
+        }
+      }
+    } catch (err) {
+      console.warn('[patientSearch] on-demand match failed', err);
     }
     return undefined;
   };
@@ -1543,7 +1677,7 @@ function ClinicApp() {
 
     visitsCanonical.forEach((v) => {
       const prevStatus = previousVisitsMapRef.current.get(v.visitId);
-      const patient = patientsCanonical.find((p) => p.patientId === v.patientId);
+      const patient = patientById.get(v.patientId);
       const patientName = patient?.fullName || 'المريض';
       const ticket = String(v.queueNumber || '');
 
@@ -1610,7 +1744,7 @@ function ClinicApp() {
 
       previousVisitsMapRef.current.set(v.visitId, v.status);
     });
-  }, [visitsCanonical, patientsCanonical, visitsReady]);
+  }, [visitsCanonical, patientsLookup, visitsReady]);
 
   // Real-time synchronization of alerts across tabs (BroadcastChannel) and devices/accounts (Firestore)
   const lastReceivedAlertIdRef = useRef<string>('');
@@ -1761,14 +1895,32 @@ function ClinicApp() {
     // 1. From Canonical FollowUps collection (recorded by doctor during exam)
     followUpsCanonical.forEach((fu) => {
       if (fu.status === 'CANCELLED' || fu.status === 'COMPLETED') return;
-      const patient = patientsCanonical.find((p) => p.patientId === fu.patientId);
-      if (!patient) return;
-      
-      const pVisits = visitsCanonical.filter((v) => v.patientId === fu.patientId);
-      const lastVisit = [...pVisits].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+      const patient = patientById.get(fu.patientId);
       const dueDateObj = new Date(fu.scheduledDate);
       dueDateObj.setHours(0, 0, 0, 0);
       const diffDays = Math.ceil((dueDateObj.getTime() - today.getTime()) / 86400000);
+      // Hybrid: لا تُسقَط المتابعة أبداً لغياب المريض عن النافذة —
+      // أثر جلب المعرّف (resolver effect) يملأ الاسم عادةً خلال لحظات،
+      // وقبل وصوله (أو إن حُذف المستند) يبقى الصف ظاهراً باسم احتياطي.
+      if (!patient) {
+        list.push({
+          id: fu.followUpId,
+          patientName: 'مريض غير مسجل',
+          phone: '',
+          fileNumber: undefined,
+          medicalCode: '—',
+          lastVisitDate: fu.createdAt?.split('T')[0] || '',
+          dueDate: fu.scheduledDate,
+          daysRemaining: diffDays,
+          isFreeEligible: fu.isFree || false,
+          diagnosis: 'متابعة استشارة',
+          notes: fu.notes || 'متابعة حددها الطبيب',
+        });
+        return;
+      }
+
+      const pVisits = visitsCanonical.filter((v) => v.patientId === fu.patientId);
+      const lastVisit = [...pVisits].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
 
       list.push({
         id: fu.followUpId,
@@ -1794,21 +1946,22 @@ function ClinicApp() {
       if (app.status !== 'SCHEDULED') return;
       const visitTypeStr = app.visitType || '';
       if (!visitTypeStr.includes('متابعة') && !visitTypeStr.includes('استشارة')) return;
-      if (list.some((item) => item.id === app.appointmentId || (item.patientName === patientsCanonical.find(p => p.patientId === app.patientId)?.fullName && item.dueDate === app.scheduledDate))) return;
+      if (list.some((item) => item.id === app.appointmentId || (item.patientName === patientById.get(app.patientId)?.fullName && item.dueDate === app.scheduledDate))) return;
 
-      const patient = patientsCanonical.find((p) => p.patientId === app.patientId);
-      if (!patient) return;
-
+      // Hybrid: الموعد نفسه يحمل الاسم والهاتف، فلا يُسقَط الصف أبداً
+      // لغياب المريض عن النافذة — يُستخدم اسم الموعد المخزن احتياطياً
+      // (وأثر جلب المعرّف يملأ رقم الملف والكود عادةً خلال لحظات).
+      const patient = patientById.get(app.patientId);
       const dueDateObj = new Date(app.scheduledDate);
       dueDateObj.setHours(0, 0, 0, 0);
       const diffDays = Math.ceil((dueDateObj.getTime() - today.getTime()) / 86400000);
 
       list.push({
         id: app.appointmentId,
-        patientName: patient.fullName,
-        phone: patient.phone,
-        fileNumber: patient.fileNumber,
-        medicalCode: patient.medicalCode || `EG-${patient.fileNumber || 101}`,
+        patientName: patient?.fullName || app.patientName || 'مريض غير مسجل',
+        phone: patient?.phone || app.phone || '',
+        fileNumber: patient?.fileNumber,
+        medicalCode: patient?.medicalCode || 'EG-NEW',
         lastVisitDate: app.createdAt?.split('T')[0] || '',
         dueDate: app.scheduledDate,
         daysRemaining: diffDays,
@@ -1819,7 +1972,7 @@ function ClinicApp() {
     });
 
     return list.sort((a, b) => a.daysRemaining - b.daysRemaining);
-  }, [followUpsCanonical, appointmentsCanonical, patientsCanonical, visitsCanonical]);
+  }, [followUpsCanonical, appointmentsCanonical, patientsLookup, visitsCanonical]);
 
   // Sound Chime for Patient Queue & Status Updates
   const playQueueNotificationSound = () => {
@@ -1843,7 +1996,9 @@ function ClinicApp() {
     }
   };
 
-  // Next sequential file number
+  // Next sequential file number — احتياط فقط: الرقم النهائي يُخصَّص
+  // ذرياً من عدّاد counters/patientFile، وmax+1 هنا لا يُستخدم إلا
+  // عند فشل التخصيص (ولم يعد يعتمد على قائمة كاملة بعد نافذة الـ 90 يوماً).
   const nextFileNumber =
     Math.max(
       ...patientsCanonical.map((p) => (typeof p.fileNumber === 'number' ? p.fileNumber : 0)),
@@ -2267,7 +2422,7 @@ function ClinicApp() {
           // 4: لا تحذف ملف المريض إلا بعد التأكد من الخادم وصلاحية الحذف، ومع أي شك لا تحذف
           if (canDelete('patient-records')) {
             try {
-              const patientDoc = patientsCanonical.find((p) => p.patientId === pid);
+              const patientDoc = patientById.get(pid);
               if (!patientDoc?.hasClinicalFile) {
                 const [vSnap, aSnap] = await Promise.all([
                   getDocs(query(collection(db, 'visits'), where('patientId', '==', pid), limit(2))),
@@ -2311,7 +2466,7 @@ function ClinicApp() {
         // ومنها النشطة التي لا يعدّها الملخص). وعند غياب حقول الملخص
         // يُستخدم اشتقاق النافذة القديم وحده.
         if (canDelete('patient-records')) {
-          const patientDoc = patientsCanonical.find((p) => p.patientId === targetVisit.patientId);
+          const patientDoc = patientById.get(targetVisit.patientId);
           const summaryVisits = patientDoc?.visitsCount;
           const otherInWindow = visitsCanonical.some(
             (v) => v.patientId === targetVisit.patientId && v.visitId !== targetVisit.visitId
@@ -2339,6 +2494,7 @@ function ClinicApp() {
         await deletePatientTransaction(db, patientId, { allowDeleteFinancials: true });
       }
       setPatientsCanonical((prev) => prev.filter((p) => p.patientId !== patientId));
+      setExtraPatients((prev) => prev.filter((p) => p.patientId !== patientId));
       setAppointmentsCanonical((prev) => prev.filter((a) => a.patientId !== patientId));
       setVisitsCanonical((prev) => prev.filter((v) => v.patientId !== patientId));
       setInvoicesCanonical((prev) => prev.filter((inv) => inv.patientId !== patientId));
@@ -2410,7 +2566,11 @@ function ClinicApp() {
 
     try {
       // 1. Find or resolve patient using normalized Arabic name matching
-      const matchedPatient = findMatchingPatient({ fullName: newTx.patientName });
+      // Hybrid: ابحث عند الطلب قبل إنشاء مريض جديد حتى لا يتكرر ملف
+      // مريض قديم خارج النافذة.
+      const matchedPatient =
+        findMatchingPatient({ fullName: newTx.patientName }) ??
+        (await findMatchingPatientOnDemand({ fullName: newTx.patientName }));
       let targetPatientId = matchedPatient?.patientId;
 
       if (!targetPatientId && newTx.patientName.trim()) {
@@ -2587,7 +2747,7 @@ function ClinicApp() {
 
     if (!targetVisit) return;
 
-    const canonicalPat = patientsCanonical.find((p) => p.patientId === targetVisit.patientId);
+    const canonicalPat = patientById.get(targetVisit.patientId);
     const basePatient = patients.find((p) => p.id === targetVisit.patientId);
     const registeredComplaint = targetVisit.receptionistData?.symptoms || basePatient?.chiefComplaint || '';
     const registeredSymptoms = targetVisit.receptionistData?.symptoms
@@ -2638,7 +2798,16 @@ function ClinicApp() {
       alert('الموعد غير موجود أو تم تسجيل حضوره بالفعل');
       return;
     }
-    const patient = patientsCanonical.find((p) => p.patientId === appt.patientId);
+    // Hybrid: مريض قديم خارج النافذة — ابحث عنه في الخادم قبل رفض
+    // تسجيل الحضور. رفض حضور مريض حقيقي هو الكسر الأشد هنا.
+    let patient = patientById.get(appt.patientId);
+    if (!patient) {
+      patient = await findMatchingPatientOnDemand({
+        patientId: appt.patientId,
+        phone: appt.phone,
+        fullName: appt.patientName,
+      });
+    }
     if (!patient) {
       alert('لا يمكن تسجيل الحضور دون Patient مرتبط بالموعد');
       return;
@@ -2692,11 +2861,19 @@ function ClinicApp() {
       const timestamp = new Date().toISOString();
 
       // Look up existing patient by patientId, normalized phone digits, or normalized Arabic name
-      const basePat = findMatchingPatient({
-        patientId: item.patientId,
-        phone: cleanPhone,
-        fullName: cleanName,
-      });
+      // Hybrid: ابحث عند الطلب قبل إنشاء مريض جديد حتى لا يتكرر ملف
+      // مريض قديم خارج النافذة.
+      const basePat =
+        findMatchingPatient({
+          patientId: item.patientId,
+          phone: cleanPhone,
+          fullName: cleanName,
+        }) ??
+        (await findMatchingPatientOnDemand({
+          patientId: item.patientId,
+          phone: cleanPhone,
+          fullName: cleanName,
+        }));
 
       // Convert entered age to a valid dateOfBirth so the age calculation is perfectly synchronized and correct
       const calculatedDOB = item.age && Number(item.age) > 0
@@ -2837,11 +3014,19 @@ function ClinicApp() {
 
     try {
       const timestamp = new Date().toISOString();
-      const existingPatient = findMatchingPatient({
-        patientId: app.patientId,
-        phone: cleanPhone,
-        fullName: cleanName,
-      });
+      // Hybrid: ابحث عند الطلب قبل إنشاء مريض جديد حتى لا يتكرر ملف
+      // مريض قديم خارج النافذة.
+      const existingPatient =
+        findMatchingPatient({
+          patientId: app.patientId,
+          phone: cleanPhone,
+          fullName: cleanName,
+        }) ??
+        (await findMatchingPatientOnDemand({
+          patientId: app.patientId,
+          phone: cleanPhone,
+          fullName: cleanName,
+        }));
 
       const targetPatientId = existingPatient?.patientId || app.patientId || `pat-${Date.now()}`;
 
