@@ -772,9 +772,13 @@ function ClinicApp() {
 
     const hotStart = addDaysToKey(dayStamp, -(HOT_DAYS - 1));
     const apptStart = addDaysToKey(dayStamp, -APPT_PAST_DAYS);
-    // ج14: نافذة التاريخ (90 يوماً) لعدّادات بطاقة المريض ونافذة تأكيد الحذف،
+    // ج14: نافذة التاريخ (30 يوماً) لعدّادات بطاقة المريض ونافذة تأكيد الحذف،
     // فلا تُحسب من بيانات اليوم والأمس فقط.
-    const historyStart = addDaysToKey(dayStamp, -(90 - 1));
+    const historyStart = addDaysToKey(dayStamp, -(30 - 1));
+    // الروشتات تُبقي نافذة 90 يوماً عمداً: عدّاد الروشتات في بطاقة المريض
+    // يُحسب مباشرة من الاشتراك بلا حقل ملخّص يحميه (بخلاف عدّاد الزيارات)،
+    // فتضييقها إلى 30 يوماً كان سيُظهر عدداً أقل على البطاقة.
+    const prescriptionsStart = addDaysToKey(dayStamp, -(90 - 1));
 
     const win = <T extends Record<string, any>>(
       name: string,
@@ -793,21 +797,22 @@ function ClinicApp() {
             [[where('scheduledDate', '>=', apptStart)], [where('status', 'in', ['SCHEDULED', 'ARRIVED', 'CANCELLED'])]],
             setAppointmentsCanonical),
 
-          // ج14: الزيارات من آخر 90 يوماً (أي حالة) + النشطة من أي تاريخ،
+          // ج14: الزيارات من آخر 30 يوماً (أي حالة) + النشطة من أي تاريخ،
           // حتى تكون عدّادات بطاقة المريض ونافذة تأكيد الحذف صحيحة.
           // ملاحظة: كل عنصر هنا استعلام مستقل يُدمج اتحاده عبر subscribeMerged.
           win<Visit>('visits',
             [[where('dayKey', '>=', historyStart)], [where('status', 'in', ['WAITING', 'IN_PROGRESS'])]],
             (items) => { setVisitsCanonical(items); setVisitsReady(true); }),
 
-          // ج14: الفواتير من آخر 90 يوماً (أي حالة) + غير المسددة من أي تاريخ.
+          // ج14: الفواتير من آخر 30 يوماً (أي حالة) + غير المسددة من أي تاريخ.
           win<Invoice>('invoices',
             [[where('dayKey', '>=', historyStart)], [where('status', 'in', ['UNPAID', 'PARTIALLY_PAID'])]],
             setInvoicesCanonical),
 
           win<Payment>('payments', [[where('dayKey', '>=', hotStart)]], setPaymentsCanonical),
-          // ج14: الروشتات من آخر 90 يوماً بدل اليوم والأمس فقط.
-          win<Prescription>('prescriptions', [[where('dayKey', '>=', historyStart)]], setPrescriptionsCanonical),
+          // ج14: الروشتات من آخر 90 يوماً بدل اليوم والأمس فقط — تُبقي 90 يوماً
+          // عمداً لأن عدّادها في بطاقة المريض بلا حقل ملخّص يحميه.
+          win<Prescription>('prescriptions', [[where('dayKey', '>=', prescriptionsStart)]], setPrescriptionsCanonical),
           win<FollowUp>('followUps', [[where('status', 'in', ['UPCOMING', 'TODAY', 'OVERDUE'])]], setFollowUpsCanonical),
           win<LabOrder>('labOrders', [[where('dayKey', '>=', hotStart)]], setLabOrdersCanonical),
           win<RadiologyOrder>('radiologyOrders', [[where('dayKey', '>=', hotStart)]], setRadiologyOrdersCanonical),
