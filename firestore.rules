@@ -499,6 +499,28 @@ service cloud.firestore {
     }
 
     // =============================================================
+    // 17. CROSS-DEVICE ALERTS & SHIFT CLOSURES
+    // (added 2026-11-27 — new collections from the 78-fix round;
+    // without these the default-deny fallback below would block them)
+    // =============================================================
+    match /alerts/{alertId} {
+      allow read: if isUserActive();
+      allow create: if isUserActive() && (
+        hasPermission('waiting-queue', 'update') ||
+        hasPermission('new-visit', 'update') ||
+        hasPermission('clinical-exam', 'update') ||
+        hasPermission('prescription-pad', 'update')
+      );
+      allow update, delete: if isAdmin();
+    }
+
+    match /shiftClosures/{closureId} {
+      allow read: if hasPermission('billing-payments', 'view') || hasPermission('finance', 'view');
+      allow create: if hasPermission('billing-payments', 'create') || hasPermission('finance', 'create');
+      allow update, delete: if isAdmin();
+    }
+
+    // =============================================================
     // FALLBACK: ZERO-TRUST DEFAULT DENY
     // =============================================================
     match /{document=**} {
