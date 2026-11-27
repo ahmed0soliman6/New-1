@@ -918,7 +918,16 @@ function ClinicApp() {
   const patients: PatientListItem[] = useMemo(() => {
     if (READ_OPT) {
       return [...patientsCanonical]
-        .filter((p) => p.hasClinicalFile)
+        // W4: الملخص على مستند المريض (hasClinicalFile) هو مصدر القبول الأول،
+        // والاشتقاق من النوافذ المحمّلة احتياطي للمرضى القدامى بلا حقول
+        // ملخص — حتى لا يختفي أي مريض موجود من «ملفات المرضى».
+        .filter((p) => {
+          if (p.hasClinicalFile) return true;
+          return (
+            prescriptionsCanonical.some((pr) => pr.patientId === p.patientId) ||
+            visitsCanonical.some((v) => v.patientId === p.patientId && v.status === 'COMPLETED')
+          );
+        })
         .sort((a, b) => {
           const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
           const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
@@ -927,7 +936,24 @@ function ClinicApp() {
         })
         .map((p) => {
           const created = p.createdAt ? new Date(p.createdAt) : new Date();
-          const last = p.lastVisitAt ? new Date(p.lastVisitAt) : undefined;
+          // W4: كل حقل يُؤخذ من الملخص إن وُجد، وإلا من النوافذ المحمّلة.
+          const wCompleted = visitsCanonical.filter(
+            (v) => v.patientId === p.patientId && v.status === 'COMPLETED'
+          );
+          const wVisits =
+            wCompleted.length > 0
+              ? wCompleted
+              : visitsCanonical.filter((v) => v.patientId === p.patientId);
+          const wLast = [...wVisits].sort(
+            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          )[0];
+          // dayKey وحده يُفسَّر ظهراً حتى لا تزيحه منطقة UTC عند التنسيق بتوقيت القاهرة.
+          const summaryLast = p.lastVisitAt
+            ? new Date(p.lastVisitAt)
+            : p.lastVisitDate
+              ? new Date(`${p.lastVisitDate}T12:00:00`)
+              : undefined;
+          const last = summaryLast ?? (wLast ? new Date(wLast.createdAt) : undefined);
           return {
             id: p.patientId,
             medicalCode: p.medicalCode || `EG-${p.fileNumber || p.patientId.slice(0, 5)}`,
@@ -947,9 +973,11 @@ function ClinicApp() {
             lastVisitTime: last ? formatAppTime(last) : undefined,
             registrationDate: formatAppDate(created),
             registrationTime: formatAppTime(created),
-            visitsCount: p.visitsCount || 1,
+            // W4: عدد الزيارات من الملخص إن وُجد، وإلا من النوافذ المحمّلة.
+            visitsCount:
+              typeof p.visitsCount === 'number' ? p.visitsCount || 1 : wCompleted.length || 1,
             totalPaid: 0, // يُحسب عند فتح تفاصيل المريض فقط
-            lastDiagnosis: p.lastDiagnosis || '',
+            lastDiagnosis: p.lastDiagnosis || wLast?.clinicalData?.diagnosis?.[0] || '',
           };
         });
     }
@@ -957,7 +985,10 @@ function ClinicApp() {
     // Clinic Workflow Rule: A patient ONLY appears in Patient Files ("ملفات المرضى")
     // after having their clinical examination completed and their prescription saved!
     // (Prescription saved in prescriptionsCanonical OR Visit marked as COMPLETED)
+    // W4: القبول بملخص مستند المريض أولاً (hasClinicalFile)، والاشتقاق من
+    // النوافذ المحمّلة احتياطي للمرضى القدامى بلا حقول ملخص.
     const clinicalPatients = patientsCanonical.filter((p) => {
+      if (p.hasClinicalFile) return true;
       const hasPrescription = prescriptionsCanonical.some((pr) => pr.patientId === p.patientId);
       const hasCompletedVisit = visitsCanonical.some(
         (v) => v.patientId === p.patientId && v.status === 'COMPLETED'
@@ -981,7 +1012,15 @@ function ClinicApp() {
       const pPayments = paymentsCanonical.filter((pm) => pm.patientId === p.patientId);
       const totalPaid = pPayments.reduce((acc, pm) => acc + (pm.amount || 0), 0);
       const lastVisit = [...pVisits].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-      const lastDiag = lastVisit?.clinicalData?.diagnosis?.[0] || p.lastDiagnosis || '';
+      // W4: آخر زيارة وتشخيصها من ملخص المريض إن وُجد، وإلا من النوافذ المحمّلة.
+      // dayKey وحده يُفسَّر ظهراً حتى لا تزيحه منطقة UTC عند التنسيق بتوقيت القاهرة.
+      const summaryLast = p.lastVisitAt
+        ? new Date(p.lastVisitAt)
+        : p.lastVisitDate
+          ? new Date(`${p.lastVisitDate}T12:00:00`)
+          : undefined;
+      const lastVisitDateObj = summaryLast ?? (lastVisit ? new Date(lastVisit.createdAt) : undefined);
+      const lastDiag = p.lastDiagnosis || lastVisit?.clinicalData?.diagnosis?.[0] || '';
       
       const calculatedAge = calculateAge(p.dateOfBirth) ?? 0;
 
@@ -1004,11 +1043,13 @@ function ClinicApp() {
         bloodType: p.bloodType || 'غير محدد',
         bloodGroup: p.bloodType || 'غير محدد',
         emergencyContact: p.emergencyContact,
-        lastVisitDate: lastVisit ? formatAppDate(lastVisit.createdAt) : undefined,
-        lastVisitTime: lastVisit ? formatAppTime(lastVisit.createdAt) : undefined,
+        lastVisitDate: lastVisitDateObj ? formatAppDate(lastVisitDateObj) : undefined,
+        lastVisitTime: lastVisitDateObj ? formatAppTime(lastVisitDateObj) : undefined,
         registrationDate,
         registrationTime,
-        visitsCount: pCompletedVisits.length || 1,
+        // W4: عدد الزيارات من الملخص إن وُجد، وإلا من النوافذ المحمّلة.
+        visitsCount:
+          typeof p.visitsCount === 'number' ? p.visitsCount || 1 : pCompletedVisits.length || 1,
         totalPaid,
         lastDiagnosis: lastDiag,
       };
@@ -2240,10 +2281,24 @@ function ClinicApp() {
         }
 
         // 4. Clean up patient profile if no other visits or appointments exist
+        // W4: الملخص على مستند المريض هو المصدر الأول — النافذة المحمّلة
+        // وحدها كانت تحذف ملف مريض له زيارات مكتملة أقدم من النافذة.
+        // يُحذف الملف فقط إن اتفق المصدران على عدم وجود زيارات أخرى:
+        // الملخص (زيارات مكتملة، خارج النافذة) والنافذة (أي حالة،
+        // ومنها النشطة التي لا يعدّها الملخص). وعند غياب حقول الملخص
+        // يُستخدم اشتقاق النافذة القديم وحده.
         if (canDelete('patient-records')) {
-          const otherVisits = visitsCanonical.filter((v) => v.patientId === targetVisit.patientId && v.visitId !== targetVisit.visitId);
+          const patientDoc = patientsCanonical.find((p) => p.patientId === targetVisit.patientId);
+          const summaryVisits = patientDoc?.visitsCount;
+          const otherInWindow = visitsCanonical.some(
+            (v) => v.patientId === targetVisit.patientId && v.visitId !== targetVisit.visitId
+          );
+          const hasOtherVisits =
+            typeof summaryVisits === 'number'
+              ? summaryVisits - (targetVisit.status === 'COMPLETED' ? 1 : 0) > 0 || otherInWindow
+              : otherInWindow;
           const otherAppts = appointmentsCanonical.filter((a) => a.patientId === targetVisit.patientId);
-          if (otherVisits.length === 0 && otherAppts.length === 0) {
+          if (!hasOtherVisits && otherAppts.length === 0) {
             await deleteDoc(doc(db, 'patients', targetVisit.patientId)).catch(() => {});
           }
         }
