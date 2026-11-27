@@ -286,6 +286,10 @@ export async function startVisitTransaction(db: Firestore, visitId: string, doct
     const snap = await tx.get(ref);
     if (!snap.exists()) return;
     const data = snap.data();
+    // لا تُعاد زيارة مكتملة إلى «قيد الكشف» أبداً، ولا تُفتح زيارة بحالة
+    // غير «في الانتظار» — الانتقال المسموح الوحيد WAITING → IN_PROGRESS
+    // (إعادة فتح زيارة قديمة كانت جزءاً من خطأ دينا رمضان).
+    if (data.status !== 'WAITING' && data.status !== 'IN_PROGRESS') return;
     if (data.status === 'IN_PROGRESS') {
       tx.update(ref, { doctorId: doctorId || data.doctorId || '', updatedAt: serverTimestamp() });
       return;
