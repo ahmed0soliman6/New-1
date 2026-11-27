@@ -5,9 +5,9 @@ import { usePermissions } from '../../context/AuthContext';
 
 interface QueueScreenProps {
   queue: QueueItem[];
-  onCallPatient: (ticket: string, name: string) => void;
+  onCallPatient: (visitId: string, name: string) => void;
   onNavigate: (screen: ScreenType) => void;
-  onRemoveFromQueue?: (ticket: string) => void;
+  onRemoveFromQueue?: (visitId: string) => void;
   onOpenNewVisit?: () => void;
 }
 
@@ -54,7 +54,9 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({
   }, []);
 
   const handleOpenExam = (item: QueueItem) => {
-    onCallPatient(item.ticketNumber, item.patientName);
+    // الربط برقم الزيارة (item.id) لا برقم التذكرة — أرقام التذاكر تتكرر
+    // كل يوم، والبحث برقمها كان يطابق زيارة قديمة بنفس الرقم (خطأ دينا رمضان).
+    onCallPatient(item.id, item.patientName);
     onNavigate('clinical-exam');
   };
 
