@@ -947,12 +947,17 @@ function ClinicApp() {
           const wLast = [...wVisits].sort(
             (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
           )[0];
-          // dayKey وحده يُفسَّر ظهراً حتى لا تزيحه منطقة UTC عند التنسيق بتوقيت القاهرة.
-          const summaryLast = p.lastVisitAt
-            ? new Date(p.lastVisitAt)
-            : p.lastVisitDate
-              ? new Date(`${p.lastVisitDate}T12:00:00`)
+          // إصلاح 1: dayKey (lastVisitDate) أولاً — lastVisitAt قد يعود لزيارة
+          // أقدم إن أُعيد حفظ زيارة قديمة. dayKey وحده يُفسَّر ظهراً حتى لا
+          // تزيحه منطقة UTC عند التنسيق بتوقيت القاهرة، لكن الوقت الناتج
+          // عن هذا التفسير وهمي (12:00 ظهراً) فيُخفى.
+          const summaryDayKey = p.lastVisitDate || undefined;
+          const summaryLast = summaryDayKey
+            ? new Date(`${summaryDayKey}T12:00:00`)
+            : p.lastVisitAt
+              ? new Date(p.lastVisitAt)
               : undefined;
+          const lastIsDayKey = Boolean(summaryDayKey);
           const last = summaryLast ?? (wLast ? new Date(wLast.createdAt) : undefined);
           return {
             id: p.patientId,
@@ -970,7 +975,7 @@ function ClinicApp() {
             bloodGroup: p.bloodType || 'غير محدد',
             emergencyContact: p.emergencyContact,
             lastVisitDate: last ? formatAppDate(last) : undefined,
-            lastVisitTime: last ? formatAppTime(last) : undefined,
+            lastVisitTime: last && !lastIsDayKey ? formatAppTime(last) : undefined,
             registrationDate: formatAppDate(created),
             registrationTime: formatAppTime(created),
             // W4: عدد الزيارات من الملخص إن وُجد، وإلا من النوافذ المحمّلة.
@@ -1013,13 +1018,18 @@ function ClinicApp() {
       const totalPaid = pPayments.reduce((acc, pm) => acc + (pm.amount || 0), 0);
       const lastVisit = [...pVisits].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
       // W4: آخر زيارة وتشخيصها من ملخص المريض إن وُجد، وإلا من النوافذ المحمّلة.
-      // dayKey وحده يُفسَّر ظهراً حتى لا تزيحه منطقة UTC عند التنسيق بتوقيت القاهرة.
-      const summaryLast = p.lastVisitAt
-        ? new Date(p.lastVisitAt)
-        : p.lastVisitDate
-          ? new Date(`${p.lastVisitDate}T12:00:00`)
+      // إصلاح 1: dayKey (lastVisitDate) أولاً — lastVisitAt قد يعود لزيارة
+      // أقدم إن أُعيد حفظ زيارة قديمة. dayKey وحده يُفسَّر ظهراً حتى لا
+      // تزيحه منطقة UTC عند التنسيق بتوقيت القاهرة، لكن الوقت الناتج عن
+      // هذا التفسير وهمي (12:00 ظهراً) فيُخفى.
+      const summaryDayKey = p.lastVisitDate || undefined;
+      const summaryLast = summaryDayKey
+        ? new Date(`${summaryDayKey}T12:00:00`)
+        : p.lastVisitAt
+          ? new Date(p.lastVisitAt)
           : undefined;
       const lastVisitDateObj = summaryLast ?? (lastVisit ? new Date(lastVisit.createdAt) : undefined);
+      const lastIsDayKey = Boolean(summaryDayKey);
       const lastDiag = p.lastDiagnosis || lastVisit?.clinicalData?.diagnosis?.[0] || '';
       
       const calculatedAge = calculateAge(p.dateOfBirth) ?? 0;
@@ -1044,7 +1054,7 @@ function ClinicApp() {
         bloodGroup: p.bloodType || 'غير محدد',
         emergencyContact: p.emergencyContact,
         lastVisitDate: lastVisitDateObj ? formatAppDate(lastVisitDateObj) : undefined,
-        lastVisitTime: lastVisitDateObj ? formatAppTime(lastVisitDateObj) : undefined,
+        lastVisitTime: lastVisitDateObj && !lastIsDayKey ? formatAppTime(lastVisitDateObj) : undefined,
         registrationDate,
         registrationTime,
         // W4: عدد الزيارات من الملخص إن وُجد، وإلا من النوافذ المحمّلة.
@@ -1754,7 +1764,7 @@ function ClinicApp() {
         fileNumber: patient.fileNumber,
         medicalCode: patient.medicalCode || `EG-${patient.fileNumber || 101}`,
         lastVisitDate: READ_OPT
-          ? (patient.lastVisitAt?.split('T')[0] || fu.createdAt?.split('T')[0] || '')
+          ? (patient.lastVisitDate || patient.lastVisitAt?.split('T')[0] || fu.createdAt?.split('T')[0] || '')
           : (lastVisit?.createdAt?.split('T')[0] || fu.createdAt?.split('T')[0] || ''),
         dueDate: fu.scheduledDate,
         daysRemaining: diffDays,
