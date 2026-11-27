@@ -196,9 +196,11 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
           filteredPatients.map((p) => {
             // ج6/ج14: عدّ الزيارات الفعلية فقط — بلا اختراع «|| 1»، وبنفس
             // تعريف شاشة التفاصيل (كل الزيارات). تحت READ_OPT تكون قائمة
-            // الزيارات مقيّدة بنافذة الاشتراك (90 يوماً بعد توسيعها في
-            // App.tsx)، فيُستخدم العدد المخزّن visitsCount إن كان أكبر —
+            // الزيارات مقيّدة بنافذة الاشتراك (30 يوماً في App.tsx)،
+            // فيُستخدم العدد المخزّن visitsCount إن كان أكبر —
             // وهو تقريبي وقد يكون قديماً؛ لا يوجد مصدر كامل هنا.
+            // عدّاد الروشتات بلا حماية ملخّص، لذا تُبقي الروشتات نافذة
+            // 90 يوماً في App.tsx حتى لا ينقص العدد على البطاقة.
             const countedVisits = visits.filter((v) => v.patientId === p.id).length;
             const pVisitsCount = Math.max(countedVisits, p.visitsCount || 0);
             const pPrescriptionsCount = prescriptions.filter((pr) => pr.patientId === p.id).length;
