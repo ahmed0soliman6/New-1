@@ -37,6 +37,99 @@ export const DEFAULT_MEDICAL_SERVICES: MedicalServiceItem[] = [
   { id: 'srv-8', name: 'قياس ضغط وسكر وتخطيط سريع', price: 50, category: 'فحوصات أولية' },
 ];
 
+/** اسم خدمة الكشف في نافذة الفاتورة اليدوية — يجب أن يطابق الاسم في قائمة الخدمات. */
+export const EXAM_SERVICE_NAME = 'كشف واستشارة طبية';
+
+export interface VisitTypeFeeItem {
+  id: string;
+  name: string;
+  fee: number;
+}
+
+/**
+ * سعر الكشف من نفس مصدر رسوم التسجيل: قائمة أنواع الزيارات
+ * (visitTypesList — «كشف جديد»). رسم التسجيل يأتي من
+ * selectedVisitType.fee في شاشة الاستقبال، لا من قائمة الخدمات، لذا
+ * تُؤخذ قيمة الكشف في الفاتورة اليدوية من هنا حتى تتطابقا دائماً
+ * (مثلاً 160 ج.م حياً بدل 300 الافتراضية). تعيد null إن لم توجد القائمة.
+ */
+export function getExamFeeFromVisitTypes(
+  visitTypes: VisitTypeFeeItem[] | undefined | null,
+): number | null {
+  if (!Array.isArray(visitTypes) || visitTypes.length === 0) return null;
+  const exact = visitTypes.find((v) => v && v.name && v.name.trim() === 'كشف جديد');
+  if (exact && Number(exact.fee) > 0) return Number(exact.fee);
+  const anyExam = visitTypes.find(
+    (v) => v && v.name && v.name.includes('كشف') && !v.name.includes('طوارئ') && Number(v.fee) > 0,
+  );
+  if (anyExam) return Number(anyExam.fee);
+  return null;
+}
+
+/**
+ * يضمن وجود خدمة الكشف في قائمة خدمات الفاتورة اليدوية، أولاً، وبسعر
+ * الكشف الصحيح من أنواع الزيارات. القائمة المحفوظة (Firestore/localStorage)
+ * قد لا تحوي الكشف أصلاً — فيُضاف؛ وإن وُجد بسعر قديم يُحدَّث سعره المعروض
+ * (دون كتابة فوق القائمة المحفوظة). لا يغيّر باقي الخدمات.
+ */
+export function withExamService(
+  services: MedicalServiceItem[] | undefined | null,
+  examFee: number | null,
+): MedicalServiceItem[] {
+  const list = Array.isArray(services) ? [...services] : [];
+  const fee =
+    examFee != null && Number(examFee) > 0
+      ? Number(examFee)
+      : (DEFAULT_MEDICAL_SERVICES.find((s) => s.name === EXAM_SERVICE_NAME)?.price ?? 300);
+  const idx = list.findIndex((s) => s.name === EXAM_SERVICE_NAME);
+  if (idx >= 0) {
+    const merged = { ...list[idx], price: fee };
+    list.splice(idx, 1);
+    return [merged, ...list];
+  }
+  return [{ id: 'srv-exam', name: EXAM_SERVICE_NAME, price: fee, category: 'كشوفات' }, ...list];
+}
+
+/** تطبيع اسم عربي للمقارنة (أ/إ/آ ← ا، ة ← ه، ى ← ي، فراغات موحّدة). */
+export function normalizeArabicName(name?: string | null): string {
+  if (!name) return '';
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/\s+/g, ' ');
+}
+
+/**
+ * حارس الازدواج: هل توجد فاتورة مدفوعة اليوم لنفس المريض ونفس الخدمة؟
+ * تُستخدم قبل إصدار فاتورة كشف يدوية حتى لا تُحاسَب زيارة واحدة مرتين.
+ */
+export function hasPaidInvoiceForPatientToday(
+  transactions: Array<{
+    patientName?: string;
+    serviceName?: string;
+    date?: string;
+    status?: string;
+    type?: string;
+  }>,
+  patientName: string,
+  serviceName: string,
+  today: string,
+): boolean {
+  const target = normalizeArabicName(patientName);
+  if (!target) return false;
+  return (transactions || []).some(
+    (tx) =>
+      tx.type === 'in' &&
+      tx.status === 'مدفوعة' &&
+      tx.date === today &&
+      tx.serviceName === serviceName &&
+      normalizeArabicName(tx.patientName) === target,
+  );
+}
+
 export const DEFAULT_EXPENSE_CATEGORIES: ExpenseCategoryItem[] = [
   { id: 'exp-cat-1', name: 'فاتورة كهرباء' },
   { id: 'exp-cat-2', name: 'فاتورة إنترنت' },
