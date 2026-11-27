@@ -294,6 +294,14 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
                           </div>
                         )}
                       </div>
+
+                      {/* Last Diagnosis — يُحسب في App.tsx من ملخص المريض أولاً ثم من آخر زيارة مكتملة؛ كان يُحسب ولا يُعرض أبداً على البطاقة */}
+                      <div className="text-[11px] text-slate-500 dark:text-[#859394] flex flex-wrap items-center gap-x-3 gap-y-1 pt-1">
+                        <div className="flex items-center gap-1 text-teal-700 dark:text-teal-400">
+                          <span className="material-symbols-outlined text-[13px]">stethoscope</span>
+                          <span>{language === 'en' ? 'Last Diagnosis:' : 'آخر تشخيص:'} {p.lastDiagnosis || '—'}</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
