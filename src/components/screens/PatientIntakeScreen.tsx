@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { QueueItem, PatientListItem, ScreenType } from '../../types';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { formatAppTime } from '../../utils/numberUtils';
 import { cleanPhone } from '../../utils/bookingValidation';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../services/firebase';
 
 interface PatientIntakeScreenProps {
   onAddPatientToQueue: (item: QueueItem) => Promise<{ queueNumber: number; fileNumber: number } | null>;
@@ -60,17 +62,39 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
   const [address, setAddress] = useState('');
   const [bloodType, setBloodType] = useState<string>('غير محدد');
 
+  // معاينة رقم الملف من عدّاد counters/patientFile (قراءة واحدة عند فتح
+  // النموذج): الرقم المعروض = lastNumber + 1. إن لم يوجد العدّاد بعد أو
+  // فشلت القراءة، تُستخدم المعاينة الحالية من قائمة المرضى. الرقم النهائي
+  // يُخصَّص ذرياً عند التسجيل وقد يختلف عن المعاينة تحت التزامن.
+  const [counterPreview, setCounterPreview] = useState<number | null>(null);
+  useEffect(() => {
+    if (!db) return;
+    let cancelled = false;
+    // يجب أن يطابق 'patientFile' الثابت PATIENT_FILE_COUNTER_ID في firestoreWorkflows.ts.
+    getDoc(doc(db, 'counters', 'patientFile'))
+      .then((snap) => {
+        if (cancelled || !snap.exists()) return;
+        const last = Number((snap.data() as { lastNumber?: unknown }).lastNumber) || 0;
+        if (last > 0) setCounterPreview(last + 1);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Requirement 6: Sequential auto-calculated file number (معاينة فقط).
   // الرقم النهائي يُخصَّص ذرياً من عدّاد counters/patientFile عند التسجيل
   // في App (إصلاح ازدواج #9697)؛ هذه القيمة تُمرَّر كاحتياط فقط إن لم يوجد
   // العدّاد بعد أو فشل التخصيص، وقد تختلف عن الرقم النهائي المعروض بعد الحفظ.
   const autoFileNumber = React.useMemo(() => {
+    if (counterPreview !== null) return counterPreview;
     if (patients && patients.length > 0) {
       const maxNum = Math.max(...patients.map((p) => Number(p.fileNumber) || 0));
       return maxNum > 0 ? maxNum + 1 : nextFileNumber;
     }
     return nextFileNumber || 1;
-  }, [patients, nextFileNumber]);
+  }, [counterPreview, patients, nextFileNumber]);
 
   const [selectedVisitType, setSelectedVisitType] = useState<{ id: string; name: string; fee: number } | null>(null);
   
