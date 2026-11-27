@@ -5,7 +5,15 @@ import { FollowUpItem } from './AppointmentsScreen';
 import { usePermissions } from '../../context/AuthContext';
 import { usePrescriptionDoctor } from '../../utils/prescriptionDoctor';
 import { findBranch } from '../../utils/clinicBranches';
-import { loadMedicalServices, MedicalServiceItem } from '../../utils/financeManager';
+import {
+  loadMedicalServices,
+  MedicalServiceItem,
+  EXAM_SERVICE_NAME,
+  getExamFeeFromVisitTypes,
+  withExamService,
+  hasPaidInvoiceForPatientToday,
+  type VisitTypeFeeItem,
+} from '../../utils/financeManager';
 import { ClinicAlertPayload } from '../../utils/alertManager';
 import { toEnglishDigits } from '../../utils/numberUtils';
 import { useLanguage } from '../../i18n/LanguageContext';
@@ -32,6 +40,8 @@ interface DashboardScreenProps {
   patients?: PatientListItem[];
   patientsCanonical?: Patient[];
   onAddTransaction?: (tx: TransactionRecord) => void | Promise<void>;
+  // قائمة أنواع الزيارات (من App) — مصدر سعر الكشف في الفاتورة اليدوية.
+  visitTypesList?: VisitTypeFeeItem[];
 }
 
 export const DashboardScreen: React.FC<DashboardScreenProps> = ({
@@ -51,6 +61,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   patients = [],
   patientsCanonical = [],
   onAddTransaction,
+  visitTypesList = [],
 }) => {
   const { canAccess, assertPermission } = usePermissions();
   const doctorInfo = usePrescriptionDoctor();
@@ -159,22 +170,35 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
     setTimeout(() => setDashboardWhatsappToast(null), 4000);
   };
 
+  // سعر الكشف من نفس مصدر رسوم التسجيل (أنواع الزيارات — «كشف جديد»)،
+  // وقائمة الخدمات مضمون فيها وجود خدمة الكشف أولاً وبهذا السعر.
+  const examFee = useMemo(() => getExamFeeFromVisitTypes(visitTypesList), [visitTypesList]);
+  const medicalServices = useMemo(
+    () => withExamService(loadMedicalServices(), examFee),
+    [examFee],
+  );
+  const examServicePrice =
+    medicalServices.find((s) => s.name === EXAM_SERVICE_NAME)?.price ?? 300;
+
   // Quick Invoice Modal State
   const [showQuickInvoiceModal, setShowQuickInvoiceModal] = useState(false);
   const [invPatientName, setInvPatientName] = useState('');
-  const [invSelectedService, setInvSelectedService] = useState('كشف واستشارة طبية');
-  const [invAmount, setInvAmount] = useState<number>(300);
+  const [invSelectedService, setInvSelectedService] = useState(EXAM_SERVICE_NAME);
+  const [invAmount, setInvAmount] = useState<number>(examServicePrice);
   const [invDiscount, setInvDiscount] = useState<number>(0);
   const [invPaymentMethod, setInvPaymentMethod] = useState<'نقدي' | 'فيزا / كارت' | 'إنستاباي'>('نقدي');
   const [invStatus, setInvStatus] = useState<'مدفوعة' | 'غير مدفوعة'>('مدفوعة');
   const [invIsSubmitting, setInvIsSubmitting] = useState(false);
 
-  // Medical services list for quick invoice
-  const medicalServices = useMemo(() => {
-    return loadMedicalServices();
-  }, []);
-
-
+  // عند كل فتح للنافذة: تُعاد الخدمة للكشف والمبلغ لسعره الحالي،
+  // لا لقيمة ثابتة 300 من فتحات سابقة.
+  useEffect(() => {
+    if (!showQuickInvoiceModal) return;
+    setInvSelectedService(EXAM_SERVICE_NAME);
+    const price = medicalServices.find((s) => s.name === EXAM_SERVICE_NAME)?.price;
+    if (price != null) setInvAmount(price);
+    setInvDiscount(0);
+  }, [showQuickInvoiceModal, medicalServices]);
 
   // Quick invoice submission
   const handleQuickInvoiceSubmit = async (e: React.FormEvent) => {
@@ -195,6 +219,16 @@ ${branch.address ? `العنوان: ${branch.address}\n` : ''}📞 للتأكي�
     if (!Number.isFinite(cleanDiscount) || cleanDiscount < 0 || cleanDiscount > cleanAmount) {
       setCheckInNotice('يرجى التأكد من أن الخصم غير سالب ولا يتجاوز قيمة الخدمة');
       setTimeout(() => setCheckInNotice(null), 4000);
+      return;
+    }
+    // حارس الازدواج: فاتورة الكشف تُدفع تلقائياً عند التسجيل، فإصدار
+    // فاتورة كشف يدوية ثانية لنفس المريض في نفس اليوم ازدواج محاسبي.
+    if (
+      invSelectedService === EXAM_SERVICE_NAME &&
+      hasPaidInvoiceForPatientToday(transactions, invPatientName, EXAM_SERVICE_NAME, todayKey())
+    ) {
+      setCheckInNotice(`تنبيه: توجد فاتورة كشف مدفوعة اليوم للمريض (${invPatientName.trim()}) — راجع الفواتير قبل إصدار فاتورة كشف ثانية لنفس الزيارة`);
+      setTimeout(() => setCheckInNotice(null), 6000);
       return;
     }
 
