@@ -93,6 +93,8 @@ export interface AppointmentListItem {
 
 export interface TransactionRecord {
   id: string;
+  /** معرّف فاتورة السجل (inv-…) — للبحث برقم الفاتورة كما يعرضه ملف المريض. */
+  invoiceId?: string;
   receiptNumber?: string;
   receiptNo?: string;
   timestamp?: string;
