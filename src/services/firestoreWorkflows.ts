@@ -18,7 +18,7 @@ import type {
   OrderStatus,
   Visit,
 } from '../types/database';
-import { toDayKey, todayKey } from '../utils/dayKey';
+import { toDayKey, todayKey, type DateLike } from '../utils/dayKey';
 
 const now = () => new Date().toISOString();
 
@@ -352,16 +352,28 @@ export async function completeVisitTransaction(params: {
     });
 
     if (patientSnap.exists()) {
-      const prev = patientSnap.data() as { visitsCount?: number };
+      const prev = patientSnap.data() as { visitsCount?: number; lastVisitDate?: string; lastVisitAt?: DateLike };
+      // إصلاح 1 (مراجعة كلود): لا تُحدِث «آخر زيارة / آخر تشخيص» إلا إن كانت
+      // الزيارة الجاري إنهاؤها أحدث من الملخص المخزّن — إعادة حفظ زيارة
+      // قديمة كانت تجعلها «الأحدث» زوراً. يُقارَن يوم الزيارة (dayKey) بيوم
+      // آخر زيارة مخزّن؛ وإن لم يُكتب lastVisitDate من قبل يُشتقّ من
+      // lastVisitAt بتوقيت القاهرة. مقارنة سلاسل YYYY-MM-DD صحيحة زمنياً.
+      const thisDayKey = visitData.dayKey || day;
+      const prevDayKey = prev.lastVisitDate || (prev.lastVisitAt ? toDayKey(prev.lastVisitAt) : '');
+      const isNewerVisit = thisDayKey >= prevDayKey;
       tx.update(patientRef, {
         hasClinicalFile: true,
         visitsCount: alreadyCompleted ? (prev.visitsCount ?? 1) : (Number(prev.visitsCount) || 0) + 1,
-        lastVisitAt: serverTimestamp(),
-        // W4: يوم آخر كشف مكتمل بصيغة dayKey (YYYY-MM-DD بتوقيت القاهرة) —
-        // يُقرأ مباشرة من الزيارة المكتملة نفسها، لا من تاريخ اليوم،
-        // حتى يبقى صحيحاً عند إعادة حفظ زيارة قديمة.
-        lastVisitDate: visitData.dayKey || day,
-        lastDiagnosis: (params.primaryDiagnosis || params.clinicalData?.diagnosis?.[0]) ?? '',
+        ...(isNewerVisit
+          ? {
+              lastVisitAt: serverTimestamp(),
+              // W4: يوم آخر كشف مكتمل بصيغة dayKey (YYYY-MM-DD بتوقيت القاهرة) —
+              // يُقرأ مباشرة من الزيارة المكتملة نفسها، لا من تاريخ اليوم،
+              // حتى يبقى صحيحاً عند إعادة حفظ زيارة قديمة.
+              lastVisitDate: thisDayKey,
+              lastDiagnosis: (params.primaryDiagnosis || params.clinicalData?.diagnosis?.[0]) ?? '',
+            }
+          : {}),
         updatedAt: serverTimestamp(),
       });
     }
