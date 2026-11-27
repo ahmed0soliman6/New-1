@@ -11,7 +11,10 @@
  *
  * الاستعلامات (كلها مساواة على حقل واحد — لا فهارس مركّبة مطلوبة):
  *  (أ) رقم إيصال/فاتورة: payments حيث receiptNumber == الاستعلام
- *      (بصيغه المختلفة)، و invoices بجلب المستند مباشرة برقم الفاتورة.
+ *      (بصيغه المختلفة)، و invoices بجلب المستند مباشرة برقم الفاتورة
+ *      أو بنطاق بادئة على documentId — لأن ما يعرضه ملف المريض
+ *      (#inv-1795) هو أول 8 أحرف فقط من معرّف الفاتورة الكامل
+ *      (inv-<Date.now()>)، وgetDoc يتطلب المعرّف الكامل.
  *  (ب) اسم مريض: المرضى قائمة كاملة محلياً، فيُحلّ الاسم محلياً أولاً
  *      (يفعل ذلك المكوّن)، ثم تُجلب مدفوعات وفواتير كل مريض مطابق
  *      عبر patientId.
@@ -57,6 +60,24 @@ function mapDoc<T>(name: string, d: { id: string; data: () => Record<string, unk
   const idField = ID_FIELD_MAP[name] || 'id';
   const data = d.data();
   return normalize({ ...data, [idField]: (data[idField] as string) || d.id }) as T;
+}
+
+/**
+ * يشتق بادئة معرّف فاتورة من نص البحث، أو null إن لم يكن النص رقم فاتورة:
+ * «inv-1795» / «INV-1795» ← «inv-1795»، والرقم المجرد «1795» ← «inv-1795»
+ * (معرّفات الفواتير inv-<Date.now()>، فالرقم المجرد هو بداية الطابع
+ * الزمني). تُشترط 4 أحرف/أرقام فأكثر بعد inv- حتى لا يرجع استعلام
+ * قصير كل فواتير الحقبة الحالية.
+ */
+function invoiceIdPrefix(q: string): string | null {
+  const m = q.match(/^inv-?(\d+)$/i);
+  if (m) return m[1].length >= 4 ? `inv-${m[1]}` : null;
+  if (/^inv-/i.test(q)) {
+    const rest = q.slice(4);
+    return rest.length >= 4 ? q.toLowerCase() : null;
+  }
+  if (/^\d+$/.test(q)) return q.length >= 4 ? `inv-${q}` : null;
+  return null;
 }
 
 /**
@@ -110,6 +131,41 @@ export async function searchReceiptsOnDemand({
           const inv = mapDoc<Invoice>('invoices', snap);
           invoices.set(inv.invoiceId, inv);
         }
+      })
+    );
+
+    // البادئة المعروضة في ملف المريض (#inv-1795) هي أول 8 أحرف فقط من
+    // معرّف الفاتورة الكامل (inv-<Date.now()>)، وgetDoc أعلاه يتطلب
+    // المعرّف الكامل فيفشل دائماً مع البادئة — لذلك نبحث أيضاً بنطاق
+    // بادئة على documentId (استعلام حقل واحد، لا فهرس مركّب): «inv-1795»
+    // أو الرقم المجرد «1795» يتحولان إلى البادئة inv-1795. البادئة
+    // مقيّدة بـ 4 أحرف فأكثر بعد inv- حتى لا يرجع استعلام قصير كل فواتير
+    // الفترة (كل معرّفات الحقبة الحالية تبدأ inv-1795).
+    const invoicePrefix = invoiceIdPrefix(q);
+    if (invoicePrefix) {
+      const snap = await getDocs(
+        query(
+          collection(db, 'invoices'),
+          where(documentId(), '>=', invoicePrefix),
+          where(documentId(), '<', `${invoicePrefix}\uf8ff`),
+          limit(RECEIPT_MATCH_LIMIT)
+        )
+      );
+      meterQuery('search:receipts', snap);
+      mapDocs<Invoice>('invoices', snap).forEach((inv) => invoices.set(inv.invoiceId, inv));
+    }
+
+    // الربط العكسي: فاتورة وُجدت برقمها قد تكون مدفوعة — نجلب دفعتها
+    // (invoiceId ==) حتى يبنيها buildTransactions كسجل مدفوع صحيح
+    // بدل سجل «فاتورة بلا دفعة» بإجمالي/خدمة افتراضيين.
+    const foundInvoiceIds = [...invoices.keys()];
+    await Promise.all(
+      foundInvoiceIds.map(async (invId) => {
+        const snap = await getDocs(
+          query(collection(db, 'payments'), where('invoiceId', '==', invId), limit(RECEIPT_MATCH_LIMIT))
+        );
+        meterQuery('search:receipts', snap);
+        mapDocs<Payment>('payments', snap).forEach((p) => payments.set(p.paymentId, p));
       })
     );
 
