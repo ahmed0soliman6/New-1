@@ -39,6 +39,16 @@ import {
   ExpenseCategoryItem,
 } from '../../utils/financeManager';
 import { db } from '../../services/firebase';
+import {
+  collection,
+  documentId,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  startAfter,
+  type QueryDocumentSnapshot,
+} from 'firebase/firestore';
 import { safeStorage, StorageKeys } from '../../services/storage';
 import { subscribeToServices, subscribeToExpenseCategories } from '../../services/repositories';
 import {
@@ -50,6 +60,44 @@ import {
   type BackupPayloadData,
 } from '../../services/backupService';
 import { safeLogger } from '../../utils/logger';
+
+// نسخة احتياطية كاملة: قراءة لمرة واحدة بلا أي فلتر (لا dayKey ولا status) —
+// القوائم القانونية (canonical) الممرَّرة من App مقيَّدة بنوافذ زمنية (مثلاً
+// payments آخر يومين فقط)، فلا تصلح للتصدير. الصفحات (500 مستند) تتبع نمط
+// الترحيلات في src/services/migrations/backfillPatientSummary.ts.
+const BACKUP_EXPORT_PAGE_SIZE = 500;
+
+const BACKUP_EXPORT_COLLECTIONS = [
+  'patients',
+  'appointments',
+  'visits',
+  'invoices',
+  'payments',
+  'prescriptions',
+  'labOrders',
+  'radiologyOrders',
+  'followUps',
+] as const;
+
+async function fetchFullCollection(collectionName: string): Promise<any[]> {
+  const docs: any[] = [];
+  let cursor: QueryDocumentSnapshot | undefined;
+  for (;;) {
+    const snap = await getDocs(
+      query(
+        collection(db, collectionName),
+        orderBy(documentId()),
+        ...(cursor ? [startAfter(cursor)] : []),
+        limit(BACKUP_EXPORT_PAGE_SIZE)
+      )
+    );
+    if (snap.empty) break;
+    for (const d of snap.docs) docs.push({ id: d.id, ...d.data() });
+    if (snap.size < BACKUP_EXPORT_PAGE_SIZE) break;
+    cursor = snap.docs[snap.docs.length - 1];
+  }
+  return docs;
+}
 
 interface ChronicItem {
   id: string;
@@ -382,16 +430,31 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
     setIsExportingBackup(true);
     try {
+      // قراءة كاملة لمرة واحدة من Firestore لكل مجموعة من المجموعات التسع،
+      // بلا أي فلتر — لا الاعتماد على القوائم القانونية المقيَّدة بالنوافذ
+      // الزمنية الممرَّرة كـ props (مثلاً payments آخر يومين فقط).
+      const [
+        fullPatients,
+        fullAppointments,
+        fullVisits,
+        fullInvoices,
+        fullPayments,
+        fullPrescriptions,
+        fullLabOrders,
+        fullRadiologyOrders,
+        fullFollowUps,
+      ] = await Promise.all(BACKUP_EXPORT_COLLECTIONS.map(fetchFullCollection));
+
       const payloadData: BackupPayloadData = {
-        patients: patients || [],
-        appointments: appointments || [],
-        visits: visits || [],
-        invoices: invoices || [],
-        payments: payments || [],
-        prescriptions: prescriptions || [],
-        labOrders: labOrders || [],
-        radiologyOrders: radiologyOrders || [],
-        followUps: followUps || [],
+        patients: fullPatients,
+        appointments: fullAppointments,
+        visits: fullVisits,
+        invoices: fullInvoices,
+        payments: fullPayments,
+        prescriptions: fullPrescriptions,
+        labOrders: fullLabOrders,
+        radiologyOrders: fullRadiologyOrders,
+        followUps: fullFollowUps,
         visitTypes: visitTypesList,
         medicalServices: medicalServicesList,
         expenseCategories: expenseCategoriesList,
@@ -409,6 +472,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       const envelope = await createBackupEnvelope(payloadData, {
         password: exportEncryptionMode === 'encrypted' ? exportPassword.trim() : undefined,
       });
+
+      // ختم التغطية: يميّز هذا الملف كتصدير كامل للمجموعات (بلا نوافذ زمنية)،
+      // فلا يُخلَط مستقبلاً بملف مقطوع؛ وعدد كل مجموعة موجود أصلاً في
+      // manifest.collectionCounts. آمن على التوافق: الحقل خارج الـ checksum
+      // (البصمة تغطي البيانات فقط) وparseAndVerifyBackupFile يتجاهل حقول
+      // الـ manifest غير المعروفة، والاستعادة لا تقرأ هذا الحقل.
+      (envelope.manifest as BackupManifest & { coverage?: string }).coverage =
+        'full-collections';
 
       const jsonString = JSON.stringify(envelope, null, 2);
       const blob = new Blob([jsonString], { type: 'application/json' });
