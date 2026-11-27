@@ -5,6 +5,8 @@ import { formatAppTime } from '../../utils/numberUtils';
 import { cleanPhone } from '../../utils/bookingValidation';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
+import { getPatientById, searchPatientsOnDemand, toPatientListItem } from '../../services/patientSearchService';
+import type { Patient } from '../../types/database';
 
 interface PatientIntakeScreenProps {
   onAddPatientToQueue: (item: QueueItem) => Promise<{ queueNumber: number; fileNumber: number } | null>;
@@ -144,6 +146,62 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
     });
   }, [name, phone, patients]);
 
+  // Hybrid: اقتراحات من السجلات القديمة (خارج نافذة الـ 90 يوماً) —
+  // تُبحث عند الطلب فقط عند غياب أي تطابق حي، وتُعرض في صندوق
+  // الاقتراح نفسه، واختيارها يعبّئ النموذج عبر handleSelectExisting.
+  const [onDemandSuggest, setOnDemandSuggest] = React.useState<PatientListItem[]>([]);
+  const [onDemandSuggestLoading, setOnDemandSuggestLoading] = React.useState(false);
+  const onDemandSuggestSeq = React.useRef(0);
+  React.useEffect(() => {
+    if (autoFilledPatientId) {
+      setOnDemandSuggest([]);
+      setOnDemandSuggestLoading(false);
+      return;
+    }
+    const q =
+      name.trim().length >= 2 ? name.trim() : phone.trim().length >= 3 ? phone.trim() : '';
+    if (!q || matchingPatients.length > 0) {
+      setOnDemandSuggest([]);
+      setOnDemandSuggestLoading(false);
+      return;
+    }
+    const seq = ++onDemandSuggestSeq.current;
+    const timer = setTimeout(() => {
+      setOnDemandSuggestLoading(true);
+      searchPatientsOnDemand({ query: q, localPatients: patients })
+        .then((rows) => {
+          if (onDemandSuggestSeq.current !== seq) return;
+          setOnDemandSuggest(rows.map(toPatientListItem));
+        })
+        .catch(() => {
+          if (onDemandSuggestSeq.current === seq) setOnDemandSuggest([]);
+        })
+        .finally(() => {
+          if (onDemandSuggestSeq.current === seq) setOnDemandSuggestLoading(false);
+        });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [name, phone, matchingPatients, patients, autoFilledPatientId]);
+
+  const suggestedPatients = React.useMemo(() => {
+    const seen = new Set(matchingPatients.map((p) => p.id));
+    return [
+      ...matchingPatients.slice(0, 3),
+      ...onDemandSuggest.filter((p) => !seen.has(p.id)).slice(0, 3),
+    ];
+  }, [matchingPatients, onDemandSuggest]);
+
+  // مرايا لقراءة قيم الحقول داخل الاستدعاءات غير المتزامنة دون إغلاق
+  // قديم — تُستخدم لحارس الإثراء من الخادم أدناه.
+  const nameRef = React.useRef(name);
+  const phoneRef = React.useRef(phone);
+  React.useEffect(() => {
+    nameRef.current = name;
+  }, [name]);
+  React.useEffect(() => {
+    phoneRef.current = phone;
+  }, [phone]);
+
   // Effect to automatically pre-populate from initialData (e.g. from Appointment Check-in)
   // أ9: تُطبَّق مرة واحدة فقط لكل تحويل (حارس ref) — لا عند كل تحديث لقوائم المرضى/الزيارات.
   React.useEffect(() => {
@@ -204,6 +262,41 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
       }
       setAutoFilledPatientId(initialData.patientId || null);
       setToastMessage(`تم تحويل الموعد (${initialName}). يرجى استكمال باقي بيانات المريض مثل السن والعنوان والأمراض`);
+
+      // Hybrid: المريض قد يكون قديماً خارج نافذة الـ 90 يوماً — ابحث
+      // عنه في الخادم (بالمعرّف أولاً، ثم بالهاتف/الاسم). إن وُجد وكانت
+      // الحقول ما زالت كما حوّلها الموعد (أي لم يكتب المستخدم شيئاً
+      // بعد)، تُعبَّأ بياناته الكاملة بدل البيانات الناقصة المحوَّلة.
+      void (async () => {
+        try {
+          let found: Patient | null = null;
+          if (initialData.patientId) found = await getPatientById(initialData.patientId);
+          if (!found) {
+            const initPhoneClean = cleanDigits(initialPhone);
+            const rows = await searchPatientsOnDemand({
+              query: initialPhone || initialName,
+              localPatients: [],
+            });
+            const normName = (s: string) =>
+              s.trim().toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
+            found =
+              rows.find(
+                (p) =>
+                  (initPhoneClean.length >= 7 && cleanDigits(p.phone || '') === initPhoneClean) ||
+                  (initialName !== '' && normName(p.fullName) === normName(initialName))
+              ) ?? null;
+          }
+          if (
+            found &&
+            nameRef.current.trim() === initialName &&
+            phoneRef.current.trim() === initialPhone
+          ) {
+            handleSelectExisting(toPatientListItem(found));
+          }
+        } catch {
+          // فشل الإثراء لا يمنع التحويل بالبيانات المحوَّلة.
+        }
+      })();
     }
 
     // Set visit type if matches
@@ -556,14 +649,23 @@ export const PatientIntakeScreen: React.FC<PatientIntakeScreenProps> = ({
             </div>
 
             {/* Requirement 3: Auto-suggest matching registered patient */}
-            {matchingPatients.length > 0 && !autoFilledPatientId && (
+            {(suggestedPatients.length > 0 || onDemandSuggestLoading) && !autoFilledPatientId && (
               <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 p-3.5 rounded-2xl space-y-2 animate-in fade-in">
                 <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 text-xs font-bold">
                   <span className="material-symbols-outlined text-base">person_search</span>
                   <span>وجدنا مريض مسجل سابقاً يطابق الاسم أو رقم الهاتف المدخل:</span>
+                  {onDemandSuggestLoading && matchingPatients.length === 0 && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#00c2cb]/15 text-[#008f97] dark:text-[#45dee7] flex items-center gap-1">
+                      <span className="material-symbols-outlined text-xs animate-spin">progress_activity</span>
+                      <span>جارٍ البحث في السجلات القديمة...</span>
+                    </span>
+                  )}
+                  {!onDemandSuggestLoading && onDemandSuggest.length > 0 && matchingPatients.length === 0 && (
+                    <span className="text-[10px] font-normal text-amber-700 dark:text-amber-400">(من السجلات القديمة)</span>
+                  )}
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  {matchingPatients.slice(0, 3).map((p) => (
+                  {suggestedPatients.map((p) => (
                     <div
                       key={p.id}
                       className="flex items-center justify-between bg-white dark:bg-[#080e1b] p-2.5 rounded-xl border border-amber-200 dark:border-amber-900/50"
