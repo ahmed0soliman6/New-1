@@ -1,10 +1,12 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { PatientListItem, ScreenType } from '../../types';
 import { usePermissions } from '../../context/AuthContext';
 import { PatientDetailFullScreen } from './PatientDetailFullScreen';
 import { toEnglishDigits, formatAppDate } from '../../utils/numberUtils';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { READ_OPT } from '../../config/readOpt';
+import type { DocumentSnapshot } from 'firebase/firestore';
+import { fetchClinicalFilesPage, toPatientListItem } from '../../services/patientSearchService';
 import type {
   FollowUp,
   Invoice,
@@ -70,13 +72,76 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
   const [patientToDelete, setPatientToDelete] = useState<PatientListItem | null>(null);
   const [isDeletingPatient, setIsDeletingPatient] = useState(false);
 
+  // Hybrid: مصدر الحقيقة لقائمة الملفات لم يعد قائمة المرضى الحية
+  // (نافذة 90 يوماً) وحدها — هذه الشاشة تجلب بنفسها كل المرضى ذوي
+  // الملفات السريرية (hasClinicalFile == true) بصفحات من 50، بلا
+  // orderBy حتى لا يتطلب الاستعلام فهرساً مركّباً جديداً، وتُدمج
+  // الصفحات مع القائمة الحية (التي تبقى مصدر العدّادات الحية
+  // والترتيب) مع إزالة التكرار حسب المعرّف — القائمة الحية أولى عند
+  // التعارض لأنها الأحدث. الترتيب النهائي على العميل (الأعلى رقم ملف
+  // أولاً) كما كان. زر «عرض المزيد» يجلب الصفحة التالية.
+  const [archivedPatients, setArchivedPatients] = useState<Patient[]>([]);
+  const [archivedCursor, setArchivedCursor] = useState<DocumentSnapshot | null>(null);
+  const [hasMoreArchived, setHasMoreArchived] = useState(false);
+  const [archivedLoading, setArchivedLoading] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    setArchivedLoading(true);
+    fetchClinicalFilesPage()
+      .then((page) => {
+        if (cancelled) return;
+        setArchivedPatients(page.patients);
+        setArchivedCursor(page.nextCursor);
+        setHasMoreArchived(page.hasMore);
+      })
+      .finally(() => {
+        if (!cancelled) setArchivedLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // تُجلب الصفحة الأولى عند فتح الشاشة فقط؛ «عرض المزيد» يدوي.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const loadMoreArchived = () => {
+    if (!hasMoreArchived || archivedLoading) return;
+    setArchivedLoading(true);
+    fetchClinicalFilesPage(archivedCursor)
+      .then((page) => {
+        setArchivedPatients((prev) => {
+          const ids = new Set(prev.map((p) => p.patientId));
+          return [...prev, ...page.patients.filter((p) => !ids.has(p.patientId))];
+        });
+        setArchivedCursor(page.nextCursor);
+        setHasMoreArchived(page.hasMore);
+      })
+      .finally(() => setArchivedLoading(false));
+  };
+
+  // دمج القائمة الحية مع صفحات الملفات السريرية (الحية أولى).
+  const mergedPatients = useMemo(() => {
+    const byId = new Map<string, PatientListItem>();
+    patients.forEach((p) => byId.set(p.id, p));
+    archivedPatients.forEach((p) => {
+      if (!byId.has(p.patientId)) byId.set(p.patientId, toPatientListItem(p));
+    });
+    return [...byId.values()];
+  }, [patients, archivedPatients]);
+  const mergedPatientsCanonical = useMemo(() => {
+    const byId = new Map<string, Patient>();
+    archivedPatients.forEach((p) => byId.set(p.patientId, p));
+    (patientsCanonical || []).forEach((p) => byId.set(p.patientId, p));
+    return [...byId.values()];
+  }, [patientsCanonical, archivedPatients]);
+
   // If a patient is selected for viewing, render the full-page dossier
   const activePatient = viewingPatientId
-    ? patients.find((p) => p.id === viewingPatientId) || null
+    ? mergedPatients.find((p) => p.id === viewingPatientId) || null
     : null;
 
   const activePatientCanonical = viewingPatientId
-    ? patientsCanonical?.find((p) => p.patientId === viewingPatientId)
+    ? mergedPatientsCanonical.find((p) => p.patientId === viewingPatientId)
     : undefined;
 
   // ج20: توحيد البحث مثل البحث العام (أشكال الألف والتشكيل والأرقام العربية).
@@ -92,7 +157,7 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
   };
 
   const filteredPatients = useMemo(() => {
-    return patients
+    return mergedPatients
       .filter((p) => {
         if (!search.trim()) return true;
         const q = normalizeSearch(search);
@@ -110,7 +175,7 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
         if (numB !== numA) return numB - numA;
         return (b.id || '').localeCompare(a.id || '');
       });
-  }, [patients, search]);
+  }, [mergedPatients, search]);
 
   if (activePatient) {
     return (
@@ -150,7 +215,7 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
           <h1 className="text-2xl font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-3">
             <span>ملفات المرضى والأرشيف الطبي</span>
             <span className="bg-teal-50 dark:bg-[#18233C] text-[#008f97] dark:text-[#00c2cb] px-2.5 py-0.5 rounded-full text-xs font-mono font-bold border border-teal-200 dark:border-transparent">
-              {patients.length} ملف نشط
+              {mergedPatients.length} ملف نشط
             </span>
           </h1>
         </div>
@@ -359,6 +424,35 @@ export const PatientListItemsScreen: React.FC<PatientListItemsScreenProps> = ({
           })
         )}
       </div>
+
+      {/* Hybrid: ترقيم الملفات السريرية — الصفحة التالية من السجل الكامل */}
+      {hasMoreArchived && (
+        <div className="flex justify-center pt-1">
+          <button
+            type="button"
+            onClick={loadMoreArchived}
+            disabled={archivedLoading}
+            className="px-5 py-2.5 rounded-xl bg-white dark:bg-[#111A2E] hover:border-[#00c2cb]/50 border border-slate-200 dark:border-white/10 text-[#008f97] dark:text-[#00c2cb] text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shadow-xs disabled:opacity-50"
+          >
+            {archivedLoading ? (
+              <>
+                <span className="material-symbols-outlined text-base animate-spin">progress_activity</span>
+                <span>جارٍ تحميل المزيد من الملفات...</span>
+              </>
+            ) : (
+              <>
+                <span className="material-symbols-outlined text-base">expand_more</span>
+                <span>عرض المزيد من الملفات القديمة</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
+      {archivedLoading && !hasMoreArchived && filteredPatients.length === 0 && !search.trim() && (
+        <div className="p-12 text-center bg-white dark:bg-[#111A2E] rounded-2xl border border-slate-200 dark:border-white/5 text-xs text-slate-400">
+          جارٍ تحميل ملفات المرضى...
+        </div>
+      )}
 
       {/* Confirmation Modal for Deleting Patient File */}
       {patientToDelete && (() => {
