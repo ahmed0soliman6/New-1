@@ -19,9 +19,19 @@
  * يكتب مستندات patients الموجودة فقط عبر batch.update العادي؛ قاعدة
  * Firestore للمرضى تسمح بالتحديث للمدير/الطبيب وأصحاب صلاحية
  * patient-records:update — لا حاجة لقاعدة جديدة.
+ *
+ * إصلاح أرقام الملفات (2026-11-27): في نفس المسح يُجمَع أعلى رقم ملف،
+ * وتُكتشَف الأرقام المكررة، وتُبذَر عدّاد counters/patientFile، وتُعاد
+ * تسمية المكررات اللاحقة بأرقام حرة فوق الحد الأقصى. رقم الملف لا يُستخدم
+ * مفتاحاً في أي مجموعة أخرى (الزيارات والفواتير والمدفوعات والمواعيد
+ * ترتبط بـ patientId فقط؛ والـ medicalCode المخزّن رمز مستقل، ويُحدَّث
+ * فقط إن كان مشتقاً من الرقم القديم EG-<رقم>)، لذا إعادة التسمية آمنة.
+ * الإصلاح والبذر لا يتمّان إلا إن اكتمل المسح كاملاً (بلا توقف مبكر) حتى
+ * لا يُبذَر العدّاد من حد أقصى ناقص أو تُعاد تسمية رقم يملكه مريض لم يُفحص
+ * بعد — عند التوقف المبكر يُعاد التشغيل لإكمالهما.
  */
 import {
-  collection, doc, documentId, getDocs, limit, orderBy, query, startAfter,
+  collection, doc, documentId, getDoc, getDocs, limit, orderBy, query, setDoc, startAfter,
   where, writeBatch, type Firestore, type QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import { toDate, toDayKey } from '../../utils/dayKey';
@@ -38,6 +48,14 @@ export interface PatientSummaryMigrationReport {
   stoppedEarly: boolean;
   stoppedEarlyReason: string;
   finishedAt: string;
+  /** أعلى رقم ملف وُجد في المسح. */
+  maxFileNumber: number;
+  /** كم مريضاً أُعيدت تسمية رقم ملفه المكرر. */
+  duplicatesRepaired: number;
+  /** هل بُذَر عدّاد أرقام الملفات counters/patientFile؟ */
+  fileCounterSeeded: boolean;
+  /** قيمة lastNumber التي بُذَر بها العدّاد (null إن لم يُبذَر). */
+  fileCounterSeededTo: number | null;
 }
 
 export async function backfillPatientSummary(
@@ -53,7 +71,15 @@ export async function backfillPatientSummary(
     stoppedEarly: false,
     stoppedEarlyReason: '',
     finishedAt: new Date().toISOString(),
+    maxFileNumber: 0,
+    duplicatesRepaired: 0,
+    fileCounterSeeded: false,
+    fileCounterSeededTo: null,
   };
+
+  // أرقام الملفات المجمّعة أثناء المسح (للبذر وكشف التكرار بعد اكتماله).
+  const fileNumbers: Array<{ pid: string; fileNumber: number; createdAt: string; medicalCode: string }> = [];
+  let maxFileNumber = 0;
 
   let writes = 0;
   let cursor: QueryDocumentSnapshot | undefined;
@@ -79,8 +105,24 @@ export async function backfillPatientSummary(
         visitsCount?: number;
         lastVisitDate?: string;
         lastDiagnosis?: string;
+        fileNumber?: number | string;
+        medicalCode?: string;
+        createdAt?: string;
       };
       report.patientsScanned++;
+
+      // رقم الملف: يُجمَع قبل أي تخطٍّ، لأن مريضاً بلا تاريخ سريري
+      // قد يحمل رقماً مكرراً أو يكون هو صاحب الحد الأقصى.
+      const fileNum = typeof stored.fileNumber === 'number' ? stored.fileNumber : Number(stored.fileNumber) || 0;
+      if (fileNum > 0) {
+        fileNumbers.push({
+          pid,
+          fileNumber: fileNum,
+          createdAt: typeof stored.createdAt === 'string' ? stored.createdAt : '',
+          medicalCode: typeof stored.medicalCode === 'string' ? stored.medicalCode : '',
+        });
+        if (fileNum > maxFileNumber) maxFileNumber = fileNum;
+      }
 
       // تاريخ المريض الكامل — استعلامان لكل مريض، بلا حدّ زمني.
       // أي فشل هنا يوقف الترحيل كاملاً (throw) حتى لا تُكتب ملخصات
@@ -151,7 +193,7 @@ export async function backfillPatientSummary(
       if (writes + 1 > WRITE_BUDGET) {
         await flushPending();
         report.stoppedEarly = true;
-        report.stoppedEarlyReason = 'توقف عند حد الكتابة (8000) — أعد التشغيل لإكمال الباقي.';
+        report.stoppedEarlyReason = 'توقف عند حد الكتابة (8000) — أعد التشغيل لإكمال الباقي، بما فيه إصلاح أرقام الملفات المكررة وبذر عدّاد أرقام الملفات.';
         report.finishedAt = new Date().toISOString();
         return report;
       }
@@ -177,6 +219,78 @@ export async function backfillPatientSummary(
     onProgress?.(`فحص ${report.patientsScanned} مريض / حُدّث ${report.patientsUpdated} / صحيح ${report.alreadyCorrect}`);
     cursor = patientsSnap.docs[patientsSnap.docs.length - 1];
     if (patientsSnap.size < PAGE) break;
+  }
+
+  // --- إصلاح أرقام الملفات + بذر العدّاد (بعد اكتمال المسح فقط) ---
+  report.maxFileNumber = maxFileNumber;
+  const byNumber = new Map<number, typeof fileNumbers>();
+  for (const entry of fileNumbers) {
+    const group = byNumber.get(entry.fileNumber) || [];
+    group.push(entry);
+    byNumber.set(entry.fileNumber, group);
+  }
+  // الأقدم تسجيلاً يحتفظ بالرقم؛ اللاحقون يُعاد تسميتهم بأرقام حرة فوق
+  // الحد الأقصى (تتصاعد مع كل إعادة تسمية فلا تتصادم مع بعضها).
+  let nextFree = maxFileNumber;
+  for (const group of byNumber.values()) {
+    if (group.length < 2) continue;
+    const ordered = [...group].sort((a, b) =>
+      a.createdAt !== b.createdAt
+        ? a.createdAt < b.createdAt
+          ? -1
+          : 1
+        : a.pid < b.pid
+          ? -1
+          : 1,
+    );
+    for (const dup of ordered.slice(1)) {
+      if (writes + 1 > WRITE_BUDGET) {
+        report.stoppedEarly = true;
+        report.stoppedEarlyReason =
+          'توقف أثناء إصلاح أرقام الملفات المكررة عند حد الكتابة (8000) — أعد التشغيل لإكمال الإصلاح وبذر العدّاد.';
+        report.finishedAt = new Date().toISOString();
+        return report;
+      }
+      nextFree += 1;
+      const newNumber = nextFree;
+      pending.push({
+        ref: doc(db, 'patients', dup.pid),
+        data: {
+          fileNumber: newNumber,
+          // إن كان الرمز الطبي مشتقاً من الرقم القديم يُحدَّث معه؛
+          // أما الرمز العشوائي المستقل فيُترك كما هو.
+          ...(dup.medicalCode === `EG-${dup.fileNumber}` ? { medicalCode: `EG-${newNumber}` } : {}),
+          updatedAt: new Date().toISOString(),
+        },
+      });
+      writes++;
+      report.duplicatesRepaired++;
+      onProgress?.(`إصلاح رقم ملف مكرر #${dup.fileNumber} ← #${newNumber}`);
+    }
+  }
+  await flushPending();
+
+  // بذر العدّاد: أحادي الاتجاه أبداً — max(القيمة المخزّنة، أعلى رقم ملف).
+  // التخصيص التالي = lastNumber + 1، أي أعلى رقم + 1 تماماً بلا فجوة.
+  if (maxFileNumber > 0) {
+    if (writes + 1 > WRITE_BUDGET) {
+      report.stoppedEarly = true;
+      report.stoppedEarlyReason =
+        'توقف قبل بذر عدّاد أرقام الملفات عند حد الكتابة (8000) — أعد التشغيل لبذر العدّاد.';
+      report.finishedAt = new Date().toISOString();
+      return report;
+    }
+    const counterRef = doc(db, 'counters', 'patientFile');
+    const counterSnap = await getDoc(counterRef);
+    const existingLast = counterSnap.exists()
+      ? Number((counterSnap.data() as { lastNumber?: unknown }).lastNumber) || 0
+      : 0;
+    const seedTo = Math.max(existingLast, maxFileNumber);
+    await setDoc(counterRef, { lastNumber: seedTo }, { merge: true });
+    writes++;
+    report.fileCounterSeeded = true;
+    report.fileCounterSeededTo = seedTo;
+    onProgress?.(`بُذَر عدّاد أرقام الملفات (counters/patientFile) عند ${seedTo} — التخصيص التالي #${seedTo + 1}`);
   }
 
   report.finishedAt = new Date().toISOString();
