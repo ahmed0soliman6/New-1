@@ -119,6 +119,7 @@ import {
   startVisitTransaction,
   completeVisitTransaction,
   deletePatientTransaction,
+  allocatePatientFileNumber,
 } from './services/firestoreWorkflows';
 import { safeLogger } from './utils/logger';
 import {
@@ -2410,9 +2411,14 @@ function ClinicApp() {
       if (!targetPatientId && newTx.patientName.trim()) {
         targetPatientId = `pat-${Date.now()}`;
         const maxNum = patientsCanonical.reduce((max, p) => (p.fileNumber && p.fileNumber > max ? p.fileNumber : max), 0);
+        // رقم الملف يُخصَّص ذرياً من عدّاد counters/patientFile؛ عند أي فشل
+        // يُستخدم الحساب القديم max+1 حتى لا تتعطّل الفاتورة أبداً.
+        const allocatedFileNumber = db
+          ? await allocatePatientFileNumber(db, maxNum + 1).catch(() => maxNum + 1)
+          : maxNum + 1;
         const newPat: Patient = {
           patientId: targetPatientId,
-          fileNumber: maxNum + 1,
+          fileNumber: allocatedFileNumber,
           fullName: newTx.patientName.trim(),
           phone: '',
           createdAt: new Date().toISOString(),
@@ -2700,6 +2706,20 @@ function ClinicApp() {
 
       const targetPatientId = basePat?.patientId || item.patientId || `pat-${Date.now()}`;
 
+      // مريض جديد فقط: رقم الملف يُخصَّص ذرياً من عدّاد counters/patientFile
+      // قبل التسجيل (إصلاح ازدواج #9697). رقم النموذج (item.fileNumber)
+      // يُستخدم كاحتياط فقط إن لم يوجد العدّاد بعد أو فشل التخصيص، فيُكمل
+      // التسجيل بالحساب القديم بدل التعطّل. رقم مُخصَّص قد يُتخطى إن فشل
+      // التسجيل بعده — فجوة مقبولة، الأرقام لا يجب أن تكون متتالية بلا فجوات.
+      let allocatedFileNumber: number | null = null;
+      if (!basePat && db) {
+        const fallbackNum =
+          typeof item.fileNumber === 'number'
+            ? item.fileNumber
+            : parseInt(String(item.fileNumber), 10) || nextFileNumber;
+        allocatedFileNumber = await allocatePatientFileNumber(db, fallbackNum).catch(() => fallbackNum);
+      }
+
       const patient: Patient = basePat
         ? {
             ...basePat,
@@ -2717,7 +2737,7 @@ function ClinicApp() {
             fullName: cleanName || 'مريض جديد',
             phone: cleanPhone,
             gender: patientGender,
-            fileNumber: typeof item.fileNumber === 'number' ? item.fileNumber : parseInt(String(item.fileNumber), 10) || nextFileNumber,
+            fileNumber: allocatedFileNumber ?? (typeof item.fileNumber === 'number' ? item.fileNumber : parseInt(String(item.fileNumber), 10) || nextFileNumber),
             medicalCode: item.medicalCode || `EG-${Math.floor(Math.random() * 90000) + 10000}`,
             chronicDiseases: item.chronicConditions || [],
             allergies: [],
@@ -2820,11 +2840,18 @@ function ClinicApp() {
 
       const targetPatientId = existingPatient?.patientId || app.patientId || `pat-${Date.now()}`;
 
+      // مريض جديد من موعد: رقم الملف يُخصَّص ذرياً من العدّاد (انظر أعلاه)؛
+      // الاحتياط عند الفشل هو الحساب القديم nextFileNumber.
+      let newPatientFileNumber = nextFileNumber;
+      if (!existingPatient && db) {
+        newPatientFileNumber = await allocatePatientFileNumber(db, nextFileNumber).catch(() => nextFileNumber);
+      }
+
       const patientToSave: Patient = existingPatient || {
         patientId: targetPatientId,
         fullName: cleanName || 'مريض محجوز',
         phone: cleanPhone,
-        fileNumber: nextFileNumber,
+        fileNumber: newPatientFileNumber,
         medicalCode: app.medicalCode || `EG-${Math.floor(Math.random() * 90000) + 10000}`,
         chronicDiseases: [],
         allergies: [],
@@ -3217,7 +3244,9 @@ function ClinicApp() {
                   onSelectPatient={setActiveExamPatient}
                   onStartIntakeFromAppointment={handleStartIntakeFromAppointment}
                   patients={patients}
+                  patientsCanonical={patientsCanonical}
                   onAddTransaction={handleAddTransaction}
+                  visitTypesList={visitTypesList}
                 />
               )}
 
@@ -3337,6 +3366,7 @@ function ClinicApp() {
                   onDeleteTransaction={handleDeleteTransaction}
                   patients={patients}
                   patientsCanonical={patientsCanonical}
+                  visitTypesList={visitTypesList}
                 />
               )}
 
