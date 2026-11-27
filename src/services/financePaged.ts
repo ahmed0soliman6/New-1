@@ -15,7 +15,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { ID_FIELD_MAP, normalize } from './repositories/common';
-import { meterQuery } from './readMeter';
+import { meterQuery, meterRead } from './readMeter';
 import { todayKey, toDayKey } from '../utils/dayKey';
 import type { Invoice, Payment } from '../types/database';
 
@@ -63,20 +63,18 @@ export async function fetchTotal(
   if (!db) throw new Error('Firestore غير مهيأ');
   // ج21: إجمالي الوارد يحسب المدفوعات المدفوعة فقط. الدفعات القديمة بلا
   // حقل status تُعامل كمدفوعة (أُنشئت قبل إضافة الحقل) حتى لا تسقط من الإجمالي.
+  // W1: المجموع يُحسب عبر getAggregateFromServer بدل قراءة كل المدفوعات.
+  // المعادلة محفوظة تمامًا: لا يوجد أي مسار كود يكتب حالة REFUNDED أو VOID
+  // (كل المدفوعات تُنشأ بحالة PAID ومبلغ موجب)، فالمجموع غير المفلتر يشمل
+  // بالضبط نفس المستندات التي كان المنطق القديم يشملها (مدفوعة أو بلا حالة).
   if (name === 'payments') {
-    const snap = await getDocs(
-      query(collection(db, 'payments'), ...rangeConstraints('dayKey', r))
+    const snap = await getAggregateFromServer(
+      query(collection(db, 'payments'), ...rangeConstraints('dayKey', r)),
+      { total: sum('amount'), n: count() }
     );
-    meterQuery('financeTotal:payments', snap);
-    let total = 0;
-    let n = 0;
-    snap.docs.forEach((d) => {
-      const p = mapDoc<Payment>('payments', d);
-      if (p.status && p.status !== 'PAID') return;
-      total += Math.max(0, Number(p.amount) || 0);
-      n += 1;
-    });
-    return { total, count: n };
+    meterRead('أخرى', 1);
+    const d = snap.data();
+    return { total: Math.max(0, Number(d.total) || 0), count: Number(d.n) || 0 };
   }
   const field = 'date';
   const snap = await getAggregateFromServer(
