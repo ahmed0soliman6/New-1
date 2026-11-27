@@ -357,6 +357,10 @@ export async function completeVisitTransaction(params: {
         hasClinicalFile: true,
         visitsCount: alreadyCompleted ? (prev.visitsCount ?? 1) : (Number(prev.visitsCount) || 0) + 1,
         lastVisitAt: serverTimestamp(),
+        // W4: يوم آخر كشف مكتمل بصيغة dayKey (YYYY-MM-DD بتوقيت القاهرة) —
+        // يُقرأ مباشرة من الزيارة المكتملة نفسها، لا من تاريخ اليوم،
+        // حتى يبقى صحيحاً عند إعادة حفظ زيارة قديمة.
+        lastVisitDate: visitData.dayKey || day,
         lastDiagnosis: (params.primaryDiagnosis || params.clinicalData?.diagnosis?.[0]) ?? '',
         updatedAt: serverTimestamp(),
       });
