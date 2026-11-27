@@ -1,12 +1,16 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { CLINIC_INFO } from '../../data/previewClinicData';
 import { useDoctorName } from '../../hooks/useDoctorName';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { formatAppDate } from '../../utils/numberUtils';
 import { toDayKey, todayKey, addDaysToKey } from '../../utils/dayKey';
+import { fetchReportRange, type ReportRangeData } from '../../services/reportRange';
 import type { Visit, Invoice, Payment, Prescription, FollowUp, Patient } from '../../types/database';
 
 interface ClinicalReportsScreenProps {
+  // تُقبل القوائم القانونية تاريخياً فقط — التقارير الآن تجلب نطاقها
+  // عند الطلب من الخادم (fetchReportRange) ولا تعتمد عليها إطلاقاً،
+  // حتى لا تتأثر بنوافذ التحميل (90/2 يوماً) في App.
   visits?: Visit[];
   invoices?: Invoice[];
   payments?: Payment[];
@@ -27,17 +31,24 @@ const BAR_COLORS = [
   'bg-rose-500',
 ];
 
-export const ClinicalReportsScreen: React.FC<ClinicalReportsScreenProps> = ({
-  visits = [],
-  invoices = [],
-  payments = [],
-  prescriptions = [],
-  followUps = [],
-  patients = [],
-}) => {
+export const ClinicalReportsScreen: React.FC<ClinicalReportsScreenProps> = () => {
   const { language, isRTL, t } = useLanguage();
   const [timeRange, setTimeRange] = useState<'today' | 'week' | 'month' | 'quarter'>('month');
   const [toast, setToast] = useState<string | null>(null);
+
+  // إصلاح 3: جلب النطاق عند الطلب (نمط لوحة التحكم) — زر يعرض بيانات
+  // الفترة المحددة من الخادم، ولا تُجلب تلقائياً توفيراً للقراءات.
+  const [rangeRequested, setRangeRequested] = useState(false);
+  const [rangeRefreshKey, setRangeRefreshKey] = useState(0);
+  const [rangeData, setRangeData] = useState<ReportRangeData>({
+    visits: [],
+    invoices: [],
+    payments: [],
+    prescriptions: [],
+    followUps: [],
+  });
+  const [rangeLoading, setRangeLoading] = useState(false);
+  const [rangeError, setRangeError] = useState<string | null>(null);
 
   const activeDoctorName = useDoctorName();
   const currentTodayKey = useMemo(() => todayKey(), []);
@@ -73,7 +84,30 @@ export const ClinicalReportsScreen: React.FC<ClinicalReportsScreenProps> = ({
     }
   }, [timeRange, currentTodayKey]);
 
-  // Dynamic calculation from canonical Firestore collections
+  // جلب النطاق المحدد من الخادم عند الطلب (وعند التحديث اليدوي).
+  useEffect(() => {
+    if (!rangeRequested) return;
+    let cancelled = false;
+    setRangeLoading(true);
+    setRangeError(null);
+    fetchReportRange(startDate, endDate)
+      .then((data) => {
+        if (!cancelled) setRangeData(data);
+      })
+      .catch((err) => {
+        if (!cancelled) setRangeError((err as Error)?.message || 'تعذّر تحميل بيانات الفترة');
+      })
+      .finally(() => {
+        if (!cancelled) setRangeLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [rangeRequested, startDate, endDate, rangeRefreshKey]);
+
+  const { visits, invoices, payments, prescriptions, followUps } = rangeData;
+
+  // Dynamic calculation from the on-demand range fetched above
   const analytics = useMemo(() => {
     // 1. Filter items by date range
     const rangeVisits = visits.filter((v) => {
@@ -111,7 +145,12 @@ export const ClinicalReportsScreen: React.FC<ClinicalReportsScreenProps> = ({
         ? `منها ${newVisits} كشف جديد و ${followupVisits} استشارة ومتابعة`
         : 'لا توجد كشوفات مسجلة خلال هذه الفترة';
 
-    // Revenue sum: payments first, fallback to invoice paid amounts
+    // Revenue sum: payments first, fallback to invoice paid amounts.
+    // إصلاح 3: «الإيرادات المحصلة» = مقبوضات الفترة، أي مدفوعات النطاق
+    // نفسه. كان الخطأ أن المدفوعات المحمّلة نافذة يومين فقط، فكان
+    // تقرير الربع يعرض إيراد يومين على أنه إيراد 90 يوماً؛ الآن
+    // المدفوعات تُجلب للنطاق كاملاً عند الطلب. الاحتياطي (paidAmount
+    // الفواتير) يبقى للنطاقات بلا مستندات مدفوعات، وهو بتاريخ الفاتورة.
     const revenueVal =
       rangePayments.length > 0
         ? rangePayments.reduce((sum, p) => sum + (p.amount || 0), 0)
@@ -400,7 +439,7 @@ export const ClinicalReportsScreen: React.FC<ClinicalReportsScreenProps> = ({
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-[#dde2f5] flex items-center gap-3">
             <span>لوحة المؤشرات والذكاء الإكلينيكي</span>
             <span className="bg-[#00c2cb]/15 text-[#008f97] dark:text-[#45dee7] px-3 py-0.5 rounded-full text-xs font-bold border border-[#00c2cb]/20">
-              محدثة لحظياً
+              تُجلب عند الطلب
             </span>
           </h1>
         </div>
@@ -416,7 +455,10 @@ export const ClinicalReportsScreen: React.FC<ClinicalReportsScreenProps> = ({
             ].map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setTimeRange(tab.id as any)}
+                onClick={() => {
+                  setTimeRange(tab.id as any);
+                  setRangeRequested(false);
+                }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   timeRange === tab.id
                     ? 'bg-[#00c2cb] text-[#08101C] shadow-sm'
@@ -428,17 +470,33 @@ export const ClinicalReportsScreen: React.FC<ClinicalReportsScreenProps> = ({
             ))}
           </div>
 
+          {/* Refresh button for the loaded range */}
+          {rangeRequested && (
+            <button
+              type="button"
+              disabled={rangeLoading}
+              onClick={() => setRangeRefreshKey((prev) => prev + 1)}
+              title="تحديث بيانات الفترة"
+              className="flex items-center gap-1 px-3 py-2 rounded-xl bg-white dark:bg-[#18233C] hover:bg-slate-50 dark:hover:bg-[#242a38] text-slate-700 dark:text-[#dde2f5] text-xs font-bold border border-slate-200 dark:border-white/10 shadow-xs cursor-pointer transition-all active:scale-95 disabled:opacity-50"
+            >
+              <span className={`material-symbols-outlined text-base ${rangeLoading ? 'animate-spin' : ''}`}>refresh</span>
+              <span>تحديث البيانات</span>
+            </button>
+          )}
+
           {/* Export buttons */}
           <button
             onClick={() => handleExport('PDF')}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white dark:bg-[#18233C] hover:bg-slate-50 dark:hover:bg-[#242a38] text-slate-700 dark:text-[#dde2f5] text-xs font-bold border border-slate-200 dark:border-white/10 shadow-xs cursor-pointer transition-all active:scale-95"
+            disabled={!rangeRequested || rangeLoading}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white dark:bg-[#18233C] hover:bg-slate-50 dark:hover:bg-[#242a38] text-slate-700 dark:text-[#dde2f5] text-xs font-bold border border-slate-200 dark:border-white/10 shadow-xs cursor-pointer transition-all active:scale-95 disabled:opacity-50"
           >
             <span className="material-symbols-outlined text-base text-rose-500">picture_as_pdf</span>
             <span>تصدير PDF</span>
           </button>
           <button
             onClick={() => handleExport('Excel')}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] text-xs font-bold shadow-md shadow-[#00c2cb]/20 cursor-pointer transition-all active:scale-95"
+            disabled={!rangeRequested || rangeLoading}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] text-xs font-bold shadow-md shadow-[#00c2cb]/20 cursor-pointer transition-all active:scale-95 disabled:opacity-50"
           >
             <span className="material-symbols-outlined text-base">table_view</span>
             <span>تصدير Excel</span>
@@ -446,8 +504,8 @@ export const ClinicalReportsScreen: React.FC<ClinicalReportsScreenProps> = ({
         </div>
       </div>
 
-      {/* Guidance banner when no visits in current timeframe */}
-      {analytics.totalVisits === 0 && (
+      {/* Guidance banner when no visits in current timeframe (after a range load) */}
+      {rangeRequested && !rangeLoading && analytics.totalVisits === 0 && (
         <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-900 dark:text-amber-200 flex items-start sm:items-center gap-3 animate-in fade-in">
           <span className="material-symbols-outlined text-amber-500 text-2xl shrink-0 mt-0.5 sm:mt-0">
             info
@@ -460,6 +518,50 @@ export const ClinicalReportsScreen: React.FC<ClinicalReportsScreenProps> = ({
           </div>
         </div>
       )}
+
+      {/* On-demand placeholder: range data is fetched only when requested (dashboard pattern) */}
+      {!rangeRequested ? (
+        <div className="flex flex-col items-center justify-center gap-3 p-6 sm:p-8 rounded-3xl border-2 border-dashed border-slate-300 dark:border-white/10 bg-white/60 dark:bg-[#0f172a]/60 text-center animate-in fade-in duration-200 shadow-xs">
+          <div className="w-12 h-12 rounded-2xl bg-[#00c2cb]/15 text-[#00c2cb] flex items-center justify-center font-bold">
+            <span className="material-symbols-outlined text-2xl">insights</span>
+          </div>
+          <div className="space-y-1 max-w-md">
+            <h4 className="text-sm font-bold text-slate-800 dark:text-white">
+              عرض تقرير {analytics.label}
+            </h4>
+            <p className="text-xs text-slate-500 dark:text-[#bbc9ca]">
+              بيانات هذه الفترة لا تُجلب تلقائيًا لتوفير القراءات. اضغط الزر أدناه لعرضها عند الحاجة.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setRangeRequested(true)}
+            className="px-5 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-[#08101C] text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-98"
+          >
+            <span className="material-symbols-outlined text-base">visibility</span>
+            <span>عرض بيانات {analytics.label}</span>
+          </button>
+        </div>
+      ) : (
+        <>
+          {rangeLoading && (
+            <div className="p-4 rounded-2xl bg-[#00c2cb]/10 border border-[#00c2cb]/20 text-slate-700 dark:text-[#dde2f5] flex items-center gap-3">
+              <span className="material-symbols-outlined text-[#00c2cb] text-xl animate-spin">progress_activity</span>
+              <span className="text-xs font-bold">جارٍ تحميل بيانات {analytics.label}…</span>
+            </div>
+          )}
+          {rangeError && (
+            <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-900 dark:text-rose-200 flex items-center justify-between gap-3">
+              <span className="text-xs font-bold">تعذّر تحميل بيانات الفترة: {rangeError}</span>
+              <button
+                type="button"
+                onClick={() => setRangeRefreshKey((prev) => prev + 1)}
+                className="px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-bold cursor-pointer shrink-0"
+              >
+                إعادة المحاولة
+              </button>
+            </div>
+          )}
 
       {/* 4 Essential Clinical & Operational KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -683,6 +785,8 @@ export const ClinicalReportsScreen: React.FC<ClinicalReportsScreenProps> = ({
           </div>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 };
