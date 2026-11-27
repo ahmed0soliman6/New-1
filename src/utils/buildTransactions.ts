@@ -24,6 +24,9 @@ export function buildTransactions(args: {
 
     list.push({
       id: p.paymentId,
+      // معرّف الفاتورة للبحث برقمها: receiptNumber وحده (REC- عشوائي) لا
+      // يطابق ما يعرضه ملف المريض (#inv-1795 = بداية معرّف الفاتورة).
+      invoiceId: p.invoiceId,
       receiptNo: p.receiptNumber || `REC-${p.paymentId.slice(-5)}`,
       receiptNumber: p.receiptNumber || `REC-${p.paymentId.slice(-5)}`,
       patientName: pat?.fullName || 'مريض مسجل',
@@ -60,6 +63,7 @@ export function buildTransactions(args: {
       const rawIso = inv.createdAt || new Date().toISOString();
       list.push({
         id: inv.invoiceId,
+        invoiceId: inv.invoiceId,
         receiptNo: `INV-${inv.invoiceId.slice(-5)}`,
         receiptNumber: `INV-${inv.invoiceId.slice(-5)}`,
         patientName: pat?.fullName || 'مريض مسجل',
