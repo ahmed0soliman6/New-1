@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { TransactionRecord, PatientListItem } from '../../types';
 import { usePermissions } from '../../context/AuthContext';
 import { PermissionGate } from '../auth/PermissionGate';
@@ -9,9 +9,14 @@ import {
   removeClinicExpense,
   setCachedMedicalServices,
   setCachedExpenseCategories,
+  EXAM_SERVICE_NAME,
+  getExamFeeFromVisitTypes,
+  withExamService,
+  hasPaidInvoiceForPatientToday,
   MedicalServiceItem,
   ExpenseCategoryItem,
   ClinicExpenseRecord,
+  type VisitTypeFeeItem,
 } from '../../utils/financeManager';
 import { db } from '../../services/firebase';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
@@ -34,12 +39,16 @@ export interface FinanceScreenProps {
   onDeleteTransaction?: (txId: string) => void | Promise<void>;
   patients?: PatientListItem[];
   patientsCanonical?: Patient[];
+  // قائمة أنواع الزيارات (من App) — مصدر سعر الكشف في الفاتورة اليدوية.
+  visitTypesList?: VisitTypeFeeItem[];
 }
 
 export const FinanceScreen: React.FC<FinanceScreenProps> = ({
+  transactions = [],
   onAddTransaction,
   onDeleteTransaction,
   patientsCanonical = [],
+  visitTypesList = [],
 }) => {
   const { assertPermission, canDelete, userProfile } = usePermissions();
   const { language } = useLanguage();
@@ -49,14 +58,27 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
   const [financeTab, setFinanceTab] = useState<'in' | 'out'>('in');
   const [refreshKey, setRefreshKey] = useState<number>(0);
 
+  // سعر الكشف من نفس مصدر رسوم التسجيل (أنواع الزيارات — «كشف جديد»).
+  const examFee = useMemo(() => getExamFeeFromVisitTypes(visitTypesList), [visitTypesList]);
+  const examFeeRef = useRef(examFee);
+  examFeeRef.current = examFee;
+
   // Dynamic Medical Services & Expense Categories loaded from Settings
-  const [medicalServices, setMedicalServices] = useState<MedicalServiceItem[]>(loadMedicalServices);
+  // خدمة الكشف مضمونة أولاً وبسعر الكشف الصحيح (انظر withExamService).
+  const [medicalServices, setMedicalServices] = useState<MedicalServiceItem[]>(() =>
+    withExamService(loadMedicalServices(), examFee),
+  );
   const [expenseCategories, setExpenseCategories] = useState<ExpenseCategoryItem[]>(loadExpenseCategories);
+
+  // إن تغيّر سعر الكشف (تعديل في الإعدادات) يُحدَّث سعره في القائمة المعروضة.
+  useEffect(() => {
+    setMedicalServices((prev) => withExamService(prev, examFee));
+  }, [examFee]);
 
   // Sync with local event dispatches (when changes happen in Settings)
   useEffect(() => {
     const handleServicesUpdate = () => {
-      setMedicalServices(loadMedicalServices());
+      setMedicalServices(withExamService(loadMedicalServices(), examFeeRef.current));
     };
     const handleExpCatsUpdate = () => {
       setExpenseCategories(loadExpenseCategories());
@@ -80,8 +102,9 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
       (srvs) => {
         if (Array.isArray(srvs)) {
           if (srvs.length > 0) {
-            setMedicalServices(srvs as MedicalServiceItem[]);
-            setCachedMedicalServices(srvs as MedicalServiceItem[]);
+            const merged = withExamService(srvs as MedicalServiceItem[], examFeeRef.current);
+            setMedicalServices(merged);
+            setCachedMedicalServices(merged);
           } else {
             const current = loadMedicalServices();
             current.forEach((s) => {
@@ -164,11 +187,21 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [invoiceDraftId, setInvoiceDraftId] = useState(() => `inv-${crypto.randomUUID()}`);
   const [invPatientName, setInvPatientName] = useState('');
-  const [invService, setInvService] = useState('كشف واستشارة طبية');
-  const [invAmount, setInvAmount] = useState<number>(300);
+  const [invService, setInvService] = useState(EXAM_SERVICE_NAME);
+  const [invAmount, setInvAmount] = useState<number>(() => examFee ?? 300);
   const [invDiscount, setInvDiscount] = useState<number>(0);
   const [invStatus, setInvStatus] = useState<'مدفوعة' | 'غير مدفوعة' | 'مؤجلة'>('مدفوعة');
   const [invPaymentMethod, setInvPaymentMethod] = useState<'نقدي' | 'فيزا / كارت' | 'إنستاباي'>('نقدي');
+
+  // عند كل فتح للنافذة: تُعاد الخدمة للكشف والمبلغ لسعره الحالي،
+  // لا لقيمة ثابتة 300 من فتحات سابقة.
+  useEffect(() => {
+    if (!showInvoiceModal) return;
+    setInvService(EXAM_SERVICE_NAME);
+    const price = medicalServices.find((s) => s.name === EXAM_SERVICE_NAME)?.price;
+    if (price != null) setInvAmount(price);
+    setInvDiscount(0);
+  }, [showInvoiceModal, medicalServices]);
 
   // Quick Expense Input States (FIN-05: use local todayKey instead of UTC toISOString)
   const [selectedExpenseCategory, setSelectedExpenseCategory] = useState<string>('');
@@ -214,6 +247,18 @@ export const FinanceScreen: React.FC<FinanceScreenProps> = ({
     }
     if (cleanDiscount > cleanAmount) {
       showToastMessage('لا يمكن أن تتجاوز قيمة الخصم إجمالي قيمة الخدمة.');
+      return;
+    }
+
+    // حارس الازدواج: فاتورة الكشف تُدفع تلقائياً عند التسجيل، فإصدار
+    // فاتورة كشف يدوية ثانية لنفس المريض في نفس اليوم ازدواج محاسبي.
+    // النافذة مستقلة (اسم مريض نصي بلا زيارة مربوطة)، لذا يُفحص الاسم
+    // والتاريخ والخدمة في فواتير اليوم المعروضة.
+    if (
+      invService === EXAM_SERVICE_NAME &&
+      hasPaidInvoiceForPatientToday(transactions, trimmedPatientName, EXAM_SERVICE_NAME, todayKey())
+    ) {
+      showToastMessage(`تنبيه: توجد فاتورة كشف مدفوعة اليوم للمريض (${trimmedPatientName}) — راجع الفواتير قبل إصدار فاتورة كشف ثانية لنفس الزيارة`);
       return;
     }
 
