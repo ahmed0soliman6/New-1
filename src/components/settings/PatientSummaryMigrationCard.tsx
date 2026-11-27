@@ -43,13 +43,15 @@ function formatRun(r: PatientSummaryMigrationReport): string {
  */
 export function PatientSummaryMigrationCard() {
   const [busy, setBusy] = useState(false);
+  // تأكيد داخلي من خطوتين بدلاً من window.confirm الأصلي — المتصفحات
+  // الآلية لا تستطيع الرد على نوافذ التأكيد الأصلية فكان الزر لا يفعل شيئاً.
+  const [armed, setArmed] = useState(false);
   const [log, setLog] = useState<string[]>([]);
   const [lastRun, setLastRun] = useState<PatientSummaryMigrationReport | null>(() => loadLastRun());
   const push = (m: string) => setLog((l) => [...l.slice(-30), m]);
 
   const run = async () => {
     if (!db || busy || migrationRunning) return;
-    if (!window.confirm('أغلق النظام على كل الأجهزة الأخرى قبل البدء. سيُعاد حساب ملخص كل مريض من تاريخه الكامل. متابعة؟')) return;
     migrationRunning = true;
     setBusy(true);
     try {
@@ -75,6 +77,17 @@ export function PatientSummaryMigrationCard() {
     }
   };
 
+  // الضغطة الأولى تُسلّح الزر فقط، والثانية (وهو مسلّح) تشغّل الترحيل.
+  const onButtonClick = () => {
+    if (busy || migrationRunning) return;
+    if (!armed) {
+      setArmed(true);
+      return;
+    }
+    setArmed(false);
+    void run();
+  };
+
   return (
     <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#111A2E] p-5 space-y-4 shadow-sm" dir="rtl">
       <div className="flex items-center gap-3">
@@ -97,17 +110,34 @@ export function PatientSummaryMigrationCard() {
           {formatRun(lastRun)}
         </p>
       )}
+      {armed && !busy && (
+        <p className="text-xs bg-amber-500/10 border border-amber-500/20 text-amber-900 dark:text-amber-200 rounded-xl px-3 py-2">
+          أغلق النظام على كل الأجهزة الأخرى قبل البدء — سيُعاد حساب ملخص كل مريض من تاريخه الكامل.
+          اضغط «تأكيد بدء الترحيل» مرة أخرى للبدء، أو «إلغاء» للتراجع.
+        </p>
+      )}
       <div className="flex items-center gap-3 pt-2">
         <button
-          onClick={run}
+          onClick={onButtonClick}
           disabled={busy}
-          className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-2 shadow-xs"
+          className={`px-5 py-2.5 rounded-xl text-white font-bold text-xs transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-2 shadow-xs ${
+            armed ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'
+          }`}
         >
           <span className="material-symbols-outlined text-base">
-            {busy ? 'hourglass_top' : 'play_arrow'}
+            {busy ? 'hourglass_top' : armed ? 'warning' : 'play_arrow'}
           </span>
-          <span>{busy ? 'جارٍ الترحيل…' : 'ترحيل ملخص المرضى'}</span>
+          <span>{busy ? 'جارٍ الترحيل…' : armed ? 'تأكيد بدء الترحيل — اضغط مرة أخرى للتأكيد' : 'ترحيل ملخص المرضى'}</span>
         </button>
+        {armed && !busy && (
+          <button
+            type="button"
+            onClick={() => setArmed(false)}
+            className="px-3 py-2.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
+          >
+            إلغاء
+          </button>
+        )}
       </div>
       {log.length > 0 && (
         <pre className="text-xs max-h-48 overflow-auto whitespace-pre-wrap bg-slate-950 text-slate-100 p-3 rounded-xl border border-slate-800 font-mono">
