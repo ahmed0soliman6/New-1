@@ -3341,14 +3341,9 @@ function ClinicApp() {
               )}
 
               {activeScreen === 'clinical-reports' && (
-                <ClinicalReportsScreen
-                  visits={visitsCanonical}
-                  invoices={invoicesCanonical}
-                  payments={paymentsCanonical}
-                  prescriptions={prescriptionsCanonical}
-                  followUps={followUpsCanonical}
-                  patients={patientsCanonical}
-                />
+                // إصلاح 3: التقارير تجلب نطاقها عند الطلب من الخادم —
+                // لا تُمرَّر لها القوائم القانونية بعد الآن.
+                <ClinicalReportsScreen />
               )}
 
               {activeScreen === 'booking-landing' && (
