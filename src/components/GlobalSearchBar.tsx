@@ -20,7 +20,7 @@ export interface GlobalSearchBarProps {
   onNavigate: (screen: ScreenType) => void;
   onSelectPatient?: (patient: PatientListItem) => void;
   onStartIntakeFromAppointment?: (appointment: AppointmentListItem) => void;
-  onCallPatient?: (ticket: string, name: string) => void;
+  onCallPatient?: (visitId: string, name: string) => void;
 }
 
 export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
@@ -231,7 +231,7 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
       run: () => {
         const pat = patients.find((pp) => pp.name === q.patientName);
         if (pat && onSelectPatient) onSelectPatient(pat);
-        if (onCallPatient) onCallPatient(q.ticketNumber || '#01', q.patientName);
+        if (onCallPatient) onCallPatient(q.id, q.patientName);
         onNavigate('clinical-exam');
         setIsOpen(false);
       },
@@ -609,7 +609,7 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
                               <div className="flex items-center gap-1.5 shrink-0">
                                 {onCallPatient && (
                                   <button
-                                    onClick={() => onCallPatient(q.ticketNumber || '#01', q.patientName)}
+                                    onClick={() => onCallPatient(q.id, q.patientName)}
                                     className="px-2.5 py-1.5 rounded-xl bg-slate-200 dark:bg-white/10 hover:bg-slate-300 dark:hover:bg-white/15 text-slate-800 dark:text-white text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
                                   >
                                     <span className="material-symbols-outlined text-sm">campaign</span>
@@ -620,7 +620,7 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
                                   onClick={() => {
                                     const pat = patients.find((p) => p.name === q.patientName);
                                     if (pat && onSelectPatient) onSelectPatient(pat);
-                                    if (onCallPatient) onCallPatient(q.ticketNumber || '#01', q.patientName);
+                                    if (onCallPatient) onCallPatient(q.id, q.patientName);
                                     onNavigate('clinical-exam');
                                     setIsOpen(false);
                                   }}
