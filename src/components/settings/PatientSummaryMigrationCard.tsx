@@ -26,6 +26,10 @@ function formatRun(r: PatientSummaryMigrationReport): string {
   return (
     `آخر تشغيل (${when}): فُحص ${r.patientsScanned} مريض — ` +
     `حُدّث ${r.patientsUpdated} — صحيح أصلاً ${r.alreadyCorrect}` +
+    (r.duplicatesRepaired > 0 ? ` — أُصلح ${r.duplicatesRepaired} رقم ملف مكرر` : '') +
+    (r.fileCounterSeeded
+      ? ` — بُذَر عدّاد أرقام الملفات عند ${r.fileCounterSeededTo} (التالي #${(r.fileCounterSeededTo ?? 0) + 1})`
+      : '') +
     (r.stoppedEarly ? ` — توقف مبكراً: ${r.stoppedEarlyReason}` : '')
   );
 }
@@ -54,7 +58,11 @@ export function PatientSummaryMigrationCard() {
       push(
         `انتهى الترحيل: فُحص ${report.patientsScanned} مريض / ` +
           `حُدّث ${report.patientsUpdated} / صحيح أصلاً ${report.alreadyCorrect} / ` +
-          `زيارات مكتملة ${report.completedVisitsScanned} / روشتات ${report.prescriptionsScanned}` +
+          `زيارات مكتملة ${report.completedVisitsScanned} / روشتات ${report.prescriptionsScanned} / ` +
+          `أعلى رقم ملف ${report.maxFileNumber} / أُصلح ${report.duplicatesRepaired} رقم ملف مكرر` +
+          (report.fileCounterSeeded
+            ? ` / بُذَر عدّاد أرقام الملفات عند ${report.fileCounterSeededTo} (التخصيص التالي #${(report.fileCounterSeededTo ?? 0) + 1})`
+            : ' / لم يُبذَر عدّاد أرقام الملفات') +
           (report.stoppedEarly ? ` / توقف مبكراً: ${report.stoppedEarlyReason}` : ''),
       );
       safeStorage.setItem(LAST_RUN_KEY, JSON.stringify(report));
@@ -77,7 +85,9 @@ export function PatientSummaryMigrationCard() {
           <h3 className="font-bold text-sm text-slate-900 dark:text-white">ترحيل ملخص المرضى — عدد الزيارات وآخر زيارة</h3>
           <p className="text-xs text-slate-500 dark:text-[#859394]">
             يعيد حساب عدد الزيارات المكتملة وآخر زيارة وتشخيصها لكل مريض من تاريخه الكامل
-            (يُصلح العدّ الناقص للمرضى القدامى). شغّلها مرة واحدة فقط، والأجهزة الأخرى مغلقة.
+            (يُصلح العدّ الناقص للمرضى القدامى). كما يبذر عدّاد أرقام الملفات
+            (counters/patientFile) من أعلى رقم ملف موجود، ويُصلح أي أرقام ملفات
+            مكررة بإعادة تسمية اللاحق منها. شغّلها مرة واحدة فقط، والأجهزة الأخرى مغلقة.
             إعادة التشغيل آمنة — تُعيد نفس القيم.
           </p>
         </div>
