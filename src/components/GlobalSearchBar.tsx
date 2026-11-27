@@ -8,6 +8,7 @@ import {
 } from '../types';
 import { loadMedicalServices } from '../utils/financeManager';
 import { toEnglishDigits } from '../utils/numberUtils';
+import { searchReceiptsOnDemand } from '../services/receiptSearchService';
 import { useLanguage } from '../i18n/LanguageContext';
 import { READ_OPT } from '../config/readOpt';
 
@@ -39,6 +40,11 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<'all' | 'patients' | 'appointments' | 'queue' | 'services' | 'billing'>('all');
   const [selectedIndex, setSelectedIndex] = useState(0);
+  // البحث عند الطلب في الفواتير: نتائج من كل السجل (أي تاريخ) تضاف إلى
+  // النتائج الحية المقيدة بالنوافذ الزمنية — لا تحل محلها أبداً.
+  const [onDemandBilling, setOnDemandBilling] = useState<TransactionRecord[]>([]);
+  const [onDemandLoading, setOnDemandLoading] = useState(false);
+  const onDemandSeq = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
 
@@ -106,6 +112,17 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
 
   const cleanQuery = normalize(searchTerm);
 
+  // مطابقة سجل مالي واحد مع نص البحث (رقم إيصال، اسم مريض، خدمة، طريقة دفع).
+  // تُستخدم للنتائج الحية ولنتائج البحث عند الطلب على حد سواء، حتى لا
+  // يظهر سجل قديم لا يطابق نص البحث الحالي (حماية من سباق الطلبات).
+  const matchesBilling = (t: TransactionRecord) => {
+    const nameMatch = normalize(t.patientName || '').includes(cleanQuery);
+    const receiptMatch = normalize(t.receiptNumber || t.receiptNo || '').includes(cleanQuery);
+    const serviceMatch = normalize(t.serviceName || t.description || '').includes(cleanQuery);
+    const methodMatch = normalize(t.paymentMethod || t.paymentMethodLabel || t.method || '').includes(cleanQuery);
+    return nameMatch || receiptMatch || serviceMatch || methodMatch;
+  };
+
   // Real-time Search Engine
   const searchResults = useMemo(() => {
     if (!cleanQuery) return { patients: [], appointments: [], queue: [], services: [], billing: [], total: 0 };
@@ -154,13 +171,7 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
     });
 
     // 5. Search Billing & Invoices (Receipt No, Patient Name, Service Name, Payment Method)
-    const matchedBilling = transactions.filter((t) => {
-      const nameMatch = normalize(t.patientName || '').includes(cleanQuery);
-      const receiptMatch = normalize(t.receiptNumber || t.receiptNo || '').includes(cleanQuery);
-      const serviceMatch = normalize(t.serviceName || t.description || '').includes(cleanQuery);
-      const methodMatch = normalize(t.paymentMethod || t.paymentMethodLabel || t.method || '').includes(cleanQuery);
-      return nameMatch || receiptMatch || serviceMatch || methodMatch;
-    });
+    const matchedBilling = transactions.filter(matchesBilling);
 
     const total =
       matchedPatients.length +
@@ -178,6 +189,66 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
       total,
     };
   }, [cleanQuery, patients, appointments, queue, medicalServices, transactions]);
+
+  // البحث عند الطلب في الفواتير (كل السجل): يعمل فقط أثناء الكتابة،
+  // بمهلة 300ms، ويتجاهل الاستعلامات الفارغة أو الأقصر من حرفين. النتائج
+  // الحية تظهر فوراً ولا تختفي أثناء انتظار الخادم.
+  useEffect(() => {
+    if (!isOpen) {
+      setOnDemandBilling([]);
+      setOnDemandLoading(false);
+      return;
+    }
+    const raw = searchTerm.trim();
+    if (raw.length < 2) {
+      setOnDemandBilling([]);
+      setOnDemandLoading(false);
+      return;
+    }
+    const seq = ++onDemandSeq.current;
+    const matched = searchResults.patients;
+    const timer = setTimeout(() => {
+      setOnDemandLoading(true);
+      searchReceiptsOnDemand({ query: raw, matchedPatients: matched, allPatients: patients })
+        .then((rows) => {
+          if (onDemandSeq.current !== seq) return;
+          setOnDemandBilling(rows);
+        })
+        .catch(() => {
+          if (onDemandSeq.current === seq) setOnDemandBilling([]);
+        })
+        .finally(() => {
+          if (onDemandSeq.current === seq) setOnDemandLoading(false);
+        });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [isOpen, searchTerm, searchResults.patients, patients]);
+
+  // دمج نتائج الفواتير: الحية + عند الطلب، بإزالة التكرار حسب المعرّف.
+  // عند التعارض تُفضَّل نسخة البحث عند الطلب لأنها مربوطة بفاتورتها
+  // (serviceName/total صحيحان — يصلح حالة الدفع المتأخر). الترتيب
+  // بالأحدث أولاً كما في buildTransactions.
+  const billingResults = useMemo(() => {
+    const live = searchResults.billing;
+    if (onDemandBilling.length === 0) return live;
+    const byId = new Map<string, TransactionRecord>();
+    onDemandBilling.filter(matchesBilling).forEach((t) => {
+      if (t.id) byId.set(t.id, t);
+    });
+    live.forEach((t) => {
+      if (t.id && !byId.has(t.id)) byId.set(t.id, t);
+    });
+    return [...byId.values()].sort((a, b) => {
+      const timeA = new Date(a.rawTimestamp || '').getTime();
+      const timeB = new Date(b.rawTimestamp || '').getTime();
+      if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) return timeB - timeA;
+      return (b.id || '').localeCompare(a.id || '');
+    });
+  }, [searchResults.billing, onDemandBilling]);
+
+  // العدد الكلي الظاهر يشمل نتائج البحث عند الطلب في الفواتير.
+  const totalResults =
+    searchResults.total - searchResults.billing.length + billingResults.length;
 
   // Handle actions
   const handleSelectPatient = (patient: PatientListItem) => {
@@ -362,12 +433,12 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
               {/* Category Filter Pills */}
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
                 {[
-                  { id: 'all', label: language === 'en' ? 'All' : 'الكل', count: searchResults.total },
+                  { id: 'all', label: language === 'en' ? 'All' : 'الكل', count: totalResults },
                   { id: 'patients', label: language === 'en' ? 'Patients' : 'سجلات المرضى', count: searchResults.patients.length },
                   { id: 'appointments', label: language === 'en' ? 'Appointments' : 'المواعيد', count: searchResults.appointments.length },
                   { id: 'queue', label: language === 'en' ? 'Queue' : 'طابور الانتظار', count: searchResults.queue.length },
                   { id: 'services', label: language === 'en' ? 'Services' : 'الخدمات الطبية', count: searchResults.services.length },
-                  { id: 'billing', label: language === 'en' ? 'Billing' : 'الفواتير والماليات', count: searchResults.billing.length },
+                  { id: 'billing', label: language === 'en' ? 'Billing' : 'الفواتير والماليات', count: billingResults.length },
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -438,7 +509,20 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
                     </button>
                   </div>
                 </div>
-              ) : searchResults.total === 0 ? (
+              ) : totalResults === 0 && onDemandLoading ? (
+                /* Still searching older records on the server */
+                <div className="py-12 text-center space-y-3">
+                  <div className="w-14 h-14 rounded-3xl bg-[#00c2cb]/10 text-[#00c2cb] mx-auto flex items-center justify-center">
+                    <span className="material-symbols-outlined text-3xl animate-spin">progress_activity</span>
+                  </div>
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                    جارٍ البحث في السجلات القديمة عن "{searchTerm}"...
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+                    لم تظهر نتائج حديثة بعد — نبحث الآن في كل السجل برقم الإيصال أو اسم المريض.
+                  </p>
+                </div>
+              ) : totalResults === 0 ? (
                 /* No Results Found State */
                 <div className="py-12 text-center space-y-3">
                   <div className="w-14 h-14 rounded-3xl bg-rose-500/10 text-rose-500 mx-auto flex items-center justify-center">
@@ -740,24 +824,30 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
 
                   {/* SECTION 5: BILLING & TRANSACTIONS MATCHES */}
                   {(activeCategoryFilter === 'all' || activeCategoryFilter === 'billing') &&
-                    searchResults.billing.length > 0 && (
+                    billingResults.length > 0 && (
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="material-symbols-outlined text-emerald-500 text-lg">payments</span>
                             <h4 className="text-xs font-black text-slate-900 dark:text-white">
-                              الفواتير وسجلات الدفع المطابقة ({searchResults.billing.length})
+                              الفواتير وسجلات الدفع المطابقة ({billingResults.length})
                             </h4>
-                            {READ_OPT && (
+                            {onDemandLoading && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#00c2cb]/15 text-[#008f97] dark:text-[#45dee7] flex items-center gap-1">
+                                <span className="material-symbols-outlined text-xs animate-spin">progress_activity</span>
+                                <span>جارٍ البحث في السجلات القديمة...</span>
+                              </span>
+                            )}
+                            {READ_OPT && !onDemandLoading && (
                               <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal">
-                                (معاملات اليوم والأمس — الفترات السابقة بشاشة المالية)
+                                (يشمل البحث السجلات القديمة برقم الإيصال أو اسم المريض)
                               </span>
                             )}
                           </div>
                         </div>
 
                         <div className="space-y-2">
-                          {searchResults.billing.slice(0, 6).map((t) => (
+                          {billingResults.slice(0, 6).map((t) => (
                             <div
                               key={t.id}
                               className="p-3 rounded-2xl bg-slate-50 dark:bg-[#111A2E] border border-slate-200 dark:border-white/10 flex items-center justify-between gap-3 shadow-2xs"
