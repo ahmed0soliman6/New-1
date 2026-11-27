@@ -12,6 +12,7 @@ import { RecurringTemplatesManager } from '../settings/RecurringTemplatesManager
 import { ClinicBranchesPanel } from '../settings/ClinicBranchesPanel';
 import { ChangePasswordCard } from '../settings/ChangePasswordCard';
 import { MaintenanceCard } from '../settings/MaintenanceCard';
+import { PatientSummaryMigrationCard } from '../settings/PatientSummaryMigrationCard';
 import { ReadOptCard } from '../settings/ReadOptCard';
 import { APP_VERSION } from '../../constants/version';
 import { usePermissions } from '../../context/AuthContext';
@@ -1813,6 +1814,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                     <div className="pt-2 space-y-4">
                       <ReadOptCard />
                       <MaintenanceCard />
+                      <PatientSummaryMigrationCard />
                     </div>
                   )}
 
