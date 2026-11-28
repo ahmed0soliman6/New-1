@@ -1744,67 +1744,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                     </div>
                   </div>
 
-                  {/* Block 1: Generate & Reset Demo Data (Admin Only with Explicit Confirmation — Item 5) */}
-                  {isAdmin && (
-                    <div className="space-y-3">
-                      <h3 className="font-bold text-slate-800 dark:text-[#dde2f5] flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#00c2cb]"></span>
-                        <span>توليد ومسح البيانات التوضيحية (خاص بمدير النظام فقط):</span>
-                      </h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <button
-                          type="button"
-                          disabled={isGeneratingDemo}
-                          onClick={async () => {
-                            const confirmPhrase = 'توليد بيانات تجريبية';
-                            const input = window.prompt(
-                              `⚠️ تحذير لمدير النظام:\nسيقوم هذا الإجراء بإضافة سجلات تجريبية معزولة (بمعرّفات pat-demo-* و vis-demo-*) لمدة سنة كاملة دون تعديل بيانات المرضى الحقيقية.\n\nلتأكيد الإضافة الصريحة، اكتب العبارة التالية بدقة: (${confirmPhrase})`
-                            );
-                            if (input !== confirmPhrase) {
-                              if (input !== null) {
-                                alert('العبارة المدخلة غير مطابقة. تم إلغاء توليد البيانات التجريبية.');
-                              }
-                              return;
-                            }
-                            setIsGeneratingDemo(true);
-                            try {
-                              await onGenerateYearlyDemoData();
-                            } catch (e) {
-                              safeLogger.error('Demo generation UI error', e);
-                            } finally {
-                              setIsGeneratingDemo(false);
-                            }
-                          }}
-                          className="p-3.5 rounded-xl border border-[#00c2cb]/30 bg-[#00c2cb]/10 hover:bg-[#00c2cb]/20 text-[#00c2cb] hover:text-[#45dee7] font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
-                        >
-                          <span className="material-symbols-outlined text-lg">auto_awesome</span>
-                          <span>{isGeneratingDemo ? 'جاري التوليد...' : 'توليد بيانات تجريبيه سنه كاملة'}</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={isClearingAll}
-                          onClick={async () => {
-                            if (window.confirm('هل أنت متأكد من رغبتك في مسح كافة البيانات التجريبية والتشغيلية والبدء من جديد بالكامل؟')) {
-                              setIsClearingAll(true);
-                              try {
-                                await onClearAllData();
-                              } catch (e) {
-                                safeLogger.error('Clear all data UI error', e);
-                              } finally {
-                                setIsClearingAll(false);
-                              }
-                            }
-                          }}
-                          className="p-3.5 rounded-xl border border-rose-500/20 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
-                        >
-                          <span className="material-symbols-outlined text-lg">restart_alt</span>
-                          <span>{isClearingAll ? 'جاري المسح...' : 'مسح كل البيانات والبدء من جديد'}</span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
                   {/* Reset & Wipe Data Blocks (Admin or Delete Permission Only) */}
                   {canDeleteSettings && (
                     <>
@@ -1884,7 +1823,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   {canRunMaintenance && (
                     <div className="pt-2 space-y-4">
                       <ReadOptCard />
-                      <MaintenanceCard />
                       <PatientSummaryMigrationCard />
                     </div>
                   )}
@@ -1965,37 +1903,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                     </div>
                   </div>
 
-                  {/* Interactive Standalone HTML Architecture Map (Archify Standard) */}
-                  <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#080e1b] border border-slate-200 dark:border-white/5 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <span className="material-symbols-outlined text-[#00c2cb] text-xl">account_tree</span>
-                      <span className="font-bold text-slate-800 dark:text-[#dde2f5]">
-                        الخريطة المعمارية والتشغيلية التفاعلية للنظام (Archify Interactive HTML)
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 dark:text-[#859394] leading-relaxed">
-                      صفحة HTML تفاعلية مستقلة بالكامل تعمل بدون إنترنت؛ تشرح دورة المريض، البنية المعمارية والأمان، مخطط علاقات قاعدة البيانات (16 مجموعة)، والدليل التشغيلي للأدوار مع إمكانية تتبع المسارات ومشاركتها.
-                    </p>
-                    <div className="flex flex-wrap items-center gap-3 pt-1">
-                      <a
-                        href={`${import.meta.env.BASE_URL}soli-medical-architecture.html`}
-                        download="soli-medical-architecture.html"
-                        className="px-4 py-2.5 rounded-xl bg-[#00c2cb] hover:bg-[#45dee7] text-slate-950 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-xs active:scale-95"
-                      >
-                        <span className="material-symbols-outlined text-base">download</span>
-                        <span>تحميل الخريطة التفاعلية المستقلة (HTML)</span>
-                      </a>
-                      <a
-                        href={`${import.meta.env.BASE_URL}soli-medical-architecture.html`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-4 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-[#18233C] dark:hover:bg-[#242a38] text-slate-800 dark:text-[#dde2f5] font-bold text-xs flex items-center gap-2 transition-all cursor-pointer"
-                      >
-                        <span className="material-symbols-outlined text-base">open_in_new</span>
-                        <span>معاينة الخريطة التفاعلية في المتصفح</span>
-                      </a>
-                    </div>
-                  </div>
                 </div>
               )}
             </div>
